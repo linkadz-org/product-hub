@@ -7,6 +7,7 @@ import {
   GitCommitHorizontal,
   GitPullRequest,
 } from 'lucide-react';
+import { useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { t } from '@/i18n';
@@ -42,29 +43,123 @@ interface CodeLinksSectionProps {
  */
 export function CodeLinksSection({ subjectId, className }: CodeLinksSectionProps) {
   const { data } = useCodeLinks(subjectId);
+  // Null until the reader picks something, so the default can be derived from
+  // what actually came back. An effect that corrected it after the first paint
+  // would flash the wrong list on every record that opens.
+  const [picked, setPicked] = useState<readonly CodeLinkKind[] | null>(null);
+
   const links = data ?? [];
+  const counts = {
+    [CodeLinkKind.PULL_REQUEST]: links.filter((l) => l.kind === CodeLinkKind.PULL_REQUEST).length,
+    [CodeLinkKind.COMMIT]: links.filter((l) => l.kind === CodeLinkKind.COMMIT).length,
+  };
+  // A pull request is the unit of work someone opens this panel to find; the
+  // commits inside it, and the merge commit that closed it, restate the same
+  // work three times. So PRs alone by default — unless the record has none, in
+  // which case defaulting to them would open on an empty panel and read as a bug.
+  const active =
+    picked ??
+    (counts[CodeLinkKind.PULL_REQUEST] > 0 ? [CodeLinkKind.PULL_REQUEST] : [CodeLinkKind.COMMIT]);
+  const shown = links.filter((l) => active.includes(l.kind));
+
   if (links.length === 0) return null;
+
+  const toggle = (kind: CodeLinkKind) =>
+    setPicked(active.includes(kind) ? active.filter((k) => k !== kind) : [...active, kind]);
 
   return (
     <section className={cn('flex flex-col gap-2', className)}>
-      {/* Same eyebrow heading as the SUB-TASKS / DOCS sections beside it. */}
-      <h3 className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        <GitCommitHorizontal className="size-3.5" aria-hidden />
-        {t('code.development')}
-        <span className="tabular-nums">({links.length})</span>
-      </h3>
-      {/* Newest work first, exactly as the API sorted it — commits and pull
-          requests interleaved. Grouping the PRs above the commits reads well on
-          paper and lies about the sequence: a commit pushed five minutes ago
-          would sit under a PR opened an hour ago. */}
-      <ul className="flex flex-col gap-1.5">
-        {links.map((link) => (
-          <li key={link.id}>
-            <CodeLinkRow link={link} />
-          </li>
-        ))}
-      </ul>
+      {/* The filter is a sibling of the heading rather than inside it — buttons
+          don't belong in an <h3>, and on a narrow panel the row wraps instead
+          of crushing the label. */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+        {/* Same eyebrow heading as the SUB-TASKS / DOCS sections beside it. */}
+        <h3 className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <GitCommitHorizontal className="size-3.5" aria-hidden />
+          {t('code.development')}
+          {/* What is listed, not what exists — the per-kind totals are on the
+              filter itself, where they say what turning one on would reveal. */}
+          <span className="tabular-nums">({shown.length})</span>
+        </h3>
+        <KindFilter counts={counts} active={active} onToggle={toggle} className="ml-auto" />
+      </div>
+      {shown.length === 0 ? (
+        <p className="text-xs text-muted-foreground">{t('code.noKindSelected')}</p>
+      ) : (
+        /* Newest work first, exactly as the API sorted it — commits and pull
+           requests interleaved. Grouping the PRs above the commits reads well on
+           paper and lies about the sequence: a commit pushed five minutes ago
+           would sit under a PR opened an hour ago. */
+        <ul className="flex flex-col gap-1.5">
+          {shown.map((link) => (
+            <li key={link.id}>
+              <CodeLinkRow link={link} />
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
+  );
+}
+
+const KIND_FILTERS = [
+  { kind: CodeLinkKind.PULL_REQUEST, labelKey: 'code.pullRequests', Glyph: GitPullRequest },
+  { kind: CodeLinkKind.COMMIT, labelKey: 'code.commits', Glyph: GitCommitHorizontal },
+] as const;
+
+/**
+ * Which kinds of work to list. Both segments can be on at once — this is a
+ * filter, not a mode, and "pull requests *and* their commits" is a real thing to
+ * want. That's the one way it departs from the segmented switches on the Docs
+ * hub and the boards, whose segments are alternatives; the container, the brand
+ * fill on an active segment and the `aria-pressed` buttons are all the same
+ * idiom, because the UI kit still has no toggle-group primitive.
+ *
+ * Each segment carries its own total, so turning one on is a known quantity
+ * rather than a guess — and a kind with nothing behind it says so with a 0.
+ */
+function KindFilter({
+  counts,
+  active,
+  onToggle,
+  className,
+}: {
+  counts: Record<CodeLinkKind, number>;
+  active: readonly CodeLinkKind[];
+  onToggle: (kind: CodeLinkKind) => void;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        'inline-flex items-center gap-0.5 rounded-lg border border-border bg-muted/40 p-0.5',
+        className,
+      )}
+    >
+      {KIND_FILTERS.map(({ kind, labelKey, Glyph }) => {
+        const on = active.includes(kind);
+        return (
+          <button
+            key={kind}
+            type="button"
+            aria-pressed={on}
+            onClick={() => onToggle(kind)}
+            className={cn(
+              'flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              on
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <Glyph className="size-3 shrink-0" aria-hidden />
+            {/* The icons carry the meaning once the panel is narrow; the count
+                stays, because it is the part that isn't guessable. */}
+            <span className="hidden sm:inline">{t(labelKey)}</span>
+            <span className="tabular-nums">{counts[kind]}</span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

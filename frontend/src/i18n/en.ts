@@ -1569,6 +1569,9 @@ export const en = {
   'enum.ciState.error': 'Errored',
 
   'code.development': 'Development',
+  'code.pullRequests': 'Pull requests',
+  'code.commits': 'Commits',
+  'code.noKindSelected': 'Pick pull requests or commits to list.',
 } as const;
 
 export type I18nKey = keyof typeof en;
