@@ -41,6 +41,7 @@ import { FavouriteButton } from '@/features/favourites/FavouriteButton';
 import { ReactionBar } from '@/features/reactions/ReactionBar';
 import { ActivityHeader, CommentThread } from '@/features/activity/CommentThread';
 import { LinkedDocsSection } from '@/features/docs/components/LinkedDocsSection';
+import { CodeLinksSection } from '@/features/integrations/components/CodeLinksSection';
 import {
   DEFAULT_ROADMAP_COLUMNS,
   FavouriteKind,
@@ -597,6 +598,10 @@ export function RoadmapItemDetail({
         itemId={item.id}
         itemLabel={itemLabel}
       />
+
+      {/* Commits and pull requests that named this item's ref (RM-…). Renders
+          nothing when there are none, like the docs panel under it. */}
+      <CodeLinksSection subjectId={item.id} className="mt-8" />
 
       {/* Doc pages written about this item — the other end of a page's
           "Link Task or Doc". Renders nothing when there are none. */}

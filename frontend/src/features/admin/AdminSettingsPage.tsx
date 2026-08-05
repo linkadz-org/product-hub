@@ -5,6 +5,7 @@ import {
   ArrowUp,
   Cloud,
   Copy,
+  GitBranch,
   KeyRound,
   Plug,
   Plus,
@@ -72,6 +73,7 @@ import type { CustomFieldConfig, TaskLabelConfig } from '@/types/enums';
 import { CloudStorageSection } from './CloudStorageSection';
 import { McpSection } from './McpSection';
 import { WebhooksSection } from './WebhooksSection';
+import { GitHubSection } from './GitHubSection';
 import { CenteredPageLayout } from '@/layouts/shared';
 
 /**
@@ -95,6 +97,9 @@ const TABS: {
   // are `@Roles(ADMIN)` — the tab would render a Generate button that 403s.
   { key: 'mcp', labelKey: 'settings.mcp', icon: Plug, Section: McpSection, adminOnly: true },
   { key: 'webhooks', labelKey: 'settings.webhooks', icon: Webhook, Section: WebhooksSection, adminOnly: true },
+  // Inbound, unlike the Webhooks tab above it: GitHub posts *to* us. Admin-only
+  // because connecting mints a signing secret.
+  { key: 'github', labelKey: 'settings.github', icon: GitBranch, Section: GitHubSection, adminOnly: true },
   { key: 'storage', labelKey: 'settings.storage', icon: Cloud, Section: CloudStorageSection, adminOnly: true },
 ];
 

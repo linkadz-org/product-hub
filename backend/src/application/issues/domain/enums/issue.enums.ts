@@ -52,3 +52,13 @@ export const COMPLETED_STATUS_KEYS: Record<IssueKind, string[]> = {
 export function isCompletedStatus(kind: IssueKind, status: string): boolean {
   return COMPLETED_STATUS_KEYS[kind].includes(status);
 }
+
+/**
+ * The prefix each kind's human ref carries — `TSK-6HCUHKX`, `BUG-3`. Minting
+ * reads it, and so does anything parsing a ref back out of free text (a commit
+ * message, a branch name), so the two can't drift apart.
+ */
+export const ISSUE_REF_PREFIX: Record<IssueKind, string> = {
+  [IssueKind.TASK]: 'TSK',
+  [IssueKind.BUG]: 'BUG',
+};

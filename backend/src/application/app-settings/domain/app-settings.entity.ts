@@ -3,6 +3,10 @@ import { Result } from '@shared/logic/result';
 import { Guard } from '@shared/logic/guard';
 import { BugStatusConfig, DEFAULT_BUG_STATUSES } from '@application/bugs/domain/enums/bug.enums';
 import { TaskStatusConfig, DEFAULT_TASK_STATUSES } from '@application/tasks/domain/enums/task.enums';
+import {
+  GitHubConnection,
+  normalizeGitHubConnection,
+} from '@application/integrations/domain/github.types';
 import { WebhookConfig, normalizeWebhook } from './webhook.types';
 import { CloudStorageConfig, defaultStorageConfig } from './storage.types';
 
@@ -12,6 +16,7 @@ interface AppSettingsProps {
   bugStatuses: BugStatusConfig[];
   taskStatuses: TaskStatusConfig[];
   storage: CloudStorageConfig;
+  github: GitHubConnection;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -30,6 +35,7 @@ export class AppSettingsEntity extends AggregateRoot<AppSettingsProps> {
       bugStatuses?: BugStatusConfig[];
       taskStatuses?: TaskStatusConfig[];
       storage?: CloudStorageConfig;
+      github?: GitHubConnection;
       createdAt?: Date;
       updatedAt?: Date;
     },
@@ -51,6 +57,9 @@ export class AppSettingsEntity extends AggregateRoot<AppSettingsProps> {
           storage: props.storage
             ? { ...defaultStorageConfig(), ...props.storage }
             : defaultStorageConfig(),
+          // Same treatment: a tenant that predates the GitHub link reads as
+          // "never connected" rather than as a doc with holes in it.
+          github: normalizeGitHubConnection(props.github),
           createdAt: props.createdAt || now,
           updatedAt: props.updatedAt || now,
         },
@@ -77,6 +86,9 @@ export class AppSettingsEntity extends AggregateRoot<AppSettingsProps> {
   get storage(): CloudStorageConfig {
     return this.props.storage;
   }
+  get github(): GitHubConnection {
+    return this.props.github;
+  }
   get createdAt(): Date {
     return this.props.createdAt;
   }
@@ -101,6 +113,31 @@ export class AppSettingsEntity extends AggregateRoot<AppSettingsProps> {
 
   setStorage(storage: CloudStorageConfig): void {
     this.props.storage = storage;
+    this.props.updatedAt = new Date();
+  }
+
+  setGitHub(github: GitHubConnection): void {
+    this.props.github = github;
+    this.props.updatedAt = new Date();
+  }
+
+  /**
+   * Record an accepted delivery: when it arrived and which repo it came from,
+   * plus the repo in the connected list the first time we see it. This is what
+   * turns Settings from "here is a URL, good luck" into a page that can say the
+   * link is working.
+   */
+  recordGitHubDelivery(repo: string, at: Date): void {
+    const github = this.props.github;
+    this.props.github = {
+      ...github,
+      lastEventAt: at,
+      lastEventRepo: repo || github.lastEventRepo,
+      connectedRepos:
+        repo && !github.connectedRepos.includes(repo)
+          ? [...github.connectedRepos, repo]
+          : github.connectedRepos,
+    };
     this.props.updatedAt = new Date();
   }
 }
