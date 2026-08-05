@@ -15,6 +15,7 @@ import { FavouriteKind, ReactionTargetType } from '@/types/enums';
 import { FavouriteButton } from '@/features/favourites/FavouriteButton';
 import { ReactionBar } from '@/features/reactions/ReactionBar';
 import { LinkedDocsSection } from '@/features/docs/components/LinkedDocsSection';
+import { CodeLinksSection } from '@/features/integrations/components/CodeLinksSection';
 import type { CommentDto } from '@/types/dto';
 import { type IssueSubject } from '@/features/activity/api';
 import { ActivityHeader, CommentThread, Avatar, type Person } from '@/features/activity/CommentThread';
@@ -243,6 +244,12 @@ export function IssueDetailMain({
 
       {/* Optional inset (task detail's Sub-tasks) between description and Activity. */}
       {beforeActivity}
+
+      {/* Commits and pull requests that named this issue's ref. Lives here rather
+          than in each page so task detail and bug detail get it identically.
+          `comments` means the public read-only view, which has no token to read
+          an authed endpoint with — passing no id keeps it from trying. */}
+      <CodeLinksSection subjectId={comments ? undefined : issueId} className="mt-8" />
 
       {/* Doc pages written about this issue — the other end of a page's
           "Link Task or Doc". Renders nothing when there are none. */}

@@ -5,6 +5,9 @@ import {
   BugSeverity,
   BugStatus,
   BugStatusConfig,
+  CodeLinkKind,
+  CodeLinkMatchedBy,
+  CodeLinkSubject,
   CustomFieldConfig,
   CustomFieldValue,
   CycleMode,
@@ -20,6 +23,7 @@ import {
   McpEntity,
   MilestoneStatus,
   ProjectEnvironment,
+  PullRequestState,
   RelationType,
   RoadmapDifficulty,
   RoadmapItemStatus,
@@ -1003,4 +1007,54 @@ export interface PublicTeamBoardView {
   team: TeamDto;
   issueType: TeamIssueType;
   items: (BugDto | TaskDto)[];
+}
+
+/** One commit or pull request that named this record, as the Development panel
+ *  renders it. A commit has `sha`/`shortSha` and no `state`; a pull request has
+ *  `number` and a `state`, and leaves the sha empty. */
+export interface CodeLinkDto {
+  id: string;
+  subjectType: CodeLinkSubject;
+  subjectId: string;
+  kind: CodeLinkKind;
+  /** `owner/repo`. */
+  repo: string;
+  sha: string;
+  /** First 7 characters of the sha — what a commit row shows. */
+  shortSha: string;
+  /** Pull request number; 0 on a commit. */
+  number: number;
+  /** Commit subject, or pull request title. */
+  title: string;
+  /** Where a commit landed, or a pull request's source branch. */
+  branch: string;
+  /** A pull request's target branch — `dev`, `main`: the environment it ships
+   *  to. Empty on a commit. */
+  baseBranch: string;
+  /** Empty string on a commit. */
+  state: PullRequestState | '';
+  authorName: string;
+  authorAvatarUrl: string;
+  /** Link to the commit or PR on GitHub. */
+  url: string;
+  matchedBy: CodeLinkMatchedBy;
+  occurredAt: string;
+}
+
+/** The workspace's GitHub link, as Settings reads it. The signing secret is
+ *  never in here — only whether one is stored. */
+export interface GitHubConnectionDto {
+  connected: boolean;
+  /** The token in the webhook URL. Useless on its own without the secret. */
+  token: string;
+  secretConfigured: boolean;
+  /** Repos a delivery has actually arrived from — collected, never typed in. */
+  connectedRepos: string[];
+  lastEventAt: string | null;
+  lastEventRepo: string;
+}
+
+/** The connect response — the one and only time the signing secret is returned. */
+export interface ConnectedGitHubDto extends GitHubConnectionDto {
+  secret: string;
 }

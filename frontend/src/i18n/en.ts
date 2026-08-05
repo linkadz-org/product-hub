@@ -932,6 +932,48 @@ export const en = {
   'settings.mcpNoHistory': 'Nothing has been created via MCP yet.',
   'settings.mcpShowMore': 'Show more',
   'settings.webhooks': 'Webhooks',
+
+  'settings.github': 'GitHub',
+  'settings.githubHint':
+    'Show the work behind an item. Write a ref like TSK-6HCUHKX in a commit message, a branch name or a pull request title, and it appears on that task, bug or backlog item.',
+  'settings.githubStep1': 'Connect this workspace',
+  'settings.githubStep1Hint':
+    'Creates the address GitHub sends to, and the secret it signs with. The secret is shown once.',
+  'settings.githubConnect': 'Connect GitHub',
+  'settings.githubConnected': 'Connected',
+  'settings.githubRegenerate': 'Regenerate',
+  'settings.githubRegenerateHint':
+    'Regenerating replaces both the URL and the secret — update the webhook in GitHub straight after, or deliveries stop.',
+  'settings.githubDisconnect': 'Disconnect',
+  'settings.githubDisconnectConfirm':
+    'The webhook URL stops answering immediately. Commits already linked stay on their items; new ones will not arrive until you connect again.',
+  'settings.githubDisconnected': 'GitHub disconnected.',
+  'settings.githubStep2': 'Add the webhook in GitHub',
+  'settings.githubStep2Hint':
+    'In your repository: Settings → Webhooks → Add webhook. Paste the two values below.',
+  'settings.githubStep2Locked': 'Connect the workspace first — the URL is created with it.',
+  'settings.githubBase': 'API address',
+  'settings.githubBaseHint':
+    'Where GitHub reaches this API. Change it if this API is published on a different address from the one your browser uses — GitHub calls in from the internet.',
+  'settings.githubPayloadUrl': 'Payload URL',
+  'settings.githubSecret': 'Secret',
+  'settings.githubSecretOnce':
+    'Copy the secret now — it is never shown again. Lost it? Regenerate, then update the webhook in GitHub.',
+  'settings.githubContentType': 'Content type: application/json',
+  'settings.githubEvents': 'Events: Pushes and Pull requests.',
+  'settings.githubReady': 'Your webhook is ready',
+  'settings.githubReadyHint': 'Paste these into GitHub → Settings → Webhooks → Add webhook.',
+  'settings.githubStep3': 'Name an item in your work',
+  'settings.githubStep3Hint':
+    'Copy the ref from the item — it is next to the title — and use it anywhere in the message.',
+  'settings.githubRefsHint':
+    'Branch names and pull request titles count too, so naming it once at git checkout -b is enough. Tasks (TSK-), bugs (BUG-) and backlog items (RM-) all work.',
+  'settings.githubActivity': 'Deliveries',
+  'settings.githubActivityHint': 'Proof the link is live — what GitHub last sent, and from where.',
+  'settings.githubReceiving': 'Receiving',
+  'settings.githubWaiting':
+    'Nothing received yet. GitHub sends a test the moment you add the webhook — reload this page after saving it.',
+
   'settings.storage': 'Storage',
   'settings.storageHint': 'Cloud storage for uploaded images and short videos.',
   'settings.storageProvider': 'Provider',
@@ -1515,6 +1557,13 @@ export const en = {
   'enum.webhookEvent.bugCreated': 'Bug created',
   'enum.webhookEvent.bugAssigned': 'Bug assigned',
   'enum.webhookEvent.commentMention': 'Comment mention',
+
+  'enum.prState.draft': 'Draft',
+  'enum.prState.open': 'Open',
+  'enum.prState.merged': 'Merged',
+  'enum.prState.closed': 'Closed',
+
+  'code.development': 'Development',
 } as const;
 
 export type I18nKey = keyof typeof en;

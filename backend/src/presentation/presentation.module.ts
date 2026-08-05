@@ -23,6 +23,7 @@ import { PublicPresentationModule } from './public/public.module';
 import { AppSettingsPresentationModule } from './app-settings/app-settings.module';
 import { StoragePresentationModule } from './storage/storage.module';
 import { PlatformPresentationModule } from './platform/platform.module';
+import { IntegrationsPresentationModule } from './integrations/integrations.module';
 
 /**
  * Mounts every feature's presentation module at a URL path prefix (routes end up
@@ -62,6 +63,10 @@ import { PlatformPresentationModule } from './platform/platform.module';
     // The vendor console. Same process, separate URL space and separate token —
     // nothing under /v1/platform is reachable with a workspace JWT.
     PlatformPresentationModule,
+    // Controllers are @Controller('integrations/github') and @Controller('code-links'),
+    // so no RouterModule prefix. GitHub is told the first of those verbatim, which
+    // is why its path is spelled out rather than assembled from a prefix here.
+    IntegrationsPresentationModule,
     RouterModule.register([
       { path: 'health', module: HealthModule },
       { path: 'auth', module: AuthPresentationModule },

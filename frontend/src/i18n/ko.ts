@@ -928,6 +928,49 @@ export const ko: Record<I18nKey, string> = {
   'settings.mcpNoHistory': '아직 MCP로 만든 항목이 없습니다.',
   'settings.mcpShowMore': '더 보기',
   'settings.webhooks': '웹훅',
+
+  'settings.github': 'GitHub',
+  'settings.githubHint':
+    '항목 뒤의 작업을 보여줍니다. 커밋 메시지, 브랜치 이름, 풀 리퀘스트 제목에 TSK-6HCUHKX 같은 참조를 적으면 해당 작업·버그·백로그 항목에 나타납니다.',
+  'settings.githubStep1': '워크스페이스 연결',
+  'settings.githubStep1Hint':
+    'GitHub이 전송할 주소와 서명에 사용할 시크릿을 만듭니다. 시크릿은 한 번만 표시됩니다.',
+  'settings.githubConnect': 'GitHub 연결',
+  'settings.githubConnected': '연결됨',
+  'settings.githubRegenerate': '재발급',
+  'settings.githubRegenerateHint':
+    '재발급하면 URL과 시크릿이 모두 바뀝니다 — 곧바로 GitHub의 웹훅을 수정하지 않으면 전송이 중단됩니다.',
+  'settings.githubDisconnect': '연결 해제',
+  'settings.githubDisconnectConfirm':
+    '웹훅 URL이 즉시 응답을 멈춥니다. 이미 연결된 커밋은 항목에 그대로 남지만, 다시 연결하기 전까지 새 커밋은 도착하지 않습니다.',
+  'settings.githubDisconnected': 'GitHub 연결을 해제했습니다.',
+  'settings.githubStep2': 'GitHub에 웹훅 추가',
+  'settings.githubStep2Hint':
+    '저장소에서 Settings → Webhooks → Add webhook으로 이동해 아래 두 값을 붙여 넣으세요.',
+  'settings.githubStep2Locked': '먼저 워크스페이스를 연결하세요 — URL은 그때 만들어집니다.',
+  'settings.githubBase': 'API 주소',
+  'settings.githubBaseHint':
+    'GitHub이 이 API에 접속하는 주소입니다. 브라우저가 사용하는 주소와 다른 주소로 이 API가 공개되어 있다면 변경하세요 — GitHub은 인터넷에서 호출합니다.',
+  'settings.githubPayloadUrl': 'Payload URL',
+  'settings.githubSecret': 'Secret',
+  'settings.githubSecretOnce':
+    '지금 시크릿을 복사하세요 — 다시는 표시되지 않습니다. 잃어버렸다면 재발급한 뒤 GitHub의 웹훅을 수정하세요.',
+  'settings.githubContentType': 'Content type: application/json',
+  'settings.githubEvents': 'Events: Pushes, Pull requests.',
+  'settings.githubReady': '웹훅이 준비되었습니다',
+  'settings.githubReadyHint': 'GitHub → Settings → Webhooks → Add webhook에 붙여 넣으세요.',
+  'settings.githubStep3': '작업에 항목을 언급하기',
+  'settings.githubStep3Hint':
+    '항목의 제목 옆에 있는 참조를 복사해 메시지 어디에나 넣으면 됩니다.',
+  'settings.githubRefsHint':
+    '브랜치 이름과 풀 리퀘스트 제목도 인식하므로 git checkout -b 할 때 한 번만 적어도 충분합니다. 작업(TSK-), 버그(BUG-), 백로그 항목(RM-) 모두 지원합니다.',
+  'settings.githubActivity': '수신 기록',
+  'settings.githubActivityHint':
+    '연결이 살아 있다는 증거입니다 — GitHub이 마지막으로 보낸 내용과 저장소.',
+  'settings.githubReceiving': '수신 중',
+  'settings.githubWaiting':
+    '아직 수신된 내용이 없습니다. 웹훅을 추가하는 즉시 GitHub이 테스트를 보냅니다 — 저장한 뒤 이 페이지를 새로고침하세요.',
+
   'settings.storage': '스토리지',
   'settings.storageHint': '업로드한 이미지와 짧은 동영상을 저장할 클라우드 스토리지입니다.',
   'settings.storageProvider': '제공자',
@@ -1512,4 +1555,11 @@ export const ko: Record<I18nKey, string> = {
   'enum.webhookEvent.bugCreated': '버그 생성',
   'enum.webhookEvent.bugAssigned': '버그 배정',
   'enum.webhookEvent.commentMention': '댓글 멘션',
+
+  'enum.prState.draft': '초안',
+  'enum.prState.open': '열림',
+  'enum.prState.merged': '병합됨',
+  'enum.prState.closed': '닫힘',
+
+  'code.development': '개발',
 };

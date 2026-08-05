@@ -17,6 +17,7 @@ export class AppSettingsRepository implements IAppSettingsRepository {
       bugStatuses: doc.bugStatuses,
       taskStatuses: doc.taskStatuses,
       storage: doc.storage,
+      github: doc.github,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     });
@@ -26,6 +27,17 @@ export class AppSettingsRepository implements IAppSettingsRepository {
 
   async findByTenant(tenantId: string): Promise<AppSettingsEntity | null> {
     const doc = await this.model.findOne({ tenantId }).lean<AppSettingsDoc>().exec();
+    return doc ? this.toDomain(doc) : null;
+  }
+
+  async findByGitHubToken(token: string): Promise<AppSettingsEntity | null> {
+    // Guarded here as well as at the caller: an empty token would otherwise match
+    // every workspace that has never connected, handing them someone's commits.
+    if (!token) return null;
+    const doc = await this.model
+      .findOne({ 'github.token': token })
+      .lean<AppSettingsDoc>()
+      .exec();
     return doc ? this.toDomain(doc) : null;
   }
 
@@ -40,6 +52,7 @@ export class AppSettingsRepository implements IAppSettingsRepository {
           bugStatuses: settings.bugStatuses,
           taskStatuses: settings.taskStatuses,
           storage: settings.storage,
+          github: settings.github,
         },
         { upsert: true, new: true, setDefaultsOnInsert: true },
       )

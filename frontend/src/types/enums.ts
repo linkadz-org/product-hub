@@ -822,3 +822,49 @@ export const WEBHOOK_EVENT_LABEL: Record<WebhookEvent, string> = {
   [WebhookEvent.BUG_ASSIGNED]: t('enum.webhookEvent.bugAssigned'),
   [WebhookEvent.COMMENT_MENTION]: t('enum.webhookEvent.commentMention'),
 };
+
+/** What a piece of linked work is (Development panel). */
+export enum CodeLinkKind {
+  COMMIT = 'commit',
+  PULL_REQUEST = 'pull_request',
+}
+
+/** What a link points at — an issue (task/bug), or a backlog item. */
+export enum CodeLinkSubject {
+  ISSUE = 'issue',
+  ROADMAP_ITEM = 'roadmap_item',
+}
+
+/** A pull request's state, already collapsed from GitHub's three flags. */
+export enum PullRequestState {
+  DRAFT = 'draft',
+  OPEN = 'open',
+  MERGED = 'merged',
+  CLOSED = 'closed',
+}
+
+export const PULL_REQUEST_STATE_LABEL: Record<PullRequestState, string> = {
+  [PullRequestState.DRAFT]: t('enum.prState.draft'),
+  [PullRequestState.OPEN]: t('enum.prState.open'),
+  [PullRequestState.MERGED]: t('enum.prState.merged'),
+  [PullRequestState.CLOSED]: t('enum.prState.closed'),
+};
+
+/** Chip colours for a PR state. GitHub's own palette is the one developers read
+ *  without thinking — purple *is* merged — so these are literals rather than
+ *  theme tokens, the same exception the Kanban column dots make. */
+export const PULL_REQUEST_STATE_COLOR: Record<PullRequestState, string> = {
+  [PullRequestState.DRAFT]: '#6b7280',
+  [PullRequestState.OPEN]: '#16a34a',
+  [PullRequestState.MERGED]: '#8250df',
+  [PullRequestState.CLOSED]: '#dc2626',
+};
+
+/** Where the issue ref was found — a commit message, a branch, a PR title, or
+ *  (pull requests only) a commit inside the PR rather than the PR's own text. */
+export enum CodeLinkMatchedBy {
+  MESSAGE = 'message',
+  BRANCH = 'branch',
+  TITLE = 'title',
+  COMMIT = 'commit',
+}

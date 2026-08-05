@@ -4,6 +4,12 @@ import { AppSettingsEntity } from '../domain/app-settings.entity';
 /** Port for the per-tenant settings singleton. */
 export abstract class IAppSettingsRepository {
   findByTenant: (tenantId: string) => Promise<AppSettingsEntity | null>;
+  /**
+   * Resolve a workspace from the token in its GitHub webhook URL. A delivery
+   * from GitHub names a repo and nothing else, so this is the only thing that
+   * says which workspace it belongs to. Returns null for an unknown token.
+   */
+  findByGitHubToken: (token: string) => Promise<AppSettingsEntity | null>;
   save: (settings: AppSettingsEntity) => Promise<void>;
   /**
    * Legacy: task labels used to live on settings (workspace-wide). They're now

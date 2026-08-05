@@ -3,7 +3,10 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { UniqueEntityID } from '@core/domain';
 import { BaseRepository } from '@core/infrastructure/database/mongoose/base';
-import { IRoadmapRepository } from '@application/roadmaps/repositories/roadmap.repository';
+import {
+  IRoadmapRepository,
+  RoadmapItemLocation,
+} from '@application/roadmaps/repositories/roadmap.repository';
 import { RoadmapEntity } from '@application/roadmaps/domain/entities/roadmap.entity';
 import { RoadmapDoc } from '../entities/roadmap.schema';
 
@@ -63,6 +66,19 @@ export class RoadmapRepository
       .lean<RoadmapDoc>()
       .exec();
     return doc ? this.toDomain(doc) : null;
+  }
+
+  async findItemByRef(tenantId: string, ref: string): Promise<RoadmapItemLocation | null> {
+    if (!ref) return null;
+    // Only the items array comes back — a roadmap can hold hundreds of items with
+    // long descriptions, and this read wants two ids from one of them.
+    const doc = await this.model
+      .findOne({ tenantId, 'items.shortId': ref })
+      .select('items.id items.shortId')
+      .lean<{ _id: string; items?: { id: string; shortId?: string }[] }>()
+      .exec();
+    const item = doc?.items?.find((i) => i.shortId === ref);
+    return item ? { roadmapId: doc!._id, itemId: item.id } : null;
   }
 
   async findByTenant(tenantId: string): Promise<RoadmapEntity[]> {

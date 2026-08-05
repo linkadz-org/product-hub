@@ -92,3 +92,6 @@ cursor
 !/prompt/
 /prompt/*
 !/prompt/*_HISTORY.md
+
+
+*/.nodeterm

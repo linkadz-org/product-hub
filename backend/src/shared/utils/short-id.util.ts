@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import { customAlphabet } from 'nanoid';
 
 /**
@@ -35,6 +36,23 @@ const nanoShare = customAlphabet(REF_ALPHABET, SHARE_LEN);
 /** A fresh public-share token, e.g. `K7M4PQ2XR9TVBD`. */
 export function shareToken(): string {
   return nanoShare();
+}
+
+/**
+ * A secret for a machine, not a person: an integration webhook's URL token and
+ * its signing key. Neither is ever read aloud or typed by hand — they're copied
+ * between two admin screens — so unlike {@link shareToken} there's no reason to
+ * trade entropy for legibility, and these use full-strength random bytes.
+ *
+ * `base64url` for the URL half (path-safe, no escaping), hex for the signing key
+ * (what every provider's "Secret" field expects to be given).
+ */
+export function webhookUrlToken(): string {
+  return randomBytes(24).toString('base64url');
+}
+
+export function webhookSigningSecret(): string {
+  return randomBytes(32).toString('hex');
 }
 
 /**
