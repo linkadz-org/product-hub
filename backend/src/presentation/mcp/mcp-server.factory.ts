@@ -28,6 +28,12 @@ import {
   McpUpdateIssueDto,
 } from '@application/mcp/dtos/mcp.dtos';
 import {
+  McpBugStatsDto,
+  McpCycleBurndownDto,
+  McpListCyclesDto,
+  McpTeamVelocityDto,
+} from '@application/mcp/dtos/mcp-analytics.dtos';
+import {
   McpBacklogItemBriefDto,
   McpBacklogItemResponseDto,
   McpCommentDto,
@@ -44,6 +50,15 @@ import {
   McpUpdatedDocResponseDto,
 } from '@application/mcp/dtos/mcp.response.dto';
 import {
+  McpBugStatsResponseDto,
+  McpCycleSummaryDto,
+  McpVelocityResponseDto,
+} from '@application/mcp/dtos/mcp-analytics.response.dto';
+import {
+  CycleBurndownGroupDto,
+  CycleBurndownResponseDto,
+} from '@application/cycles/dtos/cycle.dtos';
+import {
   GetMcpContextUseCase,
   McpActor,
   McpAddCommentUseCase,
@@ -52,10 +67,14 @@ import {
   McpCreateIssueUseCase,
   McpDeleteCommentUseCase,
   McpDeleteIssueUseCase,
+  McpGetBugStatsUseCase,
+  McpGetCycleBurndownUseCase,
   McpGetIssueUseCase,
+  McpGetTeamVelocityUseCase,
   McpLinkIssuesUseCase,
   McpListBacklogItemsUseCase,
   McpListCommentsUseCase,
+  McpListCyclesUseCase,
   McpListLinksUseCase,
   McpSearchIssuesUseCase,
   McpSetStatusUseCase,
@@ -146,6 +165,10 @@ export class McpServerFactory {
     private readonly linkIssues: McpLinkIssuesUseCase,
     private readonly listLinks: McpListLinksUseCase,
     private readonly unlinkIssues: McpUnlinkIssuesUseCase,
+    private readonly listCycles: McpListCyclesUseCase,
+    private readonly cycleBurndown: McpGetCycleBurndownUseCase,
+    private readonly velocity: McpGetTeamVelocityUseCase,
+    private readonly bugStats: McpGetBugStatsUseCase,
     config: ConfigService,
   ) {
     this.appUrl = (config.get<string>('APP_BASE_URL') ?? 'http://localhost:3001').replace(/\/$/, '');
@@ -192,6 +215,10 @@ export class McpServerFactory {
     this.registerLinkIssues(server, run);
     this.registerListLinks(server, run);
     this.registerUnlinkIssues(server, run);
+    this.registerListCycles(server, run);
+    this.registerCycleBurndown(server, run);
+    this.registerVelocity(server, run);
+    this.registerBugStats(server, run);
 
     return server;
   }
@@ -756,6 +783,129 @@ export class McpServerFactory {
     );
   }
 
+  private registerListCycles(server: McpServer, run: Run): void {
+    registerTool<McpListCyclesDto>(
+      server,
+      'list_cycles',
+      {
+        title: 'List a team’s sprints',
+        description:
+          'The sprint (cycle) history of one team, newest window first — number, name, dates, ' +
+          'status (upcoming/active/completed), the sprint goal, and how much was planned vs ' +
+          'finished. Call this to find a sprint before get_cycle_burndown, or to answer "what ' +
+          'is the team working on this sprint". A team with cycles switched off says so rather ' +
+          'than returning an empty list.',
+        inputSchema: {
+          team: z.string().describe('Team name or id — required'),
+          limit: z.number().int().min(1).max(50).optional().describe('Default 10'),
+        },
+        annotations: { readOnlyHint: true },
+      },
+      (dto) =>
+        run<McpCycleSummaryDto[]>(
+          (actor) => this.listCycles.execute({ actor, dto }),
+          (cycles) =>
+            cycles.length
+              ? `${cycles.length} sprint(s):\n\n${cycles.map((c) => this.describeCycle(c)).join('\n\n')}`
+              : 'No sprints yet.',
+        ),
+    );
+  }
+
+  private registerCycleBurndown(server: McpServer, run: Run): void {
+    registerTool<McpCycleBurndownDto>(
+      server,
+      'get_cycle_burndown',
+      {
+        title: 'Read a sprint’s burn-up',
+        description:
+          'How one sprint actually went, day by day: scope vs started vs completed, plus the ' +
+          'split by assignee, label and project. `cycle` takes a number ("3"), a name, an id, ' +
+          'or one of "current" / "next" / "last" — "last" is the most recently finished sprint, ' +
+          'which is what a retro or sprint review usually wants. Reported in the unit the team ' +
+          'estimates in (story points, or issue count when the team does not point).',
+        inputSchema: {
+          team: z.string().describe('Team name or id'),
+          cycle: z.string().describe('Sprint number, name, id, or current / next / last'),
+        },
+        annotations: { readOnlyHint: true },
+      },
+      (dto) =>
+        run<CycleBurndownResponseDto>(
+          (actor) => this.cycleBurndown.execute({ actor, dto }),
+          (b) => this.describeBurndown(b),
+        ),
+    );
+  }
+
+  private registerVelocity(server: McpServer, run: Run): void {
+    registerTool<McpTeamVelocityDto>(
+      server,
+      'get_team_velocity',
+      {
+        title: 'Read a team’s velocity',
+        description:
+          'How much a team actually finishes per sprint, across its recent completed sprints — ' +
+          'per-sprint committed vs delivered, plus the average and the range. Use it to answer ' +
+          '"is the team slower than usual" or to size the next sprint. Only completed sprints ' +
+          'count (a running one is not done yet). Reported in story points when the team points ' +
+          'its work, otherwise in issue count.',
+        inputSchema: {
+          team: z.string().describe('Team name or id'),
+          cycles: z
+            .number()
+            .int()
+            .min(1)
+            .max(24)
+            .optional()
+            .describe('How many recent completed sprints; default 6'),
+        },
+        annotations: { readOnlyHint: true },
+      },
+      (dto) =>
+        run<McpVelocityResponseDto>(
+          (actor) => this.velocity.execute({ actor, dto }),
+          (v) => this.describeVelocity(v),
+        ),
+    );
+  }
+
+  private registerBugStats(server: McpServer, run: Run): void {
+    registerTool<McpBugStatsDto>(
+      server,
+      'get_bug_stats',
+      {
+        title: 'Bug distribution and flow',
+        description:
+          'Counts of bugs, grouped however you ask. `groupBy` is a SNAPSHOT — how the bugs ' +
+          'matching your filter split across status, severity, assignee, team, label or project ' +
+          '(default: status + severity). `trend` is FLOW — how many were opened vs closed each ' +
+          'week or month, and whether the backlog is growing. Ask only for the dimensions you ' +
+          'need; each one adds to the reply. `since`/`until` filter by when a bug was OPENED. ' +
+          'Note: a bug reopened later loses its close date, so a past period’s "closed" count ' +
+          'can change — say so if you quote these numbers in a report. Also: when `since`/`until` ' +
+          'are set, `trend`\'s "closed" counts still only cover bugs that were OPENED inside that ' +
+          'window, so a bug opened earlier and closed inside the window is missing from it.',
+        inputSchema: {
+          team: z.string().optional().describe('Bug team name or id; omit for the whole workspace'),
+          since: z.string().optional().describe('YYYY-MM-DD — bugs opened on or after'),
+          until: z.string().optional().describe('YYYY-MM-DD — bugs opened on or before'),
+          groupBy: z
+            .array(z.enum(['status', 'severity', 'assignee', 'team', 'label', 'project']))
+            .optional()
+            .describe('Snapshot dimensions; default ["status","severity"]'),
+          trend: z.enum(['week', 'month']).optional().describe('Add opened/closed per bucket'),
+        },
+        annotations: { readOnlyHint: true },
+      },
+      (dto) =>
+        run<McpBugStatsResponseDto>(
+          (actor) => this.bugStats.execute({ actor, dto }),
+          (s) => this.describeBugStats(s),
+        ),
+    );
+  }
+
   /* ── Formatting ─────────────────────────────────────────────────────────── */
 
   private url(path: string): string {
@@ -823,6 +973,129 @@ export class McpServerFactory {
       `  ${i.roadmapTitle} → ${i.phase} · ${i.status} · RICE ${i.riceScore}`,
       `  ${this.url(i.link)}`,
     ].join('\n');
+  }
+
+  private describeCycle(c: McpCycleSummaryDto): string {
+    const label = c.name || `Cycle ${c.number}`;
+    // Điểm chỉ có nghĩa khi team thật sự chấm điểm — scopePoints 0 thì báo theo
+    // số việc, đừng in "0 pts" như thể team không làm gì.
+    const unit =
+      c.scopePoints > 0
+        ? `${c.completedPoints}/${c.scopePoints} pts`
+        : `${c.completedCount}/${c.scopeCount} issues`;
+    return [
+      `${label} · ${c.status}`,
+      `  ${c.startDate} → ${c.endDate} · ${unit}`,
+      c.goal ? `  goal: ${c.goal}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  /** Số lượng mốc cuối của burn-up in ra — cả sprint theo ngày là quá dài cho một
+   *  câu trả lời, và mấy ngày cuối mới là phần nói lên sprint có kịp không. */
+  private static readonly BURNDOWN_TAIL = 10;
+
+  private describeBurndown(b: CycleBurndownResponseDto): string {
+    const points = b.unit === 'points';
+    const n = (count: number, pts: number) => (points ? `${pts} pts` : `${count}`);
+    const tail = b.series.slice(-McpServerFactory.BURNDOWN_TAIL);
+    const head = [
+      `Sprint ${b.number} · ${b.status} · ${b.startDate} → ${b.endDate}`,
+      `  scope ${n(b.scopeCount, b.scopePoints)} · started ${n(b.startedCount, b.startedPoints)} · done ${n(b.completedCount, b.completedPoints)}`,
+      `  measured in ${b.unit}`,
+    ];
+    const series = tail.length
+      ? [
+          '',
+          b.series.length > tail.length
+            ? `Daily (last ${tail.length} of ${b.series.length} days):`
+            : `Daily (${tail.length} days):`,
+          ...tail.map(
+            (d) =>
+              `  ${d.date} · scope ${points ? d.scopePoints : d.scopeCount}` +
+              ` · done ${points ? d.completedPoints : d.completedCount}`,
+          ),
+        ]
+      : ['', 'No daily data.'];
+    const group = (title: string, rows: CycleBurndownGroupDto[]) =>
+      rows.length
+        ? [
+            '',
+            `${title}:`,
+            ...rows.map(
+              (g) =>
+                `  ${g.label || '(none)'} · ${n(g.count, g.points)} planned` +
+                ` · ${n(g.completedCount, g.completedPoints)} done`,
+            ),
+          ]
+        : [];
+    return [
+      ...head,
+      ...series,
+      ...group('By assignee', b.assignees),
+      ...group('By label', b.labels),
+      ...group('By project', b.projects),
+    ].join('\n');
+  }
+
+  private describeVelocity(v: McpVelocityResponseDto): string {
+    const u = v.unit === 'points' ? 'pts' : 'issues';
+    const rows = v.sprints.map((s) => {
+      const label = s.name || `Cycle ${s.number}`;
+      const [did, planned] =
+        v.unit === 'points' ? [s.completedPoints, s.scopePoints] : [s.completedCount, s.scopeCount];
+      return `  ${label} (${s.endDate}) · ${did}/${planned} ${u}`;
+    });
+    const warn = v.unpointedSprints.length
+      ? [
+          '',
+          `Note: sprint(s) ${v.unpointedSprints.join(', ')} carry no story points, so they count ` +
+            `as 0 and pull the average down.`,
+        ]
+      : [];
+    return [
+      `${v.teamName} · average ${v.average} ${u} over ${v.sprintsCounted} sprint(s) · range ${v.min}–${v.max}`,
+      '',
+      ...rows,
+      ...warn,
+    ].join('\n');
+  }
+
+  private describeBugStats(s: McpBugStatsResponseDto): string {
+    const dateFilter = s.since && s.until
+      ? `opened ${s.since} → ${s.until}`
+      : s.since
+        ? `opened on or after ${s.since}`
+        : s.until
+          ? `opened on or before ${s.until}`
+          : '';
+    const scope = [s.teamName || 'whole workspace', dateFilter].filter(Boolean).join(' · ');
+    const out = [`${s.total} bug(s) · ${scope}`];
+
+    for (const d of s.dimensions) {
+      out.push('', `By ${d.dimension}:`);
+      for (const b of d.buckets) out.push(`  ${b.label} · ${b.count}`);
+      if (d.hiddenBuckets) {
+        out.push(`  … and ${d.hiddenBuckets} more (${d.hiddenBugs} bugs)`);
+      }
+      // Không có dòng này, người đọc cộng cột lại rồi thắc mắc sao không ra tổng.
+      if (d.countsAssignments) {
+        out.push(`  (counts assignments — a bug with two ${d.dimension}s appears twice)`);
+      }
+    }
+
+    if (s.trend.length) {
+      const trendRange = s.trendSince && `${s.trendSince} → ${s.trendUntil}`;
+      out.push('', `Opened vs closed per ${s.trendUnit}${trendRange ? ` (${trendRange})` : ''}:`);
+      for (const t of s.trend) {
+        const sign = t.net > 0 ? `+${t.net}` : String(t.net);
+        out.push(`  ${t.bucket} · opened ${t.opened} · closed ${t.closed} · net ${sign}`);
+      }
+      out.push('  (net > 0 means the backlog grew that period)');
+    }
+
+    return out.join('\n');
   }
 
   private describeLink(l: McpIssueLinkDto): string {
