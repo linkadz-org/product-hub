@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import {
+  CodeLinkCiUpdate,
   CodeLinkRecord,
   ExistingLink,
   ICodeLinkRepository,
@@ -9,6 +10,7 @@ import {
   UpsertCodeLinkData,
 } from '@application/integrations/repositories/code-link.repository';
 import {
+  CodeLinkCiState,
   CodeLinkKind,
   CodeLinkMatchedBy,
   CodeLinkSubject,
@@ -40,6 +42,11 @@ export class CodeLinkRepository implements ICodeLinkRepository {
       url: d.url,
       matchedBy: d.matchedBy as CodeLinkMatchedBy,
       occurredAt: d.occurredAt,
+      ciState: (d.ciState ?? '') as CodeLinkCiState | '',
+      ciContext: d.ciContext ?? '',
+      ciBranch: d.ciBranch ?? '',
+      ciUrl: d.ciUrl ?? '',
+      ciAt: d.ciAt ?? null,
       createdAt: d.createdAt,
     };
   }
@@ -123,5 +130,39 @@ export class CodeLinkRepository implements ICodeLinkRepository {
         { upsert: true },
       )
       .exec();
+  }
+
+  async markCi(
+    tenantId: string,
+    repo: string,
+    kind: CodeLinkKind,
+    externalId: string,
+    ci: CodeLinkCiUpdate,
+  ): Promise<number> {
+    if (!repo || !externalId) return 0;
+    const res = await this.model
+      .updateMany(
+        {
+          tenantId,
+          repo,
+          kind,
+          externalId,
+          // Last word wins, but only if it really is the last: GitHub does not
+          // promise delivery order, so a `pending` redelivered after the
+          // `success` it preceded must not walk the chip back to yellow.
+          $or: [{ ciAt: null }, { ciAt: { $lte: ci.at } }],
+        },
+        {
+          $set: {
+            ciState: ci.state,
+            ciContext: ci.context,
+            ciBranch: ci.branch,
+            ciUrl: ci.url,
+            ciAt: ci.at,
+          },
+        },
+      )
+      .exec();
+    return res.modifiedCount ?? 0;
   }
 }

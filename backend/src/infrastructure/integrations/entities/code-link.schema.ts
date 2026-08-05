@@ -34,6 +34,16 @@ export interface CodeLinkDoc {
   /** message | branch | title | commit */
   matchedBy: string;
   occurredAt: Date;
+  /** pending | success | failure | error — '' until CI has reported. */
+  ciState: string;
+  /** The job that reported: `ci/circleci: deploy-2`. */
+  ciContext: string;
+  /** Branch the CI run was on — `dev`, `main`: the environment the chip names. */
+  ciBranch: string;
+  /** Deep link to the job, so the chip opens the build log. */
+  ciUrl: string;
+  /** When CI last reported; null while it never has. */
+  ciAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -59,6 +69,11 @@ export const CodeLinkSchema = new Schema<CodeLinkDoc>(
     url: { type: String, default: '' },
     matchedBy: { type: String, default: '' },
     occurredAt: { type: Date, required: true },
+    ciState: { type: String, default: '' },
+    ciContext: { type: String, default: '' },
+    ciBranch: { type: String, default: '' },
+    ciUrl: { type: String, default: '' },
+    ciAt: { type: Date, default: null },
   },
   { timestamps: true },
 );

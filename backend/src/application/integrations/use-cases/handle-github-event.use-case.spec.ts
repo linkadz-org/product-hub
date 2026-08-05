@@ -3,11 +3,18 @@ import type { IAppSettingsRepository } from '@application/app-settings/repositor
 import type { IIssueRepository } from '@application/issues/repositories/issue.repository';
 import type { IRoadmapRepository } from '@application/roadmaps/repositories/roadmap.repository';
 import type {
+  CodeLinkCiUpdate,
   ExistingLink,
   ICodeLinkRepository,
   UpsertCodeLinkData,
 } from '../repositories/code-link.repository';
-import { CodeLinkKind, CodeLinkMatchedBy, CodeLinkSubject, PullRequestState } from '../domain/github.types';
+import {
+  CodeLinkCiState,
+  CodeLinkKind,
+  CodeLinkMatchedBy,
+  CodeLinkSubject,
+  PullRequestState,
+} from '../domain/github.types';
 import { HandleGitHubEventUseCase } from './handle-github-event.use-case';
 
 const TOKEN = 'workspace-url-token';
@@ -30,6 +37,9 @@ describe('HandleGitHubEventUseCase', () => {
   /** Builds the use-case over fakes, and hands back what the fakes recorded. */
   function build(opts: { enabled?: boolean; secret?: string } = {}) {
     const upserts: UpsertCodeLinkData[] = [];
+    /** Every `markCi` the use case attempted, matched or not — the fallback order
+     *  from the PR number to the sha is the thing worth asserting. */
+    const ciCalls: Array<{ kind: CodeLinkKind; externalId: string; ci: CodeLinkCiUpdate }> = [];
     const deliveries: { repo: string; at: Date }[] = [];
 
     const settings = {
@@ -119,10 +129,29 @@ describe('HandleGitHubEventUseCase', () => {
               u.externalId === externalId,
           ),
         ),
+      markCi: (
+        tenantId: string,
+        repo: string,
+        kind: CodeLinkKind,
+        externalId: string,
+        ci: CodeLinkCiUpdate,
+      ) => {
+        ciCalls.push({ kind, externalId, ci });
+        // Mirrors updateMany: every row for this piece of work, so a PR that
+        // closed two bugs answers 2.
+        const matched = upserts.filter(
+          (u) =>
+            u.tenantId === tenantId &&
+            u.repo === repo &&
+            u.kind === kind &&
+            u.externalId === externalId,
+        ).length;
+        return Promise.resolve(matched);
+      },
     } as unknown as ICodeLinkRepository;
 
     const usecase = new HandleGitHubEventUseCase(settingsRepo, issues, roadmaps, links);
-    return { usecase, upserts, deliveries, settings };
+    return { usecase, upserts, deliveries, settings, ciCalls };
   }
 
   /** Send a payload the way GitHub would — signed over the exact bytes. */
@@ -426,7 +455,8 @@ describe('HandleGitHubEventUseCase', () => {
     });
 
     it('stops standing in for the commits once a branch is evidently long-lived', async () => {
-      /** `count` tasks already merged into `branch`, each by its own commit. */
+      /** `count` tasks already merged into `branch`, each by its own commit. The
+       *  numbers below straddle MAX_BRANCH_SUBJECTS — move one, move both. */
       const seed = (upserts: UpsertCodeLinkData[], count: number, branch: string) => {
         for (let i = 0; i < count; i++) {
           upserts.push({
@@ -454,14 +484,167 @@ describe('HandleGitHubEventUseCase', () => {
       const release = pullRequest({ title: 'Release', head: { ref: 'dev' }, base: { ref: 'main' } });
 
       const feature = build();
-      seed(feature.upserts, 20, 'dev');
-      expect((await deliver(feature.usecase, 'pull_request', release)).getValue().linked).toBe(20);
+      seed(feature.upserts, 50, 'dev');
+      expect((await deliver(feature.usecase, 'pull_request', release)).getValue().linked).toBe(50);
 
       // One more and it is a release branch, not one unit of work: a dev → main
       // pull request must not land on every task the workspace ever shipped.
       const longLived = build();
-      seed(longLived.upserts, 21, 'dev');
+      seed(longLived.upserts, 51, 'dev');
       expect((await deliver(longLived.usecase, 'pull_request', release)).getValue().linked).toBe(0);
+    });
+  });
+
+  /**
+   * CircleCI's verdict arriving back through GitHub. The whole difficulty is that
+   * the status is attached to the merge commit, which names no issue — so these
+   * cover the two ways back to a link, and the case where there is none.
+   */
+  describe('status', () => {
+    const MERGE_SHA = 'f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0';
+
+    const status = (over: Record<string, unknown> = {}) => ({
+      repository: { full_name: REPO },
+      sha: MERGE_SHA,
+      state: 'success',
+      context: 'ci/circleci: deploy-2',
+      target_url: 'https://circleci.com/pipelines/1',
+      updated_at: '2026-08-05T10:00:00Z',
+      branches: [{ name: 'dev' }],
+      commit: { commit: { message: `Merge pull request #42 from ${REPO}/feature` } },
+      ...over,
+    });
+
+    /** A pull request link already stored — what a status has to find. */
+    const seedPr = (upserts: UpsertCodeLinkData[], subjectId = TASK_ID) =>
+      upserts.push({
+        tenantId: TENANT,
+        subjectType: CodeLinkSubject.ISSUE,
+        subjectId,
+        roadmapId: '',
+        kind: CodeLinkKind.PULL_REQUEST,
+        repo: REPO,
+        externalId: 'pr-42',
+        sha: '',
+        number: 42,
+        title: `${TASK_REF} Fix login redirect`,
+        branch: 'feature',
+        baseBranch: 'dev',
+        state: PullRequestState.MERGED,
+        authorName: 'Dat Tran',
+        authorAvatarUrl: '',
+        url: '',
+        matchedBy: CodeLinkMatchedBy.TITLE,
+        occurredAt: new Date('2026-08-05T09:00:00Z'),
+      });
+
+    it('stamps the pull request its merge commit closed', async () => {
+      const { usecase, upserts, ciCalls } = build();
+      seedPr(upserts);
+
+      const result = await deliver(usecase, 'status', status());
+
+      expect(result.getValue().linked).toBe(1);
+      expect(ciCalls).toHaveLength(1);
+      expect(ciCalls[0]).toMatchObject({ kind: CodeLinkKind.PULL_REQUEST, externalId: 'pr-42' });
+      expect(ciCalls[0].ci).toEqual({
+        state: CodeLinkCiState.SUCCESS,
+        context: 'ci/circleci: deploy-2',
+        // The environment — the one thing the chip actually says.
+        branch: 'dev',
+        url: 'https://circleci.com/pipelines/1',
+        at: new Date('2026-08-05T10:00:00Z'),
+      });
+    });
+
+    it('reads a squash merge, which writes the number differently', async () => {
+      const { usecase, upserts, ciCalls } = build();
+      seedPr(upserts);
+
+      const result = await deliver(
+        usecase,
+        'status',
+        status({ commit: { commit: { message: `${TASK_REF} Fix login redirect (#42)` } } }),
+      );
+
+      expect(result.getValue().linked).toBe(1);
+      expect(ciCalls[0].externalId).toBe('pr-42');
+    });
+
+    it('stamps every subject one pull request closed', async () => {
+      const { usecase, upserts } = build();
+      seedPr(upserts, TASK_ID);
+      seedPr(upserts, ITEM_ID);
+
+      // One deploy shipped both — neither may be left showing nothing.
+      expect((await deliver(usecase, 'status', status())).getValue().linked).toBe(2);
+    });
+
+    it('falls back to the sha when the message names no pull request', async () => {
+      const { usecase, upserts, ciCalls } = build();
+      upserts.push({
+        tenantId: TENANT,
+        subjectType: CodeLinkSubject.ISSUE,
+        subjectId: TASK_ID,
+        roadmapId: '',
+        kind: CodeLinkKind.COMMIT,
+        repo: REPO,
+        externalId: MERGE_SHA,
+        sha: MERGE_SHA,
+        number: 0,
+        title: `${TASK_REF} hotfix`,
+        branch: 'dev',
+        baseBranch: '',
+        state: '',
+        authorName: 'Dat Tran',
+        authorAvatarUrl: '',
+        url: '',
+        matchedBy: CodeLinkMatchedBy.MESSAGE,
+        occurredAt: new Date('2026-08-05T09:00:00Z'),
+      });
+
+      // A rebase merge, or a commit pushed straight to dev: no `#42` anywhere.
+      const result = await deliver(
+        usecase,
+        'status',
+        status({ commit: { commit: { message: `${TASK_REF} hotfix` } } }),
+      );
+
+      expect(result.getValue().linked).toBe(1);
+      expect(ciCalls.at(-1)).toMatchObject({
+        kind: CodeLinkKind.COMMIT,
+        externalId: MERGE_SHA,
+      });
+    });
+
+    it('does nothing for a commit no issue claims — the ordinary case', async () => {
+      const { usecase, ciCalls } = build();
+      const result = await deliver(usecase, 'status', status());
+
+      expect(result.isSuccess).toBe(true);
+      expect(result.getValue().linked).toBe(0);
+      // Tried the PR, then the sha, and neither matched — still a 200.
+      expect(ciCalls).toHaveLength(2);
+    });
+
+    it('ignores a state GitHub has not defined rather than storing it', async () => {
+      const { usecase, upserts, ciCalls } = build();
+      seedPr(upserts);
+
+      const result = await deliver(usecase, 'status', status({ state: 'queued' }));
+
+      expect(result.isSuccess).toBe(true);
+      expect(result.getValue().linked).toBe(0);
+      expect(ciCalls).toHaveLength(0);
+    });
+
+    it('keeps a pending status, so the chip can go yellow while CI runs', async () => {
+      const { usecase, upserts, ciCalls } = build();
+      seedPr(upserts);
+
+      await deliver(usecase, 'status', status({ state: 'pending' }));
+
+      expect(ciCalls[0].ci.state).toBe(CodeLinkCiState.PENDING);
     });
   });
 

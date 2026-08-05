@@ -16,14 +16,17 @@ import {
   CodeLinkMatchedBy,
   CodeLinkSubject,
   PullRequestState,
+  ciStateFrom,
   pullRequestState,
 } from '../domain/github.types';
 import {
   GitHubEvent,
   GitHubPullRequestPayload,
   GitHubPushPayload,
+  GitHubStatusPayload,
   branchFromRef,
   commitSubject,
+  mergedPullRequestNumber,
 } from '../domain/github-payload.types';
 
 export interface HandleGitHubEventRequest {
@@ -70,7 +73,7 @@ type LinkTarget = ExistingLink;
  * that PR to two hundred tasks at once is noise, not information. Past this, the
  * branch is evidently not one unit of work and only the PR's own text counts.
  */
-const MAX_BRANCH_SUBJECTS = 20;
+const MAX_BRANCH_SUBJECTS = 50;
 
 /** Refs from a primary source, then a fallback, without duplicates. */
 function refHits(
@@ -141,6 +144,10 @@ export class HandleGitHubEventUseCase
         return Result.ok(
           await this.handlePullRequest(tenantId, repo, req.payload as GitHubPullRequestPayload),
         );
+      case GitHubEvent.STATUS:
+        return Result.ok(
+          await this.handleStatus(tenantId, repo, req.payload as GitHubStatusPayload),
+        );
       default:
         return Result.ok({ message: `Ignored event "${req.event}"`, linked: 0 });
     }
@@ -148,6 +155,53 @@ export class HandleGitHubEventUseCase
 
   private repoOf(payload: unknown): string {
     return (payload as { repository?: { full_name?: string } })?.repository?.full_name ?? '';
+  }
+
+  /**
+   * CI reporting on a commit — how a deploy reaches the issue it shipped.
+   *
+   * The awkward part is that the status never lands where the link is. CircleCI
+   * builds `dev`, so its status is attached to the *merge* commit, whose message
+   * is `Merge pull request #139 from …` and names no issue; the link that knows
+   * about the bug hangs off the pull request, or off a commit that was pushed
+   * days earlier. So the number in the merge message is the join, and the sha is
+   * the fallback for work that was pushed straight to the branch.
+   *
+   * A status matching neither is the ordinary case — most commits belong to no
+   * issue — and returns 0 without touching anything.
+   */
+  private async handleStatus(
+    tenantId: string,
+    repo: string,
+    payload: GitHubStatusPayload,
+  ): Promise<HandleGitHubEventResponse> {
+    const state = ciStateFrom(payload.state);
+    if (!state) return { message: `Unknown status state "${payload.state ?? ''}"`, linked: 0 };
+
+    const ci = {
+      state,
+      context: payload.context ?? '',
+      // The branch is the environment: a status on `dev` is the dev deploy.
+      // GitHub sends every branch whose tip is this commit; the first is the one
+      // that was pushed, and a status on a commit that is no branch's tip has none.
+      branch: payload.branches?.[0]?.name ?? '',
+      url: payload.target_url ?? '',
+      // GitHub's own timestamp, not ours: it is what orders two deliveries that
+      // arrive out of order, so it has to come from the sender's clock.
+      at: payload.updated_at ? new Date(payload.updated_at) : new Date(),
+    };
+
+    const prNumber = mergedPullRequestNumber(payload.commit?.commit?.message);
+    let marked = prNumber
+      ? await this.links.markCi(tenantId, repo, CodeLinkKind.PULL_REQUEST, `pr-${prNumber}`, ci)
+      : 0;
+    const sha = payload.sha ?? '';
+    if (!marked && sha) {
+      marked = await this.links.markCi(tenantId, repo, CodeLinkKind.COMMIT, sha, ci);
+    }
+
+    if (!marked) return { message: `${ci.context}: nothing linked to this commit`, linked: 0 };
+    return { message: `${ci.context} → ${state}`, linked: marked };
   }
 
   private async handlePush(

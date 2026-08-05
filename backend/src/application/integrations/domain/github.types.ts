@@ -88,6 +88,27 @@ export function pullRequestState(pr: {
 }
 
 /**
+ * What CI last said about a link, as the chip renders it.
+ *
+ * GitHub's four commit-status states, kept as they are rather than collapsed to
+ * a boolean: `pending` is the yellow dot the board wants while a deploy runs,
+ * and `failure` (the job ran and said no) reads differently from `error` (the
+ * job never got to answer) when someone is deciding whether to retry.
+ */
+export enum CodeLinkCiState {
+  PENDING = 'pending',
+  SUCCESS = 'success',
+  FAILURE = 'failure',
+  ERROR = 'error',
+}
+
+/** GitHub's `state` string → our enum; anything unrecognised → null (ignored). */
+export function ciStateFrom(state: string | undefined): CodeLinkCiState | null {
+  const known = Object.values(CodeLinkCiState) as string[];
+  return known.includes(state ?? '') ? (state as CodeLinkCiState) : null;
+}
+
+/**
  * Where in the payload we found the issue ref. Shown on the card as a quiet
  * caption, because "matched from the branch name" is the difference between a
  * link the author meant and one they got for free by branching well.

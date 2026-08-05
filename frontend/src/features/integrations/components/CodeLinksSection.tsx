@@ -1,10 +1,22 @@
-import { ArrowRight, GitCommitHorizontal, GitPullRequest } from 'lucide-react';
+import {
+  ArrowRight,
+  CircleAlert,
+  CircleCheck,
+  CircleDashed,
+  CircleX,
+  GitCommitHorizontal,
+  GitPullRequest,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { t } from '@/i18n';
 import { timeAgo } from '@/lib/format';
 import {
+  CodeLinkCiState,
   CodeLinkKind,
   PullRequestState,
+  CODE_LINK_CI_STATE_COLOR,
+  CODE_LINK_CI_STATE_LABEL,
   PULL_REQUEST_STATE_COLOR,
   PULL_REQUEST_STATE_LABEL,
 } from '@/types/enums';
@@ -33,12 +45,6 @@ export function CodeLinksSection({ subjectId, className }: CodeLinksSectionProps
   const links = data ?? [];
   if (links.length === 0) return null;
 
-  // Pull requests first: a PR is the summary of the commits under it, so it's
-  // the row a reader wants before the individual commits. Each group stays in
-  // the API's newest-first order.
-  const prs = links.filter((l) => l.kind === CodeLinkKind.PULL_REQUEST);
-  const commits = links.filter((l) => l.kind === CodeLinkKind.COMMIT);
-
   return (
     <section className={cn('flex flex-col gap-2', className)}>
       {/* Same eyebrow heading as the SUB-TASKS / DOCS sections beside it. */}
@@ -47,8 +53,12 @@ export function CodeLinksSection({ subjectId, className }: CodeLinksSectionProps
         {t('code.development')}
         <span className="tabular-nums">({links.length})</span>
       </h3>
+      {/* Newest work first, exactly as the API sorted it — commits and pull
+          requests interleaved. Grouping the PRs above the commits reads well on
+          paper and lies about the sequence: a commit pushed five minutes ago
+          would sit under a PR opened an hour ago. */}
       <ul className="flex flex-col gap-1.5">
-        {[...prs, ...commits].map((link) => (
+        {links.map((link) => (
           <li key={link.id}>
             <CodeLinkRow link={link} />
           </li>
@@ -95,6 +105,8 @@ function CodeLinkRow({ link }: { link: CodeLinkDto }) {
 
       {isPr && state && <StateChip state={state} />}
 
+      <CiChip link={link} />
+
       <BranchRef link={link} />
 
       <span className="hidden shrink-0 truncate text-[11px] text-muted-foreground sm:inline">
@@ -132,6 +144,53 @@ function BranchRef({ link }: { link: CodeLinkDto }) {
         </>
       )}
       <span className="max-w-[7rem] truncate rounded bg-muted px-1.5 py-0.5">{target}</span>
+    </span>
+  );
+}
+
+const CI_STATE_ICON: Record<CodeLinkCiState, LucideIcon> = {
+  [CodeLinkCiState.PENDING]: CircleDashed,
+  [CodeLinkCiState.SUCCESS]: CircleCheck,
+  [CodeLinkCiState.FAILURE]: CircleX,
+  [CodeLinkCiState.ERROR]: CircleAlert,
+};
+
+/**
+ * What CI did with this work, and where it landed — `✓ dev` once the deploy of
+ * `dev` that carried this pull request succeeded.
+ *
+ * Shows the environment rather than the job name, because `dev` is the thing
+ * being asked about ("is my fix on dev yet?") and `ci/circleci: deploy-2` is
+ * not; the job, and when it last spoke, are in the tooltip for whoever needs to
+ * go and look. Renders nothing until CI has reported, which for most workspaces
+ * is always: the `status` event has to be ticked on the GitHub webhook, and
+ * nothing about the rest of the panel depends on it.
+ */
+function CiChip({ link }: { link: CodeLinkDto }) {
+  const { ciState } = link;
+  if (!ciState) return null;
+
+  const color = CODE_LINK_CI_STATE_COLOR[ciState];
+  const Icon = CI_STATE_ICON[ciState];
+  const label = CODE_LINK_CI_STATE_LABEL[ciState];
+  // The branch is the headline; without one (a status on a commit that is no
+  // branch's tip) the state's own name is all there is to say.
+  const text = link.ciBranch || label;
+  const detail = [link.ciContext, label, link.ciAt ? timeAgo(link.ciAt) : '']
+    .filter(Boolean)
+    .join(' · ');
+
+  return (
+    <span
+      className="flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+      style={{ color, backgroundColor: `${color}1a` }}
+      title={detail}
+    >
+      <Icon
+        className={cn('size-2.5', ciState === CodeLinkCiState.PENDING && 'animate-pulse')}
+        aria-hidden
+      />
+      <span className="max-w-[6rem] truncate font-mono">{text}</span>
     </span>
   );
 }
