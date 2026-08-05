@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsString } from 'class-validator';
 import {
+  CodeLinkCiState,
   CodeLinkKind,
   CodeLinkMatchedBy,
   CodeLinkSubject,
@@ -65,4 +66,19 @@ export class CodeLinkResponseDto {
 
   @ApiProperty({ description: 'When the work happened, not when it was stored' })
   occurredAt!: Date;
+
+  @ApiProperty({ enum: CodeLinkCiState, description: "CI's last word; empty until it reports" })
+  ciState!: CodeLinkCiState | '';
+
+  @ApiProperty({ description: 'The reporting job, e.g. "ci/circleci: deploy-2"' })
+  ciContext!: string;
+
+  @ApiProperty({ description: 'Branch CI ran on — dev, main: the environment' })
+  ciBranch!: string;
+
+  @ApiProperty({ description: 'Deep link to the build log' })
+  ciUrl!: string;
+
+  @ApiProperty({ description: 'When CI last reported; null if never', nullable: true })
+  ciAt!: Date | null;
 }

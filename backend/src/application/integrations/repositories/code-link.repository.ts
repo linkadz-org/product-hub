@@ -1,4 +1,5 @@
 import {
+  CodeLinkCiState,
   CodeLinkKind,
   CodeLinkMatchedBy,
   CodeLinkSubject,
@@ -40,7 +41,25 @@ export interface CodeLinkRecord {
   matchedBy: CodeLinkMatchedBy;
   /** When the work happened (commit time / PR open time) — not when we stored it. */
   occurredAt: Date;
+  /** What CI last said; '' until it has said anything. */
+  ciState: CodeLinkCiState | '';
+  /** The reporting job — `ci/circleci: deploy-2`. */
+  ciContext: string;
+  /** Branch CI ran on: the environment the chip names. */
+  ciBranch: string;
+  /** Deep link to the build log. */
+  ciUrl: string;
+  ciAt: Date | null;
   createdAt: Date;
+}
+
+/** What one commit-status delivery has to say about a link. */
+export interface CodeLinkCiUpdate {
+  state: CodeLinkCiState;
+  context: string;
+  branch: string;
+  url: string;
+  at: Date;
 }
 
 /**
@@ -119,4 +138,20 @@ export abstract class ICodeLinkRepository {
    * already known — a reopened PR must change state rather than stack up.
    */
   upsert: (data: UpsertCodeLinkData) => Promise<void>;
+  /**
+   * Stamp CI's verdict onto every row for one commit or pull request, and answer
+   * how many rows that was.
+   *
+   * Every row, not one: a PR that closed three bugs is three rows, and the deploy
+   * shipped all of them. Rows are only ever updated here — a status arriving for
+   * work nobody linked to an issue matches nothing and is a no-op, which is the
+   * common case and must stay cheap.
+   */
+  markCi: (
+    tenantId: string,
+    repo: string,
+    kind: CodeLinkKind,
+    externalId: string,
+    ci: CodeLinkCiUpdate,
+  ) => Promise<number>;
 }

@@ -860,6 +860,31 @@ export const PULL_REQUEST_STATE_COLOR: Record<PullRequestState, string> = {
   [PullRequestState.CLOSED]: '#dc2626',
 };
 
+/** What CI last said about a linked commit or pull request. GitHub's four
+ *  commit-status states, relayed through the webhook. */
+export enum CodeLinkCiState {
+  PENDING = 'pending',
+  SUCCESS = 'success',
+  FAILURE = 'failure',
+  ERROR = 'error',
+}
+
+export const CODE_LINK_CI_STATE_LABEL: Record<CodeLinkCiState, string> = {
+  [CodeLinkCiState.PENDING]: t('enum.ciState.pending'),
+  [CodeLinkCiState.SUCCESS]: t('enum.ciState.success'),
+  [CodeLinkCiState.FAILURE]: t('enum.ciState.failure'),
+  [CodeLinkCiState.ERROR]: t('enum.ciState.error'),
+};
+
+/** Same palette rule as the PR chips above: GitHub's own colours, because the
+ *  yellow-dot / green-tick vocabulary is already in the reader's head. */
+export const CODE_LINK_CI_STATE_COLOR: Record<CodeLinkCiState, string> = {
+  [CodeLinkCiState.PENDING]: '#bf8700',
+  [CodeLinkCiState.SUCCESS]: '#16a34a',
+  [CodeLinkCiState.FAILURE]: '#dc2626',
+  [CodeLinkCiState.ERROR]: '#dc2626',
+};
+
 /** Where the issue ref was found — a commit message, a branch, a PR title, or
  *  (pull requests only) a commit inside the PR rather than the PR's own text. */
 export enum CodeLinkMatchedBy {
