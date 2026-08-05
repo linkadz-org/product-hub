@@ -1585,4 +1585,7 @@ export const ko: Record<I18nKey, string> = {
   'enum.ciState.error': '오류',
 
   'code.development': '개발',
+  'code.pullRequests': '풀 리퀘스트',
+  'code.commits': '커밋',
+  'code.noKindSelected': '표시할 유형을 선택하세요.',
 };
