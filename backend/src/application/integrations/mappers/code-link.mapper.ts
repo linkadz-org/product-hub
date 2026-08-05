@@ -23,6 +23,11 @@ export class CodeLinkMapper {
       url: record.url,
       matchedBy: record.matchedBy,
       occurredAt: record.occurredAt,
+      ciState: record.ciState,
+      ciContext: record.ciContext,
+      ciBranch: record.ciBranch,
+      ciUrl: record.ciUrl,
+      ciAt: record.ciAt,
     };
   }
 }

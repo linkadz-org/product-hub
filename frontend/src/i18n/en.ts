@@ -1589,6 +1589,11 @@ export const en = {
   'enum.prState.merged': 'Merged',
   'enum.prState.closed': 'Closed',
 
+  'enum.ciState.pending': 'Running',
+  'enum.ciState.success': 'Passed',
+  'enum.ciState.failure': 'Failed',
+  'enum.ciState.error': 'Errored',
+
   'code.development': 'Development',
 } as const;
 

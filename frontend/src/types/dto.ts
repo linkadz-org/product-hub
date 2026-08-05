@@ -5,6 +5,7 @@ import {
   BugSeverity,
   BugStatus,
   BugStatusConfig,
+  CodeLinkCiState,
   CodeLinkKind,
   CodeLinkMatchedBy,
   CodeLinkSubject,
@@ -1046,6 +1047,16 @@ export interface CodeLinkDto {
   url: string;
   matchedBy: CodeLinkMatchedBy;
   occurredAt: string;
+  /** What CI last said. Empty until a `status` webhook has arrived for this
+   *  work — which needs "Statuses" ticked on the GitHub webhook. */
+  ciState: CodeLinkCiState | '';
+  /** The reporting job, e.g. `ci/circleci: deploy-2`. */
+  ciContext: string;
+  /** Branch CI ran on — `dev`, `main`: the environment the chip names. */
+  ciBranch: string;
+  /** Deep link to the build log on CircleCI. */
+  ciUrl: string;
+  ciAt: string | null;
 }
 
 /** The workspace's GitHub link, as Settings reads it. The signing secret is
