@@ -1,7 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { IUsecaseExecute } from '@core/interfaces';
 import { Result } from '@shared/logic/result';
-import { uniqueRef } from '@module-shared/utils/short-id.util';
+import { MintedRef, sequentialRef } from '@module-shared/utils/sequential-ref.util';
+import { CounterService } from '@module-shared/services/counter.service';
 import { ITeamRepository } from '@application/teams/repositories/team.repository';
 import { DEFAULT_TEAMS, TeamIssueType } from '@application/teams/domain/enums/team.enums';
 import { IUserRepository } from '@application/users/repositories/user.repository';
@@ -12,7 +13,7 @@ import { CycleStatus } from '@application/cycles/domain/enums/cycle.enums';
 import { todayISO } from '@application/cycles/domain/cycle-dates';
 import { CreateIssueDto } from '../dtos/create-issue.dto';
 import { IssueEntity } from '../domain/entities/issue.entity';
-import { IssueKind } from '../domain/enums/issue.enums';
+import { ISSUE_REF_PREFIX, IssueKind } from '../domain/enums/issue.enums';
 import { IIssueRepository } from '../repositories/issue.repository';
 import { resolveIssueAssignees } from './resolve-assignees';
 
@@ -33,6 +34,7 @@ export class CreateIssueUseCase
     @Inject(ITeamRepository) private readonly teams: ITeamRepository,
     @Inject(ICycleRepository) private readonly cycles: ICycleRepository,
     @Inject(INotifier) private readonly notifier: INotifier,
+    private readonly counters: CounterService,
   ) {}
 
   async execute({
@@ -65,6 +67,15 @@ export class CreateIssueUseCase
 
     const teamId = dto.personal ? '' : dto.teamId || team?.id.toString() || '';
 
+    // `team` is the kind's *default* team; the issue may land in a different one
+    // (dto.teamId). Both the cycle rhythm and the ticket ref read the **landing**
+    // team, so resolve it once here rather than twice further down.
+    const landingTeam = !teamId
+      ? null
+      : team && team.id.toString() === teamId
+        ? team
+        : await this.teams.findById(tenantId, teamId);
+
     // Born into a cycle. Two ways in:
     //  1. An explicit cycleId (a board filtered to one creates into it) — validated
     //     like the update path: the issue's own team's cycle, still open, never on a
@@ -83,16 +94,30 @@ export class CreateIssueUseCase
         return Result.fail('Completed cycles cannot take new issues');
       }
     } else if (!dto.personal && teamId) {
-      // `team` is the kind's default team; the issue may land in a different one
-      // (dto.teamId), so read the landing team's own rhythm.
-      const landingTeam =
-        team && team.id.toString() === teamId ? team : await this.teams.findById(tenantId, teamId);
       if (landingTeam?.cyclesEnabled) {
         const active = (await this.cycles.findByTeam(tenantId, teamId)).find(
           (c) => c.statusOn(todayISO()) === CycleStatus.ACTIVE,
         );
         if (active) cycleId = active.id.toString();
       }
+    }
+
+    // Ticket refs are the landing team's sequence — `ENG-14`. A team from an
+    // older build has no prefix yet (the backfill may not have run), and a
+    // personal task has no team at all; both fall back to the kind's own
+    // sequence, so the ref is still sequential and sortable, just not
+    // team-scoped.
+    const refPrefix = landingTeam?.refPrefix || ISSUE_REF_PREFIX[kind];
+    // `sequentialRef` throws if it cannot find a free number; this use-case's
+    // contract is a Result, and an uncaught throw here would surface as a 500
+    // instead of a message the caller can act on.
+    let minted: MintedRef;
+    try {
+      minted = await sequentialRef(this.counters, tenantId, refPrefix, (ref) =>
+        this.issues.findByRef(tenantId, ref).then((i) => i !== null),
+      );
+    } catch (error) {
+      return Result.fail((error as Error).message);
     }
 
     const created = IssueEntity.create({
@@ -102,9 +127,9 @@ export class CreateIssueUseCase
       cycleId,
       ownerId: dto.personal ? createdBy : '',
       parentId: dto.parentId,
-      shortId: await uniqueRef(isBug ? 'BUG' : 'TSK', (ref) =>
-        this.issues.findByRef(tenantId, ref).then((i) => i !== null),
-      ),
+      shortId: minted.ref,
+      refPrefix: minted.prefix,
+      refSeq: minted.seq,
       title: dto.title,
       description: dto.description,
       status: dto.status,
