@@ -73,30 +73,67 @@ export class CreateTeamUseCase
     tenantId: string;
     dto: CreateTeamDto;
   }): Promise<Result<TeamEntity>> {
-    // Key is derived from the name, then de-duplicated — it's the stable id.
-    const key = await uniqueSlug(dto.name, async (c) => !!(await this.teams.findByKey(tenantId, c)));
+    // Both the key and the ref prefix are derived by *reading* the tenant's
+    // current teams and then writing — a read-then-write that two simultaneous
+    // creates can interleave, so both derive the same value and the second save
+    // hits the unique index. The index is the real guard; this loop is how a
+    // genuine race is absorbed instead of surfacing as a 500: on a duplicate-key
+    // error, re-read and re-derive against the row the winner just wrote.
+    for (let attempt = 0; attempt < CREATE_TEAM_ATTEMPTS; attempt++) {
+      // Key is derived from the name, then de-duplicated — it's the stable id.
+      const key = await uniqueSlug(dto.name, async (c) =>
+        !!(await this.teams.findByKey(tenantId, c)),
+      );
 
-    const existing = await this.teams.findByTenant(tenantId);
-    // Archived teams are in this list, and that is deliberate: a prefix is never
-    // released, so refs minted under it can never be minted a second time.
-    const takenPrefixes = new Set(
-      existing.map((t) => t.refPrefix).filter((p): p is string => !!p),
-    );
-    const result = TeamEntity.create({
-      tenantId,
-      key,
-      name: dto.name,
-      issueType: dto.issueType,
-      icon: dto.icon,
-      color: dto.color,
-      order: existing.length,
-      refPrefix: deriveRefPrefix(dto.name, takenPrefixes),
-    });
-    if (result.isFailure) return Result.fail(result.error as string);
-    const team = result.getValue();
-    await this.teams.save(team);
-    return Result.ok(team);
+      const existing = await this.teams.findByTenant(tenantId);
+      // Archived teams are in this list, and that is deliberate: a prefix is never
+      // released, so refs minted under it can never be minted a second time.
+      const takenPrefixes = new Set(
+        existing.map((t) => t.refPrefix).filter((p): p is string => !!p),
+      );
+      const result = TeamEntity.create({
+        tenantId,
+        key,
+        name: dto.name,
+        issueType: dto.issueType,
+        icon: dto.icon,
+        color: dto.color,
+        order: existing.length,
+        refPrefix: deriveRefPrefix(dto.name, takenPrefixes),
+      });
+      if (result.isFailure) return Result.fail(result.error as string);
+      const team = result.getValue();
+      try {
+        await this.teams.save(team);
+        return Result.ok(team);
+      } catch (error) {
+        // Anything that is not the index rejecting a duplicate is a real
+        // failure and must not be retried.
+        if (!isDuplicateKeyError(error) || attempt === CREATE_TEAM_ATTEMPTS - 1) throw error;
+      }
+    }
+    /* istanbul ignore next — the loop either returns or throws. */
+    return Result.fail(TEAM_CREATE_RACE_LOST);
   }
+}
+
+/** Attempts including the first; a second racer only has to lose once. */
+const CREATE_TEAM_ATTEMPTS = 3;
+
+/** Sentinel for the unreachable "ran out of attempts without throwing" branch. */
+export const TEAM_CREATE_RACE_LOST = 'Could not create the team, please try again';
+
+/**
+ * Mongo's duplicate-key rejection (`E11000`), however the driver surfaced it —
+ * as a `MongoServerError` with `code`, or wrapped by Mongoose with the code on
+ * `cause`.
+ */
+export function isDuplicateKeyError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const e = error as { code?: unknown; cause?: unknown; message?: unknown };
+  if (e.code === 11000) return true;
+  if (typeof e.message === 'string' && e.message.includes('E11000')) return true;
+  return e.cause ? isDuplicateKeyError(e.cause) : false;
 }
 
 /** Sentinel so the controller can map "can't archive a default team" to 400. */

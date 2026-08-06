@@ -17,9 +17,9 @@
  * an explicit MONGODB_URI (it won't silently hit localhost).
  *
  * OPERATIONAL NOTE: the unique partial index on `{tenantId, refPrefix}` (teams
- * collection) is only created when the app boots. Make sure the app has started
- * at least once against this database — so the index exists — before running
- * this script with --apply, or duplicate prefixes could slip past.
+ * collection) is only created when the app boots. `--apply` CHECKS for it and
+ * refuses to write if it is missing, so "start the app once against this
+ * database first" is enforced rather than remembered. A dry run needs no index.
  */
 import mongoose from 'mongoose';
 import { deriveRefPrefix } from '../src/application/teams/domain/team-ref-prefix';
@@ -47,13 +47,46 @@ interface TeamRow {
   refPrefix?: string;
 }
 
+/**
+ * The unique partial index this backfill's de-duplication leans on. It is only
+ * created when the app boots, so a database the app has never started against
+ * silently accepts duplicate prefixes — and two teams sharing a prefix means two
+ * teams minting the same ticket refs, which no later fix can untangle. Checked
+ * by shape (key + uniqueness), not by name, since the name is Mongo-generated.
+ */
+async function hasUniquePrefixIndex(
+  teams: ReturnType<typeof mongoose.connection.collection<TeamRow>>,
+): Promise<boolean> {
+  const indexes = (await teams.indexes()) as {
+    key: Record<string, unknown>;
+    unique?: boolean;
+  }[];
+  return indexes.some(
+    (i) => i.unique === true && i.key['tenantId'] === 1 && i.key['refPrefix'] === 1,
+  );
+}
+
 async function main(): Promise<void> {
   console.log(
     APPLY ? '🚚 APPLY — assigning team ref prefixes' : '🔎 DRY RUN — plan only, no changes',
   );
+  console.log(`Env:   ${NODE_ENV}`);
+  console.log(`Mongo: ${MONGODB_URI.replace(/\/\/[^@]*@/, '//***@')}`);
 
   await mongoose.connect(MONGODB_URI);
   const teams = mongoose.connection.collection<TeamRow>('teams');
+
+  if (APPLY && !(await hasUniquePrefixIndex(teams))) {
+    console.error(
+      '\n✋ Refusing to write: the unique index on {tenantId, refPrefix} does not exist\n' +
+        '   on the `teams` collection of this database.\n' +
+        '   Without it, two teams could end up sharing a prefix and minting the same\n' +
+        '   ticket refs. Start the app once against this database (it creates the\n' +
+        '   index on boot), then re-run with --apply.',
+    );
+    await mongoose.disconnect();
+    process.exit(1);
+  }
 
   const all = await teams.find({}).sort({ tenantId: 1, order: 1 }).toArray();
 

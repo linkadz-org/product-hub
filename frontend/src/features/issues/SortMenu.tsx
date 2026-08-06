@@ -51,14 +51,19 @@ export function SortMenu({
   onChange: (next: IssueSort) => void;
 }) {
   const active = SORT_FIELDS.find((f) => f.field === value.field) ?? SORT_FIELDS[0];
-  const DirIcon = value.dir === 'asc' ? ArrowUpNarrowWide : ArrowDownNarrowWide;
+  const isAsc = value.dir === 'asc';
+  const DirIcon = isAsc ? ArrowUpNarrowWide : ArrowDownNarrowWide;
+  // The direction is carried visually by the arrow icon, which is aria-hidden —
+  // so it has to be spelled out here, or a screen-reader user cannot tell
+  // ascending from descending without opening the menu.
+  const dirLabel = t(isAsc ? 'sort.ascending' : 'sort.descending');
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
           variant="outline"
           className="gap-1.5"
-          aria-label={`${t('sort.title')}: ${t(active.labelKey)}`}
+          aria-label={`${t('sort.title')}: ${t(active.labelKey)}, ${dirLabel}`}
         >
           <DirIcon className="size-3.5" aria-hidden />
           <span className="hidden sm:inline">{t('sort.title')}:</span>
