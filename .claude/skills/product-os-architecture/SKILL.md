@@ -50,7 +50,8 @@ User / computed live). Cross-cutting concerns live in `core/` and `shared/`.
   Links to **[[module-milestones]]** (OKRs) and issues.
 - **[[module-milestones]]** (OKRs) roll up weighted progress; link to roadmaps; shown in
   **[[module-planning]]** (the Roadmaps + OKRs tab shell).
-- **[[module-issue-links]]** — typed relations (blocks/parent-of/related/duplicate) between issues.
+- **[[module-issue-links]]** — typed *peer* relations (blocks/blocked-by/related/duplicate)
+  between issues. Parent/child is not here — it is the child's `parentId`.
 - **[[module-activity]]** — shared comment engine for issues, docs, roadmap items; feeds
   **[[module-inbox]]** (mentions + assigned bugs) and **[[module-webhooks]]** (Lark/Telegram).
 - **[[module-reactions]]** — emoji bar on issue/roadmap-item detail.

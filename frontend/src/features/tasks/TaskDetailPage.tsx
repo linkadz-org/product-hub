@@ -19,8 +19,9 @@ export function TaskDetailPage({ issueRef: taskId }: { issueRef: string }) {
   // query (React Query dedupes it) for the body.
   const { data: task } = useTask(taskId);
 
-  // Breadcrumb parent: the task's own team board — shared with a bug's page, so
-  // both kinds read `All issues › <team> › <ref>`.
+  // Breadcrumb parent: the task's own team board, then its backlog item and
+  // parent when it has them — shared with a bug's page, so both kinds read
+  // `All issues › <team> › <ref>`.
   const parent = useIssueCrumbParent(IssueKind.TASK, task);
   // A private personal task belongs to no team; the crumb above already points
   // at the Personal board, and deleting one returns there too.
@@ -28,7 +29,13 @@ export function TaskDetailPage({ issueRef: taskId }: { issueRef: string }) {
 
   return (
     <CenteredPageLayout>
-      <PageHeader title={task?.shortId || task?.title || taskId || ''} parent={parent} />
+      {/* Titles, not refs — see BugDetailPage. The ref rides along as hover text
+          and is already printed above the body's own heading. */}
+      <PageHeader
+        title={task?.title || task?.shortId || taskId || ''}
+        subtitle={task?.shortId}
+        parent={parent}
+      />
 
       <TaskDetail
         taskId={taskId}

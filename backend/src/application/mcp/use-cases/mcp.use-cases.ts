@@ -65,6 +65,7 @@ import {
   didYouMean,
   docPageLink,
   issueLink,
+  hierarchyRole,
   resolveIssueRef,
   resolveLabel,
   resolveMentions,
@@ -396,7 +397,7 @@ export class McpGetIssueUseCase
       isAdmin,
     });
     if (found.isFailure) return Result.fail(found.error as string);
-    const issue = found.getValue();
+    const { issue, parent } = found.getValue();
     const issueId = issue.id.toString();
 
     const teams = (await this.getTeams.execute({ tenantId: actor.tenantId })).getValue();
@@ -437,6 +438,11 @@ export class McpGetIssueUseCase
       startDate: issue.startDate ?? '',
       endDate: issue.endDate ?? '',
       labelKeys: issue.labelKeys,
+      // The other half of the hierarchy. `subtasks` has always pointed down;
+      // without this an assistant reading a child saw no sign it was nested at
+      // all, so it would restate the parent's context as if it were new work.
+      parentShortId: parent?.shortId ?? '',
+      parentTitle: parent?.title ?? '',
       subtasks: childPage.data.map((s) => ({
         id: s.id.toString(),
         shortId: s.shortId,
@@ -798,7 +804,7 @@ export class McpListCommentsUseCase
     const comments = (
       await this.getComments.execute({
         tenantId: actor.tenantId,
-        issueId: found.getValue().id.toString(),
+        issueId: found.getValue().issue.id.toString(),
       })
     ).getValue();
     // Bound the reply: the thread is oldest-first, so the most recent
@@ -1440,6 +1446,19 @@ export class McpLinkIssuesUseCase
     // an unknown one fails listing the valid words rather than guessing.
     const relationType = resolveRelationType(dto.type);
     if (!relationType) {
+      // Parent/child isn't a link here — it's the child's `parentId`. Say so, or
+      // the caller just retries the same word against the list of choices. Which
+      // end is the child depends on the word: `parent-of` points the other way
+      // from `sub-issue-of`.
+      const role = hierarchyRole(dto.type);
+      if (role) {
+        const [child, parent] = role === 'parent' ? [dto.to, dto.from] : [dto.from, dto.to];
+        return Result.fail(
+          `Parent/child is not a link — set it on the child instead: ` +
+            `update_issue { issue: "${child}", parent: "${parent}" } ` +
+            `(an issue has exactly one parent; "" detaches).`,
+        );
+      }
       return Result.fail(didYouMean('relation type', dto.type, RELATION_TYPE_CHOICES));
     }
 
@@ -1455,7 +1474,7 @@ export class McpLinkIssuesUseCase
       isAdmin,
     });
     if (fromR.isFailure) return Result.fail(`Issue "${dto.from}" not found`);
-    const from = fromR.getValue();
+    const { issue: from } = fromR.getValue();
     const toR = await this.getIssue.execute({
       id: dto.to,
       tenantId: actor.tenantId,
@@ -1463,7 +1482,7 @@ export class McpLinkIssuesUseCase
       isAdmin,
     });
     if (toR.isFailure) return Result.fail(`Issue "${dto.to}" not found`);
-    const to = toR.getValue();
+    const { issue: to } = toR.getValue();
 
     const issueType = from.kind === IssueKind.BUG ? LinkIssueKind.Bug : LinkIssueKind.Task;
     const result = await this.createLink.execute({
@@ -1535,7 +1554,7 @@ export class McpListLinksUseCase
     const links = (
       await this.getLinks.execute({
         tenantId: actor.tenantId,
-        issueId: found.getValue().id.toString(),
+        issueId: found.getValue().issue.id.toString(),
       })
     ).getValue();
 

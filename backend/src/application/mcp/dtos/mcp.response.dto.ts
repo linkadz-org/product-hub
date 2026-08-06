@@ -237,6 +237,12 @@ export class McpIssueDetailResponseDto {
   @ApiProperty({ type: [String], description: 'Team label keys on the issue' })
   labelKeys: string[];
 
+  @ApiProperty({ description: "Parent issue's reference ('' when top-level)", example: 'BUG-12' })
+  parentShortId: string;
+
+  @ApiProperty({ description: "Parent issue's title ('' when top-level)" })
+  parentTitle: string;
+
   @ApiProperty({ type: [McpSubtaskDto], description: 'Subtasks (capped); see subtaskCount for total' })
   subtasks: McpSubtaskDto[];
 

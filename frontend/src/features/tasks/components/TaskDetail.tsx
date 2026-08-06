@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarRange, Circle, CircleDot, Clock, Gauge, Map as MapIcon, Trash2, Triangle } from 'lucide-react';
+import { toast } from 'sonner';
+import { CalendarRange, Circle, CircleDot, Clock, Gauge, Trash2, Triangle } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import {
@@ -39,7 +40,10 @@ import {
 } from '../api';
 import { useRelationActions } from '@/features/issues/useRelationActions';
 import { IssueRelations } from '@/features/issues/IssueRelations';
-import { PickIssueDialog } from '@/features/issues/PickIssueDialog';
+import { PickIssueDialog, type PickedIssue } from '@/features/issues/PickIssueDialog';
+import { rootsOf } from '@/features/issues/issueTree';
+import { ParentPropField } from '@/features/issues/ParentPropField';
+import { BacklogItemPropField } from '@/features/issues/BacklogItemPropField';
 import { SubtaskSection } from './SubtaskSection';
 
 /** Local calendar day (`YYYY-MM-DD`) — string-compared to the end date so
@@ -124,10 +128,22 @@ export function TaskDetail({ taskId, onDeleted, menuTarget = 'header', dense = f
   // backfill hasn't touched yet (the API mirrors them, so this is belt-and-braces).
   const endDate = task.endDate || task.dueDate;
   const childIds = (childData?.items ?? []).map((c) => c.id);
-  /** Attach an existing task as a sub-task: set its parent to this task. It keeps
-   *  its own team/assignee/etc. — the same "link, don't move" the backlog picker does. */
-  const linkExisting = (targetId: string) =>
-    update.mutate({ id: targetId, input: { parentId: task.id } }, { onSuccess: () => setPickOpen(false) });
+  /** Attach existing tasks as sub-tasks: set their parent to this task. They keep
+   *  their own team/assignee/etc. — the same "link, don't move" the backlog picker
+   *  does. Only the picked *roots* are re-parented; anything whose own parent was
+   *  picked too stays under it, so a branch keeps the shape it had in the picker. */
+  const linkExisting = async (picked: PickedIssue[]) => {
+    try {
+      for (const { id } of rootsOf(picked)) {
+        await update.mutateAsync({ id, input: { parentId: task.id } });
+      }
+      setPickOpen(false);
+    } catch (err) {
+      // The API refuses a move that would loop the tree; say so instead of
+      // leaving the dialog looking like nothing happened.
+      toast.error(t('common.error'), { description: (err as Error).message });
+    }
+  };
 
   return (
     <IssueDetail
@@ -174,6 +190,8 @@ export function TaskDetail({ taskId, onDeleted, menuTarget = 'header', dense = f
                   : []
               }
               defaultTeamId={task.teamId}
+              // The top entry of each row's Parent picker: "directly under this task".
+              rootParent={{ id: task.id, title: task.title }}
               onLinkExisting={() => setPickOpen(true)}
             />
             {pickOpen && (
@@ -183,6 +201,7 @@ export function TaskDetail({ taskId, onDeleted, menuTarget = 'header', dense = f
                 kind={IssueKind.TASK}
                 excludeIds={[task.id, ...childIds]}
                 title={t('subtasks.linkTitle')}
+                multiple
                 onPick={linkExisting}
                 pending={update.isPending}
               />
@@ -242,6 +261,14 @@ export function TaskDetail({ taskId, onDeleted, menuTarget = 'header', dense = f
                 />
               </PropField>
             )}
+
+            <ParentPropField
+              issueId={task.id}
+              parentId={task.parentId}
+              parentShortId={task.parentShortId}
+              parentTitle={task.parentTitle}
+              canWrite={canWrite}
+            />
 
             <PropField bare label={t('tasks.dates')}>
               {canWrite ? (
@@ -311,24 +338,15 @@ export function TaskDetail({ taskId, onDeleted, menuTarget = 'header', dense = f
               )}
             </PropField>
 
+            {/* A private personal task belongs to no roadmap, so it gets no row. */}
             {!isPersonal && (
-              <PropField bare label={t('tasks.backlogItem')}>
-                {task.roadmapId ? (
-                  <PropValue icon={<MapIcon />}>
-                    <Link
-                      to={`/roadmaps/${task.roadmapId}`}
-                      className="block truncate font-medium underline-offset-4 hover:underline"
-                      title={task.roadmapItemLabel || t('tasks.openRoadmaps')}
-                    >
-                      {task.roadmapItemLabel || t('tasks.openRoadmaps')}
-                    </Link>
-                  </PropValue>
-                ) : (
-                  <PropValue icon={<MapIcon />} muted>
-                    {t('tasks.noBacklogItem')}
-                  </PropValue>
-                )}
-              </PropField>
+              <BacklogItemPropField
+                issueId={task.id}
+                roadmapId={task.roadmapId}
+                roadmapItemId={task.roadmapItemId}
+                roadmapItemLabel={task.roadmapItemLabel}
+                canWrite={canWrite}
+              />
             )}
 
             <PropField bare label={t('tasks.created')}>

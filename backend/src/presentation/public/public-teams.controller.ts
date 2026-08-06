@@ -92,7 +92,7 @@ export class PublicTeamsController {
     // true for a team task/bug but false for a personal task, so a personal ref
     // can't be read through a shared team link.
     const issue = await this.getIssue.execute({ id: itemId, tenantId, requesterId: '', isAdmin: false });
-    if (issue.isFailure || IssueMapper.toResponseDto(issue.getValue()).teamId !== teamId) throw gone();
+    if (issue.isFailure || issue.getValue().issue.teamId !== teamId) throw gone();
 
     // Bugs and tasks share one comment thread keyed by the issue id.
     const comments = await this.getIssueComments.execute({ tenantId, issueId: itemId });

@@ -106,13 +106,19 @@ The **22 MCP tools** registered by `McpServerFactory` (same use-cases as the RES
 `get_team_velocity`, `get_bug_stats`. (Subtasks have **no dedicated tool** — a subtask is an
 issue with a `parent`, so it is created via `create_issue` + `parent`, listed via
 `search_issues` + `parent`, and edited/deleted/commented with the ordinary issue/comment tools
-on the subtask's ref.)
+on the subtask's ref. `link_issues` is **peer relations only** — `blocks`, `blocked-by`,
+`related-to`, `duplicate-of`. A parent/child word there fails with a message naming
+`update_issue { parent }`, because hierarchy is the child's one `parentId`, never a link;
+see [[module-issue-links]].)
 
 ## Relationships to other modules
 - [[module-issues]] — `create_issue`/`update_issue`/`set_issue_status`/`delete_issue` call
   `CreateIssueUseCase`/`UpdateIssueUseCase`/`SetIssueStatusUseCase`/`DeleteIssueUseCase`;
   `search_issues`/`get_issue` read via `GetIssuesUseCase`/`GetIssueUseCase`. Subtasks are just
-  issues with a `parentId` (the `parent` field on create/search). `delete_issue` counts children
+  issues with a `parentId` (the `parent` field on create/search). `get_issue` reports the
+  hierarchy **both ways** — `subtasks`/`subtaskCount` down, and `parentShortId`/`parentTitle`
+  up (a `parent: BUG-… · title` line above the description). Before that it only pointed down,
+  so reading a subtask gave no hint it was part of anything. `delete_issue` counts children
   with `IIssueRepository.countChildren` (owner-blind) and refuses while any exist, so it can
   never orphan a subtask. `search_issues`/subtask reads pass `userId: ''` so a key can never
   read anyone's private board.
