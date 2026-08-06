@@ -12,7 +12,10 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthUser, Roles } from '@core/decorators';
 import { JwtPayload, Role } from '@core/interfaces';
 import { EntityNotFoundException } from '@core/exceptions';
-import { TEAM_NOT_FOUND } from '@application/teams/use-cases/team.use-cases';
+import {
+  ResolveTeamPrefixLockUseCase,
+  TEAM_NOT_FOUND,
+} from '@application/teams/use-cases/team.use-cases';
 import { TeamResponseDto } from '@application/teams/dtos/team.dtos';
 import { TeamMapper } from '@application/teams/mappers/team.mapper';
 import {
@@ -44,6 +47,7 @@ export class TeamCyclesController {
     private readonly updateCycle: UpdateCycleUseCase,
     private readonly deleteCycle: DeleteCycleUseCase,
     private readonly updateConfig: UpdateTeamCycleConfigUseCase,
+    private readonly prefixLock: ResolveTeamPrefixLockUseCase,
   ) {}
 
   @Get(':teamId/cycles')
@@ -147,6 +151,10 @@ export class TeamCyclesController {
       if (msg === TEAM_NOT_FOUND) throw new EntityNotFoundException(msg);
       throw new BadRequestException(msg);
     }
-    return TeamMapper.toResponseDto(result.getValue());
+    // This returns the whole team, and Settings renders the prefix input from the
+    // same object — so the lock must be resolved here too. Leaving it at the
+    // mapper default would offer an edit the API then rejects.
+    const team = result.getValue();
+    return TeamMapper.toResponseDto(team, await this.prefixLock.one(auth.tenantId, team));
   }
 }

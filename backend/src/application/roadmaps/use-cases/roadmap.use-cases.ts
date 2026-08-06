@@ -2,7 +2,8 @@ import { Inject, Injectable } from '@nestjs/common';
 import { v4 as uuid } from 'uuid';
 import { IUsecaseExecute } from '@core/interfaces';
 import { Result } from '@shared/logic/result';
-import { randomRef } from '@module-shared/utils/short-id.util';
+import { sequentialRef } from '@module-shared/utils/sequential-ref.util';
+import { CounterService } from '@module-shared/services/counter.service';
 import {
   CreateRoadmapDto,
   ReplaceRoadmapColumnsDto,
@@ -19,23 +20,22 @@ import {
 import { IRoadmapRepository } from '../repositories/roadmap.repository';
 
 /**
- * A fresh `RM-…` ref that no item in this roadmap already holds. Items live
- * embedded in the roadmap document, so "unique" is checked in memory against the
- * set of refs in play rather than against an index — a collision inside one
- * roadmap is what would actually break a URL. 31^7 ≈ 27.5 billion, so the retry
- * loop is a formality; the widened suffix is the backstop if it somehow isn't.
+ * The next `RM-n` for this tenant, skipping anything the roadmap already holds.
+ * Items are embedded in the roadmap document, so `taken` is the whole universe:
+ * "unique" is checked in memory against the set of refs in play rather than
+ * against an index — a collision inside one roadmap is what would actually break
+ * a URL. Throws (via `sequentialRef`) if it cannot find a free number.
  */
-function mintItemRef(taken: Set<string>): string {
-  for (let i = 0; i < 5; i++) {
-    const ref = randomRef(ROADMAP_ITEM_REF_PREFIX);
-    if (!taken.has(ref)) {
-      taken.add(ref);
-      return ref;
-    }
-  }
-  const ref = `${ROADMAP_ITEM_REF_PREFIX}-${uuid().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
-  taken.add(ref);
-  return ref;
+async function mintItemRef(
+  counters: CounterService,
+  tenantId: string,
+  taken: Set<string>,
+): Promise<string> {
+  const minted = await sequentialRef(counters, tenantId, ROADMAP_ITEM_REF_PREFIX, async (ref) =>
+    taken.has(ref),
+  );
+  taken.add(minted.ref);
+  return minted.ref;
 }
 
 @Injectable()
@@ -122,7 +122,10 @@ export class ReplaceRoadmapItemsUseCase
       Result<RoadmapEntity>
     >
 {
-  constructor(@Inject(IRoadmapRepository) private readonly roadmaps: IRoadmapRepository) {}
+  constructor(
+    @Inject(IRoadmapRepository) private readonly roadmaps: IRoadmapRepository,
+    private readonly counters: CounterService,
+  ) {}
   async execute({
     id,
     tenantId,
@@ -146,23 +149,34 @@ export class ReplaceRoadmapItemsUseCase
       roadmap.items.map((item) => item.shortId).filter((ref): ref is string => !!ref),
     );
     const now = new Date().toISOString();
-    const items = dto.items.map((item) => {
-      const prev = existingById.get(item.id);
-      // Timing is driven by the item's status: "started" the first time it reaches
-      // In progress (or jumps straight to Done), "completed" the first time it's
-      // Done. The first stamp wins and is preserved thereafter, so toggling the
-      // status later never moves the clock — and a client can't backdate it.
-      const isStarted =
-        item.status === RoadmapItemStatus.IN_PROGRESS || item.status === RoadmapItemStatus.DONE;
-      const isCompleted = item.status === RoadmapItemStatus.DONE;
-      return {
-        ...item,
-        shortId: prev?.shortId ?? mintItemRef(takenRefs),
-        createdAt: prev?.createdAt ?? item.createdAt ?? now,
-        startedAt: prev?.startedAt ?? (isStarted ? now : undefined),
-        completedAt: prev?.completedAt ?? (isCompleted ? now : undefined),
-      };
-    });
+    // A sequential loop, not `.map` + `Promise.all`: each draw has to see the
+    // refs the previous ones took, and parallel draws would race a stale set.
+    const items: typeof dto.items = [];
+    try {
+      for (const item of dto.items) {
+        const prev = existingById.get(item.id);
+        // Timing is driven by the item's status: "started" the first time it reaches
+        // In progress (or jumps straight to Done), "completed" the first time it's
+        // Done. The first stamp wins and is preserved thereafter, so toggling the
+        // status later never moves the clock — and a client can't backdate it.
+        const isStarted =
+          item.status === RoadmapItemStatus.IN_PROGRESS || item.status === RoadmapItemStatus.DONE;
+        const isCompleted = item.status === RoadmapItemStatus.DONE;
+        items.push({
+          ...item,
+          // Only a genuinely new item draws a number — an existing one keeps its
+          // ref, so a save never renumbers the board.
+          shortId: prev?.shortId ?? (await mintItemRef(this.counters, tenantId, takenRefs)),
+          createdAt: prev?.createdAt ?? item.createdAt ?? now,
+          startedAt: prev?.startedAt ?? (isStarted ? now : undefined),
+          completedAt: prev?.completedAt ?? (isCompleted ? now : undefined),
+        });
+      }
+    } catch (error) {
+      // `mintItemRef` throws; this use-case's contract is a Result, and an
+      // uncaught throw would surface as a 500 rather than an actionable message.
+      return Result.fail((error as Error).message);
+    }
     roadmap.replaceItems(items);
     await this.roadmaps.update(roadmap);
     return Result.ok(roadmap);
@@ -186,7 +200,10 @@ export class AddRoadmapItemUseCase
   implements
     IUsecaseExecute<AddRoadmapItemRequest, Result<{ roadmap: RoadmapEntity; item: RoadmapItemData }>>
 {
-  constructor(@Inject(IRoadmapRepository) private readonly roadmaps: IRoadmapRepository) {}
+  constructor(
+    @Inject(IRoadmapRepository) private readonly roadmaps: IRoadmapRepository,
+    private readonly counters: CounterService,
+  ) {}
   async execute({
     id,
     tenantId,
@@ -207,13 +224,23 @@ export class AddRoadmapItemUseCase
     const isStarted =
       status === RoadmapItemStatus.IN_PROGRESS || status === RoadmapItemStatus.DONE;
     const now = new Date().toISOString();
+    // `mintItemRef` throws; this use-case's contract is a Result, and an uncaught
+    // throw would surface as a 500 rather than an actionable message.
+    let shortId: string;
+    try {
+      shortId = await mintItemRef(
+        this.counters,
+        tenantId,
+        new Set(roadmap.items.map((i) => i.shortId).filter((ref): ref is string => !!ref)),
+      );
+    } catch (error) {
+      return Result.fail((error as Error).message);
+    }
     // Same RICE defaults the board's own "+ Add" uses (3s → a score of 9), so an
     // item added here sorts alongside hand-made ones instead of at zero.
     const created: RoadmapItemData = {
       id: uuid(),
-      shortId: mintItemRef(
-        new Set(roadmap.items.map((i) => i.shortId).filter((ref): ref is string => !!ref)),
-      ),
+      shortId,
       title: item.title,
       description: item.description ?? '',
       phase,

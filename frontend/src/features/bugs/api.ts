@@ -1,5 +1,6 @@
 import { makeIssueHooks } from '@/features/issues/hook-factory';
 import { IssueKind } from '@/types/enums';
+import type { IssueSortDir, IssueSortField } from '@/features/issues/api';
 import type { BugAttachment, BugDto } from '@/types/dto';
 import type { BugSeverity, BugStatus, CustomFieldValue } from '@/types/enums';
 
@@ -35,6 +36,11 @@ export interface BugQuery {
   resolvedFrom?: string;
   /** Solved on/before this instant — inclusive. */
   resolvedTo?: string;
+  /** Sort field. Omit to keep the board ordering (drag position, then newest first) —
+   *  the kanban view must always omit it. */
+  sort?: IssueSortField;
+  /** Sort direction; defaults to `desc` server-side. */
+  dir?: IssueSortDir;
 }
 
 export interface CreateBugInput {

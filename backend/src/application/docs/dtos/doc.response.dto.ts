@@ -75,8 +75,8 @@ export class DocPageResponseDto {
 /** Flat doc shape. `pages` is filled on a single-doc read and empty in the list. */
 export class DocResponseDto {
   @ApiProperty() id: string;
-  /** URL handle, `DOC-6HCUHKX`. '' on docs created before refs existed. */
-  @ApiProperty({ example: 'DOC-6HCUHKX' }) ref: string;
+  /** URL handle, `DOC-3`. '' on docs created before refs existed. */
+  @ApiProperty({ example: 'DOC-3' }) ref: string;
   @ApiProperty() tenantId: string;
   @ApiProperty() title: string;
   @ApiProperty() icon: string;

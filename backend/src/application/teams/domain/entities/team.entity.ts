@@ -17,6 +17,7 @@ import {
   defaultIconFor,
   defaultStatusesFor,
 } from '../enums/team.enums';
+import { validateRefPrefix } from '../team-ref-prefix';
 import { TeamProps } from './team.props';
 
 /** Sentinel so the controller can map a dropped built-in status to 400. */
@@ -32,6 +33,7 @@ export class TeamEntity extends AggregateRoot<TeamProps> {
     props: {
       tenantId: string;
       key: string;
+      refPrefix?: string;
       name: string;
       issueType: TeamIssueType;
       icon?: string;
@@ -72,6 +74,7 @@ export class TeamEntity extends AggregateRoot<TeamProps> {
           id: id || new UniqueEntityID(),
           tenantId: props.tenantId,
           key: props.key.trim(),
+          refPrefix: props.refPrefix?.trim().toUpperCase() || undefined,
           name: props.name.trim(),
           issueType: props.issueType,
           // Teams created before icons existed fall back to their list's symbol.
@@ -115,6 +118,10 @@ export class TeamEntity extends AggregateRoot<TeamProps> {
   }
   get key(): string {
     return this.props.key;
+  }
+  /** The team's ticket prefix, or '' when it has never been assigned one. */
+  get refPrefix(): string {
+    return this.props.refPrefix ?? '';
   }
   get name(): string {
     return this.props.name;
@@ -205,6 +212,20 @@ export class TeamEntity extends AggregateRoot<TeamProps> {
     if (!guard.succeeded) return Result.fail(guard.message);
     this.props.name = name.trim();
     this.touch();
+    return Result.ok();
+  }
+
+  /**
+   * Set the ticket prefix. Shape and reserved-word rules live in the domain
+   * module; *uniqueness* and the freeze rule need I/O and are enforced by
+   * UpdateTeamRefPrefixUseCase.
+   */
+  setRefPrefix(value: string): Result<void> {
+    const normalized = value.trim().toUpperCase();
+    const error = validateRefPrefix(normalized);
+    if (error) return Result.fail(error);
+    this.props.refPrefix = normalized;
+    this.props.updatedAt = new Date();
     return Result.ok();
   }
 

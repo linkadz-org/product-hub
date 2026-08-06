@@ -34,6 +34,11 @@ interface IssueBoardLayoutProps {
    *  cycle filter lives here). Kept apart from `filters` so the cycle scope reads
    *  as its own thing, opposite the search + Filter cluster. */
   filtersEnd?: ReactNode;
+  /** Sort control, pinned to the right end of the toolbar beside `filtersEnd`.
+   *  Optional on purpose: the shell has 13 consumers, including the two public
+   *  read-only pages and the roadmap board — whose items are roadmap items with
+   *  no sortable ref at all. Only issue-backed list views pass it. */
+  sort?: ReactNode;
   /** Full-width context strip between the view tabs and the toolbar — board
    *  chrome that isn't a list-narrowing control (e.g. the cycle banner). Owns
    *  its own top gap; most boards pass nothing and look identical. */
@@ -100,6 +105,7 @@ export function IssueBoardLayout({
   search,
   filters,
   filtersEnd,
+  sort,
   banner,
   view,
   actions,
@@ -111,7 +117,7 @@ export function IssueBoardLayout({
   // gets its own sub-header tab strip beneath it; the toolbar keeps only what
   // narrows the list. A board with nothing to narrow (the roadmap) has no
   // toolbar row at all.
-  const hasToolbar = !!(search || filters || filtersEnd);
+  const hasToolbar = !!(search || filters || filtersEnd || sort);
 
   return (
     // A board is a full-screen page: no page padding, so the columns run to the
@@ -167,8 +173,9 @@ export function IssueBoardLayout({
               Filter). On mobile the toolbar stacks, so it just falls in line —
               and the cluster wraps rather than pushing its last control off the
               screen edge (chip + filter + insights don't fit 390px in one line). */}
-          {filtersEnd && (
+          {(sort || filtersEnd) && (
             <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:gap-3">
+              {sort}
               {filtersEnd}
             </div>
           )}

@@ -17,6 +17,9 @@ export interface IssueDoc {
   ownerId: string;
   parentId: string;
   shortId: string;
+  /** The sortable halves of a sequential `shortId`; both absent on a legacy row. */
+  refPrefix?: string;
+  refSeq?: number;
   title: string;
   description: string;
   /** Built-in status or a custom column key. */
@@ -72,6 +75,11 @@ export const IssueSchema = new Schema<IssueDoc>(
     // Human-friendly reference used in URLs (TSK-7 / BUG-12). Unique per tenant via
     // the partial index below; '' until the backfill reaches a pre-shortId row.
     shortId: { type: String, default: '' },
+    // Sort key for a sequential shortId. Deliberately without a default: a
+    // pre-sequential row must keep these ABSENT, so it sorts as null and groups
+    // with its peers instead of pretending to be number 0.
+    refPrefix: { type: String },
+    refSeq: { type: Number },
     title: { type: String, required: true, maxlength: 200 },
     description: { type: String, default: '' },
     // No enum: a built-in status or a tenant's custom column key.
@@ -131,8 +139,9 @@ export const IssueSchema = new Schema<IssueDoc>(
 
 // Lookups + uniqueness for the URL-facing short id. `partialFilterExpression`
 // (not `sparse`) because unset rows default to '' rather than being absent —
-// sparse would still index them and the second '' would collide. Task and bug
-// shortIds never collide (TSK-* vs BUG-*), so this holds across the merged set.
+// sparse would still index them and the second '' would collide. Refs no longer
+// segregate by kind (a team's tasks and bugs share one prefix); uniqueness comes
+// from the shared per-prefix counter, and this index is what enforces it.
 IssueSchema.index(
   { tenantId: 1, shortId: 1 },
   { unique: true, partialFilterExpression: { shortId: { $gt: '' } } },
@@ -142,3 +151,15 @@ IssueSchema.index(
 // A multikey index on the array path — the primary is covered by `assigneeId`
 // above, and an assignee filter hits both halves of its `$or`.
 IssueSchema.index({ tenantId: 1, 'assignees.id': 1 });
+
+// Sort-by-ID: the denormalized halves of a sequential shortId, compared as a
+// prefix + number instead of parsing the ref string. Legacy rows are missing
+// both, so they sort as null and group together.
+//
+// `createdAt` and `_id` are part of the key because the ID sort is the four-clause
+// `{refPrefix, refSeq, createdAt, _id}` (see `issueSortStage`) — Mongo can only
+// use an index for a sort when the sort pattern is a *prefix* of the index key
+// pattern, so a three-field index would leave every ID-sorted query doing a
+// blocking in-memory SORT. Direction is uniform, so the same index serves both
+// asc and desc (Mongo walks it backwards).
+IssueSchema.index({ tenantId: 1, refPrefix: 1, refSeq: 1, createdAt: 1, _id: 1 });

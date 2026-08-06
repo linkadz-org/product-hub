@@ -8,6 +8,13 @@ export interface TeamProps {
   tenantId: string;
   /** Stable per-tenant slug (`qc`, `engineering`). The name is editable. */
   key: string;
+  /**
+   * The workspace-unique ticket prefix this team's issues are numbered under —
+   * `ENG` gives `ENG-1`, `ENG-2`. Optional: a team stored before prefixes existed
+   * has none, and minting falls back to the kind's `TSK`/`BUG` sequence until the
+   * backfill gives it one. Editable only while its sequence is untouched.
+   */
+  refPrefix?: string;
   name: string;
   /** Which issue list this team owns — fixed once created. */
   issueType: TeamIssueType;

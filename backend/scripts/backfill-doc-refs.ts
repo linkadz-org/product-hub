@@ -1,4 +1,19 @@
 /**
+ * ⛔️ SUPERSEDED — DO NOT RUN AGAINST A WORKSPACE ON SEQUENTIAL REFS ⛔️
+ *
+ * This script predates sequential refs. It mints RANDOM refs (`DOC-6HCUHKX`) with
+ * `randomRef`, bypassing `CounterService` entirely — while live code now mints
+ * `DOC-1`, `DOC-2` from that counter. Running it today would inject
+ * legacy-shaped refs into a workspace numbering its docs sequentially, with
+ * nothing advancing the counter.
+ *
+ * It is kept only as the record of a one-time migration that has already run.
+ * If a workspace still has ref-less docs, fill them from the counter — do not run
+ * this. Left as-is deliberately: rewriting a script whose whole purpose is
+ * already served would be inventing a new, untested write path.
+ *
+ * ---
+ *
  * One-time BACKFILL: give every existing doc a `DOC-…` ref, so its detail URL
  * reads `/docs/DOC-6HCUHKX/getting-started-622436d1` instead of a pair of UUIDs.
  * Docs created from now on mint one on create (`CreateDocUseCase`); this brings

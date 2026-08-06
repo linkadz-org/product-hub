@@ -7,6 +7,7 @@ import { BoardSkeleton, ListSkeleton, TimelineSkeleton } from '@/components/Skel
 import { BOARD_GUTTER, IssueBoardLayout } from '@/components/IssueBoardLayout';
 import { BoardCard, BoardCardAge, KanbanBoard, KanbanCardToolbar } from '@/components/KanbanBoard';
 import { IssueTimelineView } from '@/features/issues/IssueTimelineView';
+import { NO_ISSUE_SORT, SortMenu, type IssueSort } from '@/features/issues/SortMenu';
 import { LabelChips } from '@/features/labels/LabelChips';
 import {
   FilterMenu,
@@ -116,6 +117,11 @@ export function MyTasksPage({ teamId, teamName, titleIcon, shareTeam }: MyTasksP
 
   const [filters, setFilters] = useState<FilterSelections>({});
   const [search, setSearch] = useState('');
+  // List-view ordering only (see `SortMenu`), and opt-in: until the user picks
+  // one, neither param is sent, so board, timeline and a fresh list all keep the
+  // ordering they have today.
+  const [sort, setSort] = useState<IssueSort | null>(NO_ISSUE_SORT);
+  const isList = view === 'list';
 
   // Strictly assigned to me — the view is titled "Assigned to me". Tasks I create
   // from here still appear because New task defaults the assignee to me. Sentinel
@@ -130,6 +136,11 @@ export function MyTasksPage({ teamId, teamName, titleIcon, shareTeam }: MyTasksP
     roadmapItemId: filters.roadmapItemId,
     projectId: filters.projectId,
     cycleId: teamId ? cycleParam || undefined : undefined,
+    // Only the list view orders itself. Sending `sort` makes the API drop the
+    // stored `order`, so the board (whose order *is* the drag position) and the
+    // timeline must send neither param.
+    sort: isList && sort ? sort.field : undefined,
+    dir: isList && sort ? sort.dir : undefined,
   });
   const tasks = data?.items ?? [];
   // Offer the toggle only when there's something to hide; filter client-side (the
@@ -218,6 +229,7 @@ export function MyTasksPage({ teamId, teamName, titleIcon, shareTeam }: MyTasksP
           )}
         </div>
       }
+      sort={isList ? <SortMenu value={sort} onChange={setSort} /> : undefined}
       filtersEnd={
         <>
           {/* Insights lives in the cycle bar; that bar only exists when the board

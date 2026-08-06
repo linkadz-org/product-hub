@@ -52,6 +52,9 @@ export class IssueEntity extends AggregateRoot<IssueProps> {
       ownerId?: string;
       parentId?: string;
       shortId?: string;
+      /** The sortable halves of a sequential `shortId`; absent on a legacy issue. */
+      refPrefix?: string;
+      refSeq?: number;
       title: string;
       description?: string;
       status?: string;
@@ -112,6 +115,10 @@ export class IssueEntity extends AggregateRoot<IssueProps> {
           ownerId: props.ownerId || '',
           parentId: props.parentId || '',
           shortId: props.shortId || '',
+          // Passed straight through, `undefined` and all: a legacy issue must keep
+          // both ABSENT rather than gain a '' / 0 that would sort as a real value.
+          refPrefix: props.refPrefix,
+          refSeq: props.refSeq,
           title: props.title.trim(),
           description: props.description?.trim() || '',
           status,
@@ -197,6 +204,12 @@ export class IssueEntity extends AggregateRoot<IssueProps> {
   }
   get shortId(): string {
     return this.props.shortId;
+  }
+  get refPrefix(): string | undefined {
+    return this.props.refPrefix;
+  }
+  get refSeq(): number | undefined {
+    return this.props.refSeq;
   }
   get title(): string {
     return this.props.title;

@@ -1,9 +1,15 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsArray, IsBoolean, IsEnum, IsISO8601, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsBoolean, IsEnum, IsIn, IsISO8601, IsOptional, IsString } from 'class-validator';
 import { PaginationDto } from '@module-shared/modules/pagination/pagination.dto';
 import { TransformQueryArray } from '@module-shared/utils/query-array.util';
 import { BugSeverity, IssueKind } from '../domain/enums/issue.enums';
+
+export type IssueSortField = 'id' | 'created' | 'updated';
+export type IssueSortDir = 'asc' | 'desc';
+
+export const ISSUE_SORT_FIELDS: IssueSortField[] = ['id', 'created', 'updated'];
+export const ISSUE_SORT_DIRS: IssueSortDir[] = ['asc', 'desc'];
 
 /** Multi-value filters accept `?x=a`, `?x=a,b` or `?x=a&x=b` — see
  * `TransformQueryArray`, which keeps single-value callers working. */
@@ -114,6 +120,20 @@ export class QueryIssueDto extends PaginationDto {
   @IsOptional()
   @IsString()
   reportId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Sort field. Omit to keep the board ordering (manual drag position, then newest first).',
+    enum: ISSUE_SORT_FIELDS,
+  })
+  @IsOptional()
+  @IsIn(ISSUE_SORT_FIELDS)
+  sort?: IssueSortField;
+
+  @ApiPropertyOptional({ description: 'Sort direction (default desc)', enum: ISSUE_SORT_DIRS })
+  @IsOptional()
+  @IsIn(ISSUE_SORT_DIRS)
+  dir?: IssueSortDir;
 
   // ── date-range filters ──────────────────────────────────────────────────────
   // Each end is inclusive and optional (either alone = an open-ended range).

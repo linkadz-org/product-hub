@@ -2,7 +2,9 @@ import { Inject, Injectable } from '@nestjs/common';
 import { UniqueEntityID } from '@core/domain';
 import { IUsecaseExecute } from '@core/interfaces';
 import { Result } from '@shared/logic/result';
-import { keepOrUpgradeShareToken, uniqueRef } from '@module-shared/utils/short-id.util';
+import { keepOrUpgradeShareToken } from '@module-shared/utils/short-id.util';
+import { sequentialRef } from '@module-shared/utils/sequential-ref.util';
+import { CounterService } from '@module-shared/services/counter.service';
 import { ICommentRepository } from '@application/activity/repositories/comment.repository';
 import { CreateDocDto, DuplicateDocDto, UpdateDocDto } from '../dtos/doc.dtos';
 import { DOC_REF_PREFIX } from '../domain/entities/doc.props';
@@ -49,6 +51,7 @@ export class CreateDocUseCase
   constructor(
     @Inject(IDocRepository) private readonly docs: IDocRepository,
     @Inject(IDocPageRepository) private readonly pages: IDocPageRepository,
+    private readonly counters: CounterService,
   ) {}
 
   async execute({
@@ -60,9 +63,22 @@ export class CreateDocUseCase
     author: { userId: string; name: string };
     dto: CreateDocDto;
   }): Promise<Result<DocWithPages>> {
+    // `sequentialRef` throws if it cannot find a free number; this use-case's
+    // contract is a Result, so the throw is turned into one here rather than
+    // escaping as a 500.
+    let ref: string;
+    try {
+      ref = (
+        await sequentialRef(this.counters, tenantId, DOC_REF_PREFIX, (r) =>
+          this.docs.refExists(tenantId, r),
+        )
+      ).ref;
+    } catch (error) {
+      return Result.fail((error as Error).message);
+    }
     const created = DocEntity.create({
       tenantId,
-      ref: await uniqueRef(DOC_REF_PREFIX, (ref) => this.docs.refExists(tenantId, ref)),
+      ref,
       title: dto.title,
       icon: dto.icon,
       color: dto.color,
@@ -121,6 +137,7 @@ export class DuplicateDocUseCase
   constructor(
     @Inject(IDocRepository) private readonly docs: IDocRepository,
     @Inject(IDocPageRepository) private readonly pages: IDocPageRepository,
+    private readonly counters: CounterService,
   ) {}
 
   async execute({
@@ -138,9 +155,20 @@ export class DuplicateDocUseCase
     const source = await this.docs.findByIdOrRef(tenantId, id);
     if (!source || source.tenantId !== tenantId) return Result.fail('Doc not found');
 
+    // The copy draws its own number; see CreateDocUseCase for the throw → Result.
+    let ref: string;
+    try {
+      ref = (
+        await sequentialRef(this.counters, tenantId, DOC_REF_PREFIX, (r) =>
+          this.docs.refExists(tenantId, r),
+        )
+      ).ref;
+    } catch (error) {
+      return Result.fail((error as Error).message);
+    }
     const created = DocEntity.create({
       tenantId,
-      ref: await uniqueRef(DOC_REF_PREFIX, (ref) => this.docs.refExists(tenantId, ref)),
+      ref,
       title: dto.title?.trim() || copyTitle(source.title),
       icon: source.icon,
       color: source.color,
