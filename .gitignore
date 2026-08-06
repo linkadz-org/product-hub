@@ -95,3 +95,5 @@ cursor
 
 
 */.nodeterm
+# Scratch working notes from agent sessions — never part of the codebase.
+.superpowers/
