@@ -948,6 +948,9 @@ export const ko: Record<I18nKey, string> = {
   'settings.githubRegenerate': '재발급',
   'settings.githubRegenerateHint':
     '재발급하면 URL과 시크릿이 모두 바뀝니다 — 곧바로 GitHub의 웹훅을 수정하지 않으면 전송이 중단됩니다.',
+  'settings.githubRegenerateConfirm':
+    '지금 사용 중인 URL과 시크릿은 이 순간부터 동작하지 않습니다. 여기로 전송하던 모든 저장소는 새 값을 웹훅에 붙여 넣기 전까지 조용히 401로 실패합니다. 새 시크릿은 한 번만 표시됩니다.',
+  'settings.githubRegenerateRepos': '현재 전송 중인 저장소:',
   'settings.githubDisconnect': '연결 해제',
   'settings.githubDisconnectConfirm':
     '웹훅 URL이 즉시 응답을 멈춥니다. 이미 연결된 커밋은 항목에 그대로 남지만, 다시 연결하기 전까지 새 커밋은 도착하지 않습니다.',

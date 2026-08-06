@@ -962,6 +962,9 @@ export const en = {
   'settings.githubRegenerate': 'Regenerate',
   'settings.githubRegenerateHint':
     'Regenerating replaces both the URL and the secret — update the webhook in GitHub straight after, or deliveries stop.',
+  'settings.githubRegenerateConfirm':
+    'The URL and secret in use right now stop working the moment you do this. Every repository pointing here goes quiet — with a 401, not an error anyone will see — until you paste the new pair into its webhook. The new secret is shown once.',
+  'settings.githubRegenerateRepos': 'Delivering here today:',
   'settings.githubDisconnect': 'Disconnect',
   'settings.githubDisconnectConfirm':
     'The webhook URL stops answering immediately. Commits already linked stay on their items; new ones will not arrive until you connect again.',
