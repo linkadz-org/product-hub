@@ -235,6 +235,16 @@ All under `/v1/issues` (`IssuesController`, no path decorator — prefix supplie
 - A personal task (`ownerId` set) is always `kind=task` — bugs can never be
   personal; team/assigned list views filter `ownerId: ''` to exclude personal
   tasks from team boards.
+- **A timeline row carries the same chips as the card and the list row** — ref,
+  team, status, severity, labels, assignees. They go in `GanttRow.meta` (the
+  shared `<GanttChart>`'s rail slot) and are built from `GanttChip`,
+  `LabelChips`, `AssigneeBadge` and `TeamChip`, so all three views of a board
+  stay one treatment; add a chip by filling that slot in the adapter
+  (`IssueTimelineView`, `RoadmapGantt`), never by styling a pill in a page.
+  `TeamChip` appears only when the rows actually **span** teams — on a single
+  team's board the page title already says it, and the rail is narrow.
+  Lookups (`statusesFor`/`labelsFor`/`teamFor`) are injectable so the public
+  board supplies its one team and fires no authed `/teams` fetch.
 
 ## Related skills
 [[module-teams]] [[module-cycles]] [[module-roadmaps]] [[module-projects]] [[module-reports]] [[module-issue-links]] [[module-labels]] [[module-custom-fields]] [[module-users]] [[module-webhooks]] [[module-activity]] [[module-favourites]] [[module-reactions]] [[module-docs]] [[module-inbox]] [[module-mcp]]

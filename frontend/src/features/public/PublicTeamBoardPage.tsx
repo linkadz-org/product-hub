@@ -120,6 +120,8 @@ export function PublicTeamBoardPage() {
             items={items}
             issueType={issueType}
             statusesFor={() => team.statuses}
+            labelsFor={labelsFor}
+            teamFor={() => team}
             onOpenItem={(item) => setOpenItem(item as BugDto | TaskDto)}
           />
         </div>

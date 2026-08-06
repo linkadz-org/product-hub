@@ -98,6 +98,9 @@ const TIMELINE_BARS: Array<[number, number]> = [
  * The timeline (Gantt) view mid-load: rows of a left-hand label + a bar floated
  * along a track. Matches the board pages' `timeline` view, so it drops into the
  * same content slot (below the shared chrome, which stays visible).
+ *
+ * The rail is two lines, like a real row — a title over its chips (status,
+ * labels, people) — so the layout doesn't jump when the rows land.
  */
 export function TimelineSkeleton({ rows = 7 }: { rows?: number }) {
   return (
@@ -106,7 +109,13 @@ export function TimelineSkeleton({ rows = 7 }: { rows?: number }) {
         const [offset, width] = TIMELINE_BARS[i % TIMELINE_BARS.length];
         return (
           <div key={i} className="flex items-center gap-4">
-            <Skeleton className="h-3.5 w-32 shrink-0 sm:w-40" />
+            <div className="flex w-40 shrink-0 flex-col gap-1.5 sm:w-56">
+              <Skeleton className="h-3.5 w-32 sm:w-40" />
+              <div className="flex items-center gap-1">
+                <Skeleton className="h-3 w-12 rounded" />
+                <Skeleton className="h-3 w-16 rounded" />
+              </div>
+            </div>
             <div className="relative h-7 flex-1 rounded-md bg-muted/30">
               <Skeleton
                 className="absolute top-1 h-5 rounded-md"

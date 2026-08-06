@@ -52,6 +52,7 @@ A roadmap is a product's backlog/prioritization board: a set of `RoadmapItemData
 - `shortId` is optional/backfilled: legacy items may lack one until next save or the `backfill:roadmap-item-refs` script runs; always resolve items via `findRoadmapItem()` (ref-or-uuid), not direct `id` equality alone.
 - `PUT /roadmaps/:id/items` is a full replace, and the frontend (`useReplaceRoadmapItems`) applies it optimistically then resyncs on settle since the server recomputes derived fields.
 - Column write (`PUT .../columns`) is admin/product only; item replace is admin/tester/product — narrower role set than most write endpoints.
+- The timeline's rows carry chips in `GanttRow.meta` (see [[module-issues]]): an item shows status / RICE / OKR / assignees, a linked task shows ref, **team**, status, labels and assignees. The task-side lookups are injected (`taskStatus`, `taskLabels`, `taskTeam`) so `RoadmapGantt` stays presentational and the public page renders it without an authed `/teams` fetch. Unlike a team board, the team chip here is always shown — a roadmap isn't one team's board, so nothing else on the page says whether a row belongs to Design or Engineering.
 
 ## Related skills
 [[module-issues]] [[module-milestones]] [[module-public]] [[module-planning]] [[module-teams]] [[module-activity]] [[module-reactions]] [[module-favourites]] [[module-mcp]]
