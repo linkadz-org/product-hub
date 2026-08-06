@@ -33,6 +33,18 @@ export interface IssueProps {
   /** Human-friendly per-tenant reference used in URLs, e.g. `TSK-7` / `BUG-12`.
    *  The internal UUID remains the real identity. */
   shortId: string;
+  /**
+   * The two halves of a sequential `shortId`, denormalized so a list can sort by
+   * ID on an index instead of parsing the ref string. Written once at mint and
+   * never recomputed — an issue that moves team keeps the pair matching its
+   * frozen `shortId`.
+   *
+   * **Both are absent on every issue created before sequential refs**, and stay
+   * absent: those rows are never written to. Missing sorts as null in Mongo, so
+   * they group together and `createdAt` orders them within the group.
+   */
+  refPrefix?: string;
+  refSeq?: number;
   title: string;
   description: string;
   /** Column key: a built-in status (`TaskStatus`/`BugStatus`) or a custom slug. */

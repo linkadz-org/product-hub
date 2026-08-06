@@ -40,6 +40,10 @@ export class IssueRepository
         ownerId: doc.ownerId,
         parentId: doc.parentId,
         shortId: doc.shortId,
+        // Absent on a legacy row and left that way — never defaulted, so the
+        // entity reads back `undefined` and toDocument re-emits nothing.
+        refPrefix: doc.refPrefix,
+        refSeq: doc.refSeq,
         title: doc.title,
         description: doc.description,
         status: doc.status,
@@ -93,6 +97,10 @@ export class IssueRepository
       ownerId: issue.ownerId,
       parentId: issue.parentId,
       shortId: issue.shortId,
+      // `undefined` for a legacy issue — Mongoose omits undefined keys, so a save
+      // never creates these fields on a row that didn't have them.
+      refPrefix: issue.refPrefix,
+      refSeq: issue.refSeq,
       title: issue.title,
       description: issue.description,
       status: issue.status,
