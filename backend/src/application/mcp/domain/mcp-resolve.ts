@@ -176,11 +176,15 @@ export function resolvePhase(
 
 /**
  * Turn a relation *word* into a {@link RelationType}. The canonical enum values
- * are the six stored strings (`blocks`, `blocked_by`, …); an assistant, though,
+ * are the four stored strings (`blocks`, `blocked_by`, …); an assistant, though,
  * says "blocks", "blocked-by", "related", "duplicate" — so the friendly aliases
  * map onto the same values. Matched case-insensitively with `-`/`_`/spaces
  * folded, so `Blocked By`, `blocked-by` and `blocked_by` all resolve. Unknown →
  * `null`, and the caller lists {@link RELATION_TYPE_CHOICES}.
+ *
+ * Parent/child words are **absent on purpose** — hierarchy is `parentId`, not a
+ * link. {@link HIERARCHY_WORDS} catches them so the error can name the right
+ * tool instead of just "unknown type".
  */
 const RELATION_ALIASES: Record<string, RelationType> = {
   blocks: RelationType.BLOCKS,
@@ -190,22 +194,44 @@ const RELATION_ALIASES: Record<string, RelationType> = {
   'related-to': RelationType.RELATED_TO,
   duplicate: RelationType.DUPLICATE_OF,
   'duplicate-of': RelationType.DUPLICATE_OF,
-  parent: RelationType.PARENT_OF,
-  'parent-of': RelationType.PARENT_OF,
-  'sub-issue': RelationType.SUB_ISSUE_OF,
-  'sub-issue-of': RelationType.SUB_ISSUE_OF,
-  subissue: RelationType.SUB_ISSUE_OF,
 };
 
 /** The valid `type` words, quoted back when an unknown one is passed. */
 export const RELATION_TYPE_CHOICES: string[] = [
   'blocks',
   'blocked-by',
-  'parent-of',
-  'sub-issue-of',
   'related-to',
   'duplicate-of',
 ];
+
+/**
+ * Words that mean parent/child, and which end `from` is: `parent-of` makes
+ * `from` the parent, `sub-issue-of` makes it the child. The two point opposite
+ * ways, so the hint has to know which — see {@link hierarchyRole}.
+ */
+const HIERARCHY_WORDS: Record<string, 'parent' | 'child'> = {
+  parent: 'parent',
+  'parent-of': 'parent',
+  'sub-issue': 'child',
+  'sub-issue-of': 'child',
+  subissue: 'child',
+  subtask: 'child',
+  'sub-task': 'child',
+  'sub-task-of': 'child',
+  child: 'child',
+  'child-of': 'child',
+};
+
+/**
+ * Did the caller ask for a parent/child link, and is their `from` end the parent
+ * or the child? Hierarchy isn't a link at all, so the answer isn't "unknown
+ * type" but "set `parent` on the child" — the caller turns this into that
+ * message, pointing at the right end.
+ */
+export function hierarchyRole(ref: string | undefined): 'parent' | 'child' | null {
+  if (!ref) return null;
+  return HIERARCHY_WORDS[norm(ref).replace(/[\s_]+/g, '-')] ?? null;
+}
 
 export function resolveRelationType(ref: string | undefined): RelationType | null {
   if (!ref) return null;

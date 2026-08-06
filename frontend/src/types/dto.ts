@@ -274,6 +274,13 @@ export interface BugDto {
   id: string;
   /** The team that owns this bug — drives which board columns apply. */
   teamId: string;
+  /** Parent issue id when this bug is a sub-issue ('' when top-level). Bugs nest
+   *  like tasks do — under a bug or a task — so this is not a task-only field. */
+  parentId: string;
+  /** Parent's ref + title, for the breadcrumb. Only the single-bug read fills
+   *  these; on a list they're '' (see `IssueDto`). */
+  parentShortId: string;
+  parentTitle: string;
   tenantId: string;
   /** Human-friendly per-tenant reference used in URLs, e.g. `BUG-12`. */
   shortId: string;
@@ -283,6 +290,12 @@ export interface BugDto {
   /** Built-in `BugStatus` or a custom column key. */
   status: string;
   type: string;
+  /** The backlog item this bug was found against ('' = none). Not task-only:
+   *  the mapper serves these for every issue, and a roadmap item's panel lists
+   *  its linked bugs separately from its planned work. */
+  roadmapId: string;
+  roadmapItemId: string;
+  roadmapItemLabel: string;
   projectId: string;
   /** The team cycle this bug is committed to ('' = none). */
   cycleId: string;
@@ -473,6 +486,10 @@ export interface TaskDto {
   ownerId: string;
   /** Parent task id when this is a sub-task ('' for a top-level task). */
   parentId: string;
+  /** Parent's ref + title, for the breadcrumb. Only the single-task read fills
+   *  these; on a list they're '' (see `IssueDto`). */
+  parentShortId: string;
+  parentTitle: string;
   tenantId: string;
   /** Human-friendly per-tenant reference used in URLs, e.g. `TSK-7`. */
   shortId: string;
@@ -540,6 +557,14 @@ export interface IssueDto {
   ownerId: string;
   /** Parent issue id when this is a sub-task ('' if top-level). */
   parentId: string;
+  /**
+   * The parent, denormalized — a bare `parentId` isn't renderable, which is why
+   * a sub-issue's page used to look top-level. **Only `GET /issues/:id` fills
+   * these**; a list read leaves them '' rather than paying a lookup per row, so
+   * don't reach for them from a board.
+   */
+  parentShortId: string;
+  parentTitle: string;
   /** Human-friendly per-tenant reference used in URLs, e.g. `TSK-7` / `BUG-12`. */
   shortId: string;
   title: string;

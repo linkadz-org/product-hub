@@ -20,9 +20,15 @@ export function BugDetailPage({ issueRef: bugId }: { issueRef: string }) {
 
   return (
     <CenteredPageLayout>
-      {/* Breadcrumb — `All issues › QC › BUG-…`, the same shape a task's page
-          reads, resolved by the shared hook so the two can't drift. */}
-      <PageHeader title={bug?.shortId || bug?.title || bugId || ''} parent={parent} />
+      {/* Breadcrumb — `All issues › QC › <backlog item> › <parent> › <this bug>`,
+          the same shape a task's page reads, resolved by the shared hook so the
+          two can't drift. Titles, not refs: the ref is right there in the body
+          and in the URL, so spending the trail on it says nothing. */}
+      <PageHeader
+        title={bug?.title || bug?.shortId || bugId || ''}
+        subtitle={bug?.shortId}
+        parent={parent}
+      />
       <BugDetail bugId={bugId} onDeleted={() => navigate('/issues?kind=bug')} menuTarget="topbar" />
     </CenteredPageLayout>
   );

@@ -58,6 +58,9 @@ export function TaskPanel({ roadmapId, projectId, itemId, itemLabel }: TaskPanel
         composerTeams={composerTeams}
         defaultTeamId={defaultTeamId}
         crossTeam
+        // A bug on a backlog item is work *found*, not work *planned* — it gets
+        // its own list below, and the delivery bar stops dropping when one is filed.
+        separateBugs
         onLinkExisting={() => setPickOpen(true)}
       />
 

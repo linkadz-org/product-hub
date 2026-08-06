@@ -36,15 +36,18 @@ describe('McpLinkIssuesUseCase', () => {
   const buildDeps = () => {
     const createLink = { execute: jest.fn().mockResolvedValue(Result.ok<void>()) };
     // Both ends resolve through GetIssueUseCase now (privacy-enforced), keyed by the
-    // ref passed as `id`.
+    // ref passed as `id`. It answers `{ issue, parent }` — linking only ever reads
+    // the issue, so `parent` stays null here.
     const getIssue = {
       execute: jest.fn().mockImplementation(({ id }: { id: string }) =>
         Promise.resolve(
-          Result.ok(
-            id === FROM_REF
-              ? { id: { toString: () => FROM_UUID }, shortId: FROM_REF, title: 'A', kind: IssueKind.TASK }
-              : { id: { toString: () => TO_UUID }, shortId: TO_REF, title: 'B', kind: IssueKind.TASK },
-          ),
+          Result.ok({
+            issue:
+              id === FROM_REF
+                ? { id: { toString: () => FROM_UUID }, shortId: FROM_REF, title: 'A', kind: IssueKind.TASK }
+                : { id: { toString: () => TO_UUID }, shortId: TO_REF, title: 'B', kind: IssueKind.TASK },
+            parent: null,
+          }),
         ),
       ),
     };

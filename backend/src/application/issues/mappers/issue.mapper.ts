@@ -2,7 +2,13 @@ import { IssueEntity } from '../domain/entities/issue.entity';
 import { IssueResponseDto } from '../dtos/issue.response.dto';
 
 export class IssueMapper {
-  static toResponseDto(issue: IssueEntity): IssueResponseDto {
+  /**
+   * `parent` is the already-loaded `parentId` issue, passed only by the
+   * single-issue read — a list mustn't pay a lookup per row. Omitting it leaves
+   * the two `parent*` fields '', which reads exactly like a top-level issue; the
+   * detail route is the one place that needs to tell those apart.
+   */
+  static toResponseDto(issue: IssueEntity, parent?: IssueEntity | null): IssueResponseDto {
     return {
       kind: issue.kind,
       id: issue.id.toString(),
@@ -10,6 +16,8 @@ export class IssueMapper {
       teamId: issue.teamId,
       ownerId: issue.ownerId,
       parentId: issue.parentId,
+      parentShortId: parent?.shortId ?? '',
+      parentTitle: parent?.title ?? '',
       shortId: issue.shortId,
       title: issue.title,
       description: issue.description,

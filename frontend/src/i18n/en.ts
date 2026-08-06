@@ -643,8 +643,14 @@ export const en = {
   'relations.search': 'Search by title or ID…',
   'relations.empty': 'No matching issues.',
   'relations.none': 'Search an issue to link.',
+  /** Searched `RM-…` here: a backlog item is not an issue, so no issue picker can
+   *  match one. Point at the field that does hold it. */
+  'relations.backlogRef':
+    'That looks like a backlog item — those aren’t issues. Link one from the “Backlog item” field in Properties.',
   'relations.remove': 'Remove relation',
   'relations.kindBug': 'Bug',
+  /** The picker's confirm button when several rows can be ticked at once. */
+  'relations.linkCount': 'Link {count}',
   'tasks.assign': 'Assign',
   'tasks.unassigned': 'Unassigned',
   'tasks.assignMe': 'Assign to me',
@@ -652,10 +658,24 @@ export const en = {
   'tasks.doneOf': '{done} of {total} done',
   'subtasks.title': 'Sub-tasks',
   'subtasks.linkTitle': 'Link an existing task as a sub-task',
+  /** The same picker on a bug, where it's scoped to bugs — the wording has to
+   *  match what you'll actually be offered. */
+  'subtasks.linkBugTitle': 'Link an existing bug as a sub-issue',
   'subtasks.empty': 'No sub-tasks yet — break this work into smaller pieces.',
   'subtasks.addPlaceholder': 'Add a sub-task and press Enter…',
   'subtasks.add': 'Add sub-task',
   'subtasks.titlePlaceholder': 'Sub-task title',
+  'subtasks.parent': 'Parent',
+  /** Top of the Parent picker on a backlog item, where a row needs no parent. */
+  'subtasks.parentNone': 'No parent',
+  /** Its parent isn't one of the rows here — better than drawing it as top-level. */
+  'subtasks.parentElsewhere': 'Another issue',
+  /** Bugs found against this work: listed, but outside the progress bar. */
+  'subtasks.bugs': 'Bugs',
+  /** Properties row: this issue has no parent yet and you may give it one. */
+  'issues.parentSet': 'Set parent',
+  'issues.parentPick': 'Choose a parent issue',
+  'issues.parentClear': 'Remove parent',
   'issues.add': 'Add issue',
   'issues.mySubtitle': 'Everything assigned to you — tasks and bugs.',
   'issues.allTitle': 'All issues',
@@ -700,6 +720,8 @@ export const en = {
   'tasks.titleLabel': 'Title',
   'tasks.descriptionLabel': 'Description',
   'tasks.noBacklogItem': 'No backlog item',
+  /** The option labels lead with the `RM-…` ref, so pasting one finds it. */
+  'tasks.backlogSearch': 'Search by ref or title…',
   'tasks.assignedToYouHint': 'This task will be assigned to you.',
   'tasks.search': 'Search tasks…',
   'tasks.viewBoard': 'Board',
@@ -728,13 +750,9 @@ export const en = {
   // Issue picker — link an existing task or bug to a backlog item
   'tasks.pick': 'Link existing',
   'tasks.pickTitle': 'Link an existing task or bug',
-  'tasks.pickSearch': 'Search by name or ID…',
-  'tasks.pickEmpty': 'Nothing matches that name or ID.',
-  'tasks.pickNone': 'Nothing else to link yet.',
   'tasks.pickLinkedTo': 'Linked to {item}',
   'tasks.pickUnlinked': 'Not linked to a backlog item',
   'tasks.pickMoveHint': 'Linking moves the item here from its current backlog item.',
-  'tasks.pickKindBug': 'Bug',
   'tasks.pickAction': 'Link',
 
   // My Team — the per-person workload board (Box view) + its List/Board tabs.
@@ -1483,8 +1501,6 @@ export const en = {
   'enum.favouriteKind.issue': 'Issue',
   'enum.favouriteKind.doc': 'Doc',
 
-  'enum.relation.parentOf': 'Parent of',
-  'enum.relation.subIssueOf': 'Sub-issue of',
   'enum.relation.relatedTo': 'Related to',
   'enum.relation.blockedBy': 'Blocked by',
   'enum.relation.blocks': 'Blocking',

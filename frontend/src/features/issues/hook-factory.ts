@@ -32,6 +32,11 @@ interface HasStatus {
   status: string;
 }
 
+/** Every cache namespace this factory is bound to, list and detail. They are all
+ *  views of the single `issues` collection, so a write through any one of them
+ *  can go stale in the others — see {@link makeIssueHooks}'s `useInvalidate`. */
+const ISSUE_CACHE_KEYS = ['issues', 'issue', 'bugs', 'bug', 'tasks', 'task'] as const;
+
 export function makeIssueHooks<
   TItem extends HasStatus,
   TQuery,
@@ -45,13 +50,25 @@ export function makeIssueHooks<
   // Injected into list filters + create bodies to scope one kind; `{}` spans both.
   const kindParam = kind ? { kind } : {};
 
-  /** Refresh both the lists and any open detail — `[detailKey, id]` doesn't
-   * prefix-match `[listKey]`, so the detail prefix needs invalidating separately. */
+  /**
+   * Refresh **every** namespace, not just this binding's.
+   *
+   * There are three caches over the *one* `issues` collection — `issues`/`issue`,
+   * `bugs`/`bug`, `tasks`/`task` — and one `PATCH /issues/:id` can change what
+   * any of them holds: the same bug is a row on `/issues`, the card on `/bugs`,
+   * and the record behind its own page. Invalidating only the namespace the write
+   * happened to be issued through is why a field written from a bug's Properties
+   * (which mutates through `useUpdateIssue`, i.e. `issues`) saved server-side and
+   * then snapped back — `useBug` reads `['bug', id]` and was never told.
+   *
+   * Cost is small: React Query refetches only *mounted* queries and merely marks
+   * the rest stale. A fourth binding of this factory must be added here too.
+   * (`[detailKey, id]` doesn't prefix-match `[listKey]`, so both are listed.)
+   */
   function useInvalidate() {
     const qc = useQueryClient();
     return () => {
-      qc.invalidateQueries({ queryKey: [listKey] });
-      qc.invalidateQueries({ queryKey: [detailKey] });
+      for (const key of ISSUE_CACHE_KEYS) qc.invalidateQueries({ queryKey: [key] });
     };
   }
 

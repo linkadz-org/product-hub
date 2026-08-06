@@ -717,15 +717,15 @@ export class McpServerFactory {
         title: 'Link two issues',
         description:
           'Create a typed relation between two issues by their refs — "TSK-7 blocks TSK-9", ' +
-          '"BUG-3 duplicate-of BUG-1". `type` accepts blocks, blocked-by, parent-of, sub-issue-of, ' +
-          'related-to or duplicate-of; the relation reads from `from` to `to`. An unknown type comes ' +
-          'back with the valid choices. Use list_links to see or unlink existing relations.',
+          '"BUG-3 duplicate-of BUG-1". `type` accepts blocks, blocked-by, related-to or ' +
+          'duplicate-of; the relation reads from `from` to `to`. An unknown type comes back with ' +
+          'the valid choices. These are peer relations only — to nest one issue under another use ' +
+          'update_issue with `parent` (an issue has exactly one parent). Use list_links to see or ' +
+          'unlink existing relations.',
         inputSchema: {
           from: z.string().describe('Source issue ref (TSK-7 / BUG-12) or id'),
           to: z.string().describe('Target issue ref (TSK-7 / BUG-12) or id'),
-          type: z
-            .string()
-            .describe('blocks · blocked-by · parent-of · sub-issue-of · related-to · duplicate-of'),
+          type: z.string().describe('blocks · blocked-by · related-to · duplicate-of'),
         },
       },
       (dto) =>
@@ -920,6 +920,10 @@ export class McpServerFactory {
         (i.severity ? ` · ${i.severity}` : '') +
         (i.estimate ? ` · ${i.estimate}pt` : ''),
       i.labelKeys.length ? `  labels: ${i.labelKeys.join(', ')}` : '',
+      // Sits with the other identity lines, above the body: whether this issue
+      // is part of something bigger changes how you read the description, so it
+      // can't wait until after it.
+      i.parentShortId ? `  parent: ${i.parentShortId} · ${i.parentTitle}` : '',
       i.description ? `\n${i.description}` : '',
     ].filter(Boolean);
     const subtasks = i.subtaskCount
