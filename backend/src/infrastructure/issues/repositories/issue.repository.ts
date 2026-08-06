@@ -64,6 +64,49 @@ export function issueSortStage(
   return { refPrefix: d, refSeq: d, createdAt: d, _id: d };
 }
 
+/**
+ * A search box entry that *is* a ticket ref (`ENG-14`, `eng-14`), upper-cased to
+ * the casing refs are stored in — or null when the text is anything else.
+ *
+ * Typing a known ref is the single most common reason anyone searches, and the
+ * substring regex buries it: with sequential refs, `ENG-1` also matches `ENG-10`,
+ * `ENG-19`, `ENG-100`… all of which sort ahead of it under the board's default
+ * order. This is the signal used to float the one exact row to the top.
+ *
+ * Deliberately narrow. Only a `PREFIX-digits` shape qualifies, so ordinary text
+ * searches take the untouched code path and cannot be affected at all.
+ */
+export const ISSUE_REF_SEARCH_RE = /^[A-Za-z][A-Za-z0-9]{0,9}-\d+$/;
+
+export function exactRefSearch(search?: string): string | null {
+  if (!search) return null;
+  const text = search.trim();
+  return ISSUE_REF_SEARCH_RE.test(text) ? text.toUpperCase() : null;
+}
+
+/**
+ * Field the exact-match rank is computed into. Prefixed so it can never collide
+ * with a real document key, and projected away before the docs are mapped.
+ */
+export const EXACT_RANK_FIELD = '__exactRefRank';
+
+/**
+ * Whether this list request should float an exact `shortId` match to the top.
+ *
+ * Only when the text is ref-shaped **and the user did not choose a sort**. An
+ * explicit sort wins: someone who clicked "ID ascending" or "recently updated"
+ * asked for a specific order, and silently pinning a row above it makes the
+ * control look broken and the column headers lie. With no sort chosen there is no
+ * user intent to override — the default `{order, createdAt}` is the board's own
+ * arrangement, and "the thing you typed the id of" is a better first row than it.
+ */
+export function shouldRankExactRefFirst(
+  exactRef: string | null,
+  sort?: IssueSortField,
+): boolean {
+  return !!exactRef && !sort;
+}
+
 @Injectable()
 export class IssueRepository
   extends BaseRepository<IssueEntity, IssueDoc>
@@ -297,14 +340,42 @@ export class IssueRepository
       }
     }
 
+    // Searching a full ref must put that exact ticket first — see
+    // `shouldRankExactRefFirst`. The rank is a computed field, which `find()`
+    // cannot sort on, so this one case runs as an aggregation. Everything else
+    // (including every non-search list) keeps the original `find()` untouched:
+    // the matched set is identical either way, only the order differs.
+    const exactRef = exactRefSearch(query.search);
+    const sortStage = issueSortStage(query.sort, query.dir);
+
     const [docs, total] = await Promise.all([
-      this.model
-        .find(filter)
-        .sort(issueSortStage(query.sort, query.dir))
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .lean<IssueDoc[]>()
-        .exec(),
+      shouldRankExactRefFirst(exactRef, query.sort)
+        ? this.model
+            .aggregate<IssueDoc>([
+              { $match: filter as FilterQuery<IssueDoc> },
+              // 0 for the exact ref, 1 for everything else — ascending, so the
+              // one row the user typed the id of leads and the rest keep the
+              // order they already had.
+              {
+                $addFields: {
+                  [EXACT_RANK_FIELD]: {
+                    $cond: [{ $eq: ['$shortId', exactRef] }, 0, 1],
+                  },
+                },
+              },
+              { $sort: { [EXACT_RANK_FIELD]: 1, ...sortStage } },
+              { $skip: (page - 1) * limit },
+              { $limit: limit },
+              { $project: { [EXACT_RANK_FIELD]: 0 } },
+            ])
+            .exec()
+        : this.model
+            .find(filter)
+            .sort(sortStage)
+            .skip((page - 1) * limit)
+            .limit(limit)
+            .lean<IssueDoc[]>()
+            .exec(),
       this.model.countDocuments(filter).exec(),
     ]);
 

@@ -62,6 +62,39 @@ export class CounterService {
   }
 
   /**
+   * `current()` for many prefixes in **one** query, keyed by prefix.
+   *
+   * `GET /v1/teams` asks "is this team's prefix frozen?" for every team, and the
+   * frontend fetches that list on essentially every page load — one `findById`
+   * per team turned a hot endpoint into N round-trips. The public share endpoint
+   * pays it too, unauthenticated.
+   *
+   * Falsy prefixes are dropped (a team with no prefix has minted nothing, and the
+   * key `"<tenantId>:"` is meaningless) and duplicates are collapsed, so the same
+   * prefix twice is one key and still resolves for both callers. A prefix with no
+   * counter document reads back 0, exactly as `current()` returns.
+   */
+  async currentMany(tenantId: string, prefixes: string[]): Promise<Map<string, number>> {
+    const wanted = [...new Set(prefixes.filter((p) => !!p))];
+    // Every asked-for prefix is present in the result, so a caller can read the
+    // map directly instead of remembering to default a miss.
+    const seqs = new Map<string, number>(wanted.map((p) => [p, 0]));
+    if (wanted.length === 0) return seqs;
+
+    const docs = await this.model
+      .find({ _id: { $in: wanted.map((p) => `${tenantId}:${p}`) } })
+      .lean<CounterDoc[]>()
+      .exec();
+    for (const doc of docs) {
+      // Ids are `<tenantId>:<prefix>` and a tenant id never contains ':', so the
+      // remainder after the first tenant-length slice is the prefix verbatim.
+      const prefix = doc._id.slice(tenantId.length + 1);
+      if (seqs.has(prefix)) seqs.set(prefix, doc.seq ?? 0);
+    }
+    return seqs;
+  }
+
+  /**
    * Seeds the sequence so it never re-issues a number already in use — used by
    * the backfill, which assigns ids to rows created before short ids existed.
    */

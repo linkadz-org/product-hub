@@ -158,8 +158,8 @@ export const TEAM_PREFIX_TAKEN = 'Another team already uses that prefix';
  *
  * It lives here rather than in `TeamMapper` because the answer is not on the
  * entity: it is the tenant's counter for that prefix, which only an async
- * use-case can read. `many` issues the lookups as a single `Promise.all` so the
- * team list stays one round-trip per team rather than a serial chain.
+ * use-case can read. `many` resolves a whole list in a single batched counter
+ * query, so the team list costs one round-trip whatever the team count.
  *
  * `UpdateTeamUseCase` enforces the freeze through this same method rather than
  * reading the counter itself. That is deliberate: the flag the UI disables its
@@ -178,8 +178,21 @@ export class ResolveTeamPrefixLockUseCase {
     return (await this.counters.current(tenantId, team.refPrefix)) > 0;
   }
 
+  /**
+   * The same answer as `one()` for a whole list, in **one** counter query.
+   *
+   * This is the team-list endpoint, which the frontend fetches on essentially
+   * every page load (and the unauthenticated share endpoint hits too), so a
+   * `Promise.all` of per-team `findById`s was N reads on a hot path. Results stay
+   * positionally paired with `teams` — the caller zips them by index.
+   */
   async many(tenantId: string, teams: TeamEntity[]): Promise<boolean[]> {
-    return Promise.all(teams.map((t) => this.one(tenantId, t)));
+    // Prefix-less teams are excluded from the query for the same reason `one()`
+    // short-circuits: nothing to freeze, and no meaningless `"<tenantId>:"` key.
+    const prefixes = teams.map((t) => t.refPrefix).filter((p): p is string => !!p);
+    if (prefixes.length === 0) return teams.map(() => false);
+    const seqs = await this.counters.currentMany(tenantId, prefixes);
+    return teams.map((t) => !!t.refPrefix && (seqs.get(t.refPrefix) ?? 0) > 0);
   }
 }
 

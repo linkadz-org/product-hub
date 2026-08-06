@@ -16,14 +16,27 @@ function team(refPrefix: string, id = 'team-1'): TeamEntity {
   ).getValue();
 }
 
-/** Records every `(tenantId, prefix)` it was asked for, so a test can assert it was never asked. */
+/**
+ * Records every `(tenantId, prefix)` it was asked for, so a test can assert it was
+ * never asked — and every `currentMany` call, so a test can assert the list path
+ * makes exactly one.
+ */
 function counters(seqByPrefix: Record<string, number>) {
   const asked: Array<[string, string]> = [];
+  const batches: string[][] = [];
   return {
     asked,
+    batches,
     current: async (tenantId: string, prefix: string) => {
       asked.push([tenantId, prefix]);
       return seqByPrefix[prefix] ?? 0;
+    },
+    currentMany: async (tenantId: string, prefixes: string[]) => {
+      batches.push([...prefixes]);
+      // Mirrors the real service: falsy dropped, duplicates collapsed, misses 0.
+      const wanted = [...new Set(prefixes.filter((p) => !!p))];
+      for (const p of wanted) asked.push([tenantId, p]);
+      return new Map(wanted.map((p) => [p, seqByPrefix[p] ?? 0]));
     },
   };
 }
@@ -81,10 +94,45 @@ describe('ResolveTeamPrefixLockUseCase', () => {
       expect(c.asked.map(([, p]) => p).sort()).toEqual(['ENG', 'OPS', 'WEB']);
     });
 
+    it('reads every team in a single batched query', async () => {
+      // The whole point of the batch: /v1/teams is fetched on nearly every page
+      // load, so this must not scale with team count.
+      const c = counters({ ENG: 4, WEB: 1, OPS: 2 });
+      await subject(c).many('t1', [team('ENG', 'a'), team('WEB', 'b'), team('OPS', 'c')]);
+      expect(c.batches).toHaveLength(1);
+    });
+
+    it('keeps results positionally paired even with duplicate prefixes', async () => {
+      // The caller zips by index. Two teams sharing a prefix collapse to one key
+      // in the query and must both still resolve.
+      const c = counters({ ENG: 5, WEB: 0 });
+      const result = await subject(c).many('t1', [
+        team('ENG', 'a'),
+        team('WEB', 'b'),
+        team('ENG', 'c'),
+      ]);
+      expect(result).toEqual([true, false, true]);
+    });
+
+    it('never queries the counter when no team has a prefix', async () => {
+      const c = counters({});
+      const result = await subject(c).many('t1', [team('', 'a'), team('', 'b')]);
+      expect(result).toEqual([false, false]);
+      expect(c.batches).toHaveLength(0);
+      expect(c.asked).toHaveLength(0);
+    });
+
+    it('scopes the batch to the tenant it was given', async () => {
+      const c = counters({ ENG: 3 });
+      await subject(c).many('t-other', [team('ENG', 'a')]);
+      expect(c.asked).toEqual([['t-other', 'ENG']]);
+    });
+
     it('returns an empty list for no teams', async () => {
       const c = counters({});
       expect(await subject(c).many('t1', [])).toEqual([]);
       expect(c.asked).toHaveLength(0);
+      expect(c.batches).toHaveLength(0);
     });
   });
 });
