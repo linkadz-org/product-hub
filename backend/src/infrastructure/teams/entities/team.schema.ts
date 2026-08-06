@@ -9,6 +9,7 @@ export interface TeamDoc {
   _id: string;
   tenantId: string;
   key: string;
+  refPrefix?: string;
   name: string;
   issueType: TeamIssueType;
   icon?: string;
@@ -36,6 +37,11 @@ export const TeamSchema = new Schema<TeamDoc>(
     _id: { type: String, default: () => uuid() },
     tenantId: { type: String, required: true, index: true },
     key: { type: String, required: true },
+    // Optional: teams stored before ticket prefixes existed have none, and mint
+    // falls back to the kind's sequence until the backfill assigns one. Unique
+    // per tenant *including archived teams* — a prefix is never released, so a
+    // ref minted under it can never be minted again.
+    refPrefix: { type: String },
     name: { type: String, required: true, maxlength: 60 },
     issueType: { type: String, enum: Object.values(TeamIssueType), required: true },
     // Optional: pre-existing teams resolve their icon from issueType in the entity.
@@ -79,3 +85,8 @@ export const TeamSchema = new Schema<TeamDoc>(
 
 // A team's key is its stable per-tenant identity.
 TeamSchema.index({ tenantId: 1, key: 1 }, { unique: true });
+
+TeamSchema.index(
+  { tenantId: 1, refPrefix: 1 },
+  { unique: true, partialFilterExpression: { refPrefix: { $type: 'string' } } },
+);
