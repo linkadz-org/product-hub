@@ -87,16 +87,16 @@ export class McpCreateIssueDto {
 
   @ApiPropertyOptional({
     description:
-      'Parent issue ref (TSK-7) or id — creates this as a subtask nested under it (task).',
+      'Parent issue ref (ENG-14) or id — creates this as a subtask nested under it (task).',
   })
   @IsOptional()
   @IsString()
   parent?: string;
 }
 
-/** Read one issue in full — the ref (`TSK-7`) or its uuid. */
+/** Read one issue in full — the ref (`ENG-14`) or its uuid. */
 export class McpGetIssueDto {
-  @ApiProperty({ description: 'Issue ref (TSK-7 / BUG-12) or id' })
+  @ApiProperty({ description: 'Issue ref (ENG-14 / QC-103) or id' })
   @IsString()
   @IsNotEmpty()
   issue: string;
@@ -111,7 +111,7 @@ export class McpGetIssueDto {
 export class McpUpdateIssueDto {
   // Optional at the DTO layer because the REST route supplies it from the `:issue`
   // path segment; the JSON-RPC tool requires it via its own zod schema.
-  @ApiPropertyOptional({ description: 'Issue ref (TSK-7 / BUG-12) or id' })
+  @ApiPropertyOptional({ description: 'Issue ref (ENG-14 / QC-103) or id' })
   @IsOptional()
   @IsString()
   issue?: string;
@@ -184,7 +184,7 @@ export class McpUpdateIssueDto {
 /** Move an issue to another status column (validated against the team's board). */
 export class McpSetStatusDto {
   // Supplied by the REST `:issue` path segment; required in the JSON-RPC schema.
-  @ApiPropertyOptional({ description: 'Issue ref (TSK-7 / BUG-12) or id' })
+  @ApiPropertyOptional({ description: 'Issue ref (ENG-14 / QC-103) or id' })
   @IsOptional()
   @IsString()
   issue?: string;
@@ -197,7 +197,7 @@ export class McpSetStatusDto {
 
 /** Delete an issue. Refused if the issue still has subtasks. */
 export class McpDeleteIssueDto {
-  @ApiProperty({ description: 'Issue ref (TSK-7 / BUG-12) or id' })
+  @ApiProperty({ description: 'Issue ref (ENG-14 / QC-103) or id' })
   @IsString()
   @IsNotEmpty()
   issue: string;
@@ -205,7 +205,7 @@ export class McpDeleteIssueDto {
 
 /** List every comment on an issue (thread order), by its ref or uuid. */
 export class McpListCommentsDto {
-  @ApiProperty({ description: 'Issue ref (TSK-7 / BUG-12) or id' })
+  @ApiProperty({ description: 'Issue ref (ENG-14 / QC-103) or id' })
   @IsString()
   @IsNotEmpty()
   issue: string;
@@ -217,7 +217,7 @@ export class McpListCommentsDto {
  */
 export class McpAddCommentDto {
   // Supplied by the REST `:issue` path segment; required in the JSON-RPC schema.
-  @ApiPropertyOptional({ description: 'Issue ref (TSK-7 / BUG-12) or id' })
+  @ApiPropertyOptional({ description: 'Issue ref (ENG-14 / QC-103) or id' })
   @IsOptional()
   @IsString()
   issue?: string;
@@ -251,7 +251,7 @@ export class McpAddCommentDto {
 export class McpUpdateCommentDto {
   // Both ids come from the REST path (`/issues/:issue/comments/:comment`); the
   // JSON-RPC tool requires them via its zod schema.
-  @ApiPropertyOptional({ description: 'Issue ref (TSK-7 / BUG-12) or id' })
+  @ApiPropertyOptional({ description: 'Issue ref (ENG-14 / QC-103) or id' })
   @IsOptional()
   @IsString()
   issue?: string;
@@ -278,7 +278,7 @@ export class McpUpdateCommentDto {
 
 /** Delete a comment by its id (author or admin/product only). */
 export class McpDeleteCommentDto {
-  @ApiProperty({ description: 'Issue ref (TSK-7 / BUG-12) or id' })
+  @ApiProperty({ description: 'Issue ref (ENG-14 / QC-103) or id' })
   @IsString()
   @IsNotEmpty()
   issue: string;
@@ -477,7 +477,7 @@ export class McpSearchIssuesDto {
   team?: string;
 
   @ApiPropertyOptional({
-    description: "Parent issue ref (TSK-7) or id — lists that issue's subtasks.",
+    description: "Parent issue ref (ENG-14) or id — lists that issue's subtasks.",
   })
   @IsOptional()
   @IsString()
@@ -510,12 +510,12 @@ export class McpListBacklogItemsDto {
 
 /** Create a typed relation between two issues (task↔task or bug↔bug). */
 export class McpLinkIssuesDto {
-  @ApiProperty({ description: 'Source issue ref (TSK-7 / BUG-12) or id' })
+  @ApiProperty({ description: 'Source issue ref (ENG-14 / QC-103) or id' })
   @IsString()
   @IsNotEmpty()
   from: string;
 
-  @ApiProperty({ description: 'Target issue ref (TSK-7 / BUG-12) or id' })
+  @ApiProperty({ description: 'Target issue ref (ENG-14 / QC-103) or id' })
   @IsString()
   @IsNotEmpty()
   to: string;
@@ -532,7 +532,7 @@ export class McpLinkIssuesDto {
 /** List every relation touching an issue (each carries the link id for unlink). */
 export class McpListLinksDto {
   // Supplied by the REST `:issue` path segment; required in the JSON-RPC schema.
-  @ApiPropertyOptional({ description: 'Issue ref (TSK-7 / BUG-12) or id' })
+  @ApiPropertyOptional({ description: 'Issue ref (ENG-14 / QC-103) or id' })
   @IsOptional()
   @IsString()
   issue?: string;

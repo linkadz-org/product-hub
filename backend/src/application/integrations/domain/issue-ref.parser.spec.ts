@@ -18,8 +18,17 @@ describe('parseRefs', () => {
     expect(refs('fix login redirect\n\nFixes TSK-6HCUHKX')).toEqual(['TSK-6HCUHKX']);
   });
 
-  it('is case-insensitive and canonicalises to upper case', () => {
-    expect(refs('tsk-6hcuhkx done')).toEqual(['TSK-6HCUHKX']);
+  it('requires upper case, because the prefix is no longer a fixed list', () => {
+    // This used to match case-insensitively. Once the prefix opened up to any
+    // upper-case run — team prefixes are minted at runtime — the `i` flag would
+    // have read `well-known` as the ref `WELL-KNOWN`. Refs are stored and shown
+    // upper-case, so requiring upper case is the trade we take.
+    expect(refs('tsk-6hcuhkx done')).toEqual([]);
+    expect(refs('TSK-6hcuhkx done')).toEqual([]);
+  });
+
+  it('canonicalises the matched ref to upper case', () => {
+    expect(refs('TSK-6HCUHKX done')).toEqual(['TSK-6HCUHKX']);
   });
 
   it('finds a ref in a branch name, including a slashed one', () => {
@@ -58,6 +67,27 @@ describe('parseRefs', () => {
 
   it('does not match a prefix glued to the end of another word', () => {
     expect(refs('mytsk-7 is not a ref')).toEqual([]);
+  });
+
+  it('matches a team-scoped ref minted after this code shipped', () => {
+    // Team prefixes are created at runtime, so the parser cannot hold a fixed
+    // list. A ref that resolves to nothing costs one lookup; a ref that never
+    // matches silently drops the link the developer was trying to make.
+    expect(refs('ship the redesign (ENG-14)')).toEqual(['ENG-14']);
+    expect(refs('fix WEB2-7 and QC-103')).toEqual(['WEB2-7', 'QC-103']);
+  });
+
+  it('still classifies RM as a roadmap item and everything else as an issue', () => {
+    const parsed = parseRefs('RM-4 blocks ENG-9');
+    expect(parsed).toEqual([
+      { ref: 'RM-4', subjectType: CodeLinkSubject.ROADMAP_ITEM },
+      { ref: 'ENG-9', subjectType: CodeLinkSubject.ISSUE },
+    ]);
+  });
+
+  it('does not treat an ordinary hyphenated word as a ref', () => {
+    expect(refs('this is a well-known problem')).toEqual([]);
+    expect(refs('BUGFIXES landed')).toEqual([]);
   });
 
   it('ignores an empty or missing text', () => {

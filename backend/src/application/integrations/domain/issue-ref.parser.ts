@@ -1,44 +1,33 @@
-import { ISSUE_REF_PREFIX } from '@application/issues/domain/enums/issue.enums';
 import { ROADMAP_ITEM_REF_PREFIX } from '@application/roadmaps/domain/types/roadmap-item.type';
 import { CodeLinkSubject } from './github.types';
 
 /**
- * Which kind of thing each ref prefix names. Built from the two minting sites
- * rather than restated, so a prefix can't be changed there and forgotten here.
- */
-const PREFIX_SUBJECT: Record<string, CodeLinkSubject> = {
-  // Both issue kinds (TSK, BUG) resolve the same way — one collection, one lookup.
-  ...Object.fromEntries(
-    Object.values(ISSUE_REF_PREFIX).map((prefix) => [prefix, CodeLinkSubject.ISSUE]),
-  ),
-  [ROADMAP_ITEM_REF_PREFIX]: CodeLinkSubject.ROADMAP_ITEM,
-};
-
-const PREFIXES = Object.keys(PREFIX_SUBJECT).join('|');
-
-/**
  * Matches a ref inside free text — a commit message, a branch name, a PR title.
  *
- *   `TSK-6HCUHKX`  `BUG-WHHY3ZV`  `RM-4KQP2XZ`   current, random-suffix refs
- *   `TSK-3` / `TSK3`                             legacy sequential issue refs
+ *   `ENG-14` `QC-103` `WEB2-7`     team-scoped sequential refs (prefixes are
+ *                                  created at runtime, so no fixed list can
+ *                                  stay correct)
+ *   `TSK-6HCUHKX` `RM-4KQP2XZ`     legacy random-suffix refs
+ *   `TSK-3` / `TSK3`               legacy sequential refs
  *
- * The suffix pattern is loose (any run of letters and digits) rather than the
- * exact minting alphabet, because refs have been minted three different ways
- * over the life of the schema — 7 chars of a restricted alphabet, a plain
- * counter, and a 12-char hex fallback on collision. Matching all of them wrongly
- * costs one lookup that finds nothing; matching one of them not at all silently
- * drops the link the developer was trying to make.
+ * The prefix is any 2–6 character upper-case run starting with a letter — the
+ * shape a team prefix is minted in — and the suffix is loose, because refs have
+ * been minted four different ways over the life of the schema. Matching one
+ * wrongly costs a single lookup that finds nothing; failing to match one
+ * silently drops the link the developer was trying to make.
+ *
+ * The pattern is deliberately NOT case-insensitive. With a fixed prefix list the
+ * `i` flag was free; with an open-ended prefix it would read `well-known` as the
+ * ref `WELL-KNOWN`. Refs are stored and displayed upper-case, so requiring upper
+ * case is the right trade.
  *
  * The hyphen is required except before a pure digit run: without it `BUGFIXES`
  * would parse as a ref on every commit that mentions fixing bugs.
  *
- * Boundaries are lookarounds rather than `\b`, so `feature/TSK-6HCUHKX_v2` still
+ * Boundaries are lookarounds rather than `\b`, so `feature/ENG-14_v2` still
  * matches — `_` is a word character, and branch names are full of them.
  */
-const REF_PATTERN = new RegExp(
-  `(?<![0-9A-Za-z])(${PREFIXES})(?:-([0-9A-Z]{1,14})|(\\d+))(?![0-9A-Za-z])`,
-  'gi',
-);
+const REF_PATTERN = /(?<![0-9A-Za-z])([A-Z][0-9A-Z]{1,5})(?:-([0-9A-Z]{1,14})|(\d+))(?![0-9A-Za-z])/g;
 
 /** A ref found in text, and what it points at. */
 export interface ParsedRef {
@@ -62,7 +51,11 @@ export function parseRefs(...texts: (string | undefined | null)[]): ParsedRef[] 
       const [, prefix, hyphenated, bare] = m;
       const ref = `${prefix}-${hyphenated ?? bare}`.toUpperCase();
       if (found.some((f) => f.ref === ref)) continue;
-      found.push({ ref, subjectType: PREFIX_SUBJECT[prefix.toUpperCase()] });
+      const subjectType =
+        prefix.toUpperCase() === ROADMAP_ITEM_REF_PREFIX
+          ? CodeLinkSubject.ROADMAP_ITEM
+          : CodeLinkSubject.ISSUE;
+      found.push({ ref, subjectType });
     }
   }
   return found;
