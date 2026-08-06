@@ -17,7 +17,7 @@ export interface McpEventProps {
   tool: string;
   entity: McpEntity;
   entityId: string;
-  /** Human handle: `TSK-6HCUHKX` for an issue, empty for a backlog item. */
+  /** Human handle: `ENG-14` for an issue, empty for a backlog item. */
   entityRef: string;
   entityTitle: string;
   /** Where it landed — the team's name, or the roadmap's title. */

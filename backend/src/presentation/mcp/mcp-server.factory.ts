@@ -262,11 +262,11 @@ export class McpServerFactory {
           parent: z
             .string()
             .optional()
-            .describe('Parent issue ref (TSK-7) or id — returns that issue’s subtasks'),
+            .describe('Parent issue ref (e.g. ENG-14) or id — returns that issue’s subtasks'),
           backlog: z
             .string()
             .optional()
-            .describe('Backlog item ref (RM-6HCUHKX) or id — returns the tickets linked to it'),
+            .describe('Backlog item ref (e.g. RM-6) or id — returns the tickets linked to it'),
           limit: z.number().int().min(1).max(50).optional().describe('Default 20'),
         },
         annotations: { readOnlyHint: true },
@@ -314,12 +314,12 @@ export class McpServerFactory {
             .string()
             .optional()
             .describe(
-              'Roadmap backlog item ref (RM-6HCUHKX) or id to file this under, as delivery work for it',
+              'Roadmap backlog item ref (e.g. RM-6) or id to file this under, as delivery work for it',
             ),
           parent: z
             .string()
             .optional()
-            .describe('Parent issue ref (TSK-7) or id — creates this as a subtask under it'),
+            .describe('Parent issue ref (e.g. ENG-14) or id — creates this as a subtask under it'),
         },
       },
       (dto) =>
@@ -337,12 +337,13 @@ export class McpServerFactory {
       {
         title: 'Read one issue in full',
         description:
-          'Read a single task or bug by its reference ("TSK-7", "BUG-12") or id — its status, team, ' +
+          'Read a single task or bug by its reference — each team mints its own prefix, so refs look ' +
+          'like "ENG-14" or "QC-8" (list_workspace shows each team) — or by id. Returns its status, team, ' +
           'assignees, description, labels, its subtasks and its most recent comments (the total is ' +
           'commentCount; use list_comments for the whole thread). Call this before update_issue or ' +
           'delete_issue so you edit from the current state.',
         inputSchema: {
-          issue: z.string().describe('Issue ref (TSK-7 / BUG-12) or id'),
+          issue: z.string().describe('Issue ref — the owning team’s prefix and number, e.g. ENG-14 or QC-8 — or id'),
         },
         annotations: { readOnlyHint: true },
       },
@@ -368,7 +369,7 @@ export class McpServerFactory {
           'to change the team. `parent` nests the issue as a subtask ("" detaches); `backlogItem` ' +
           'links it to a roadmap item ("" unlinks). Names and refs resolve like create_issue.',
         inputSchema: {
-          issue: z.string().describe('Issue ref (TSK-7 / BUG-12) or id'),
+          issue: z.string().describe('Issue ref — the owning team’s prefix and number, e.g. ENG-14 or QC-8 — or id'),
           title: z.string().optional(),
           description: z.string().optional().describe('Plain text or HTML — replaces the description'),
           assignee: z
@@ -408,7 +409,7 @@ export class McpServerFactory {
           "issue's own team board; an unknown one comes back with the valid columns. This is the only " +
           'way to change status — update_issue does not touch it.',
         inputSchema: {
-          issue: z.string().describe('Issue ref (TSK-7 / BUG-12) or id'),
+          issue: z.string().describe('Issue ref — the owning team’s prefix and number, e.g. ENG-14 or QC-8 — or id'),
           status: z.string().describe("Status key or column label on the issue's board"),
         },
       },
@@ -431,7 +432,7 @@ export class McpServerFactory {
           'the issue still has subtasks — the reply lists them so you can move or delete them first. ' +
           'Deleting a bug needs an admin/product key owner. Requires a key with delete access.',
         inputSchema: {
-          issue: z.string().describe('Issue ref (TSK-7 / BUG-12) or id'),
+          issue: z.string().describe('Issue ref — the owning team’s prefix and number, e.g. ENG-14 or QC-8 — or id'),
         },
         annotations: { destructiveHint: true },
       },
@@ -450,11 +451,11 @@ export class McpServerFactory {
       {
         title: 'List an issue’s comments',
         description:
-          'Read the full comment thread on a task or bug by its ref ("TSK-7") or id. Each line shows ' +
+          'Read the full comment thread on a task or bug by its ref ("ENG-14") or id. Each line shows ' +
           'the comment id (pass it to update_comment/delete_comment), the author, when it was posted ' +
           'and an excerpt; replies are shown indented under the comment they answer.',
         inputSchema: {
-          issue: z.string().describe('Issue ref (TSK-7 / BUG-12) or id'),
+          issue: z.string().describe('Issue ref — the owning team’s prefix and number, e.g. ENG-14 or QC-8 — or id'),
         },
         annotations: { readOnlyHint: true },
       },
@@ -481,7 +482,7 @@ export class McpServerFactory {
           'root. `mentions` takes people by name or email ("Aaron", "jane@acme.co"); they are ' +
           'resolved to users and pinged, so write the @name in the body AND list them here.',
         inputSchema: {
-          issue: z.string().describe('Issue ref (TSK-7 / BUG-12) or id'),
+          issue: z.string().describe('Issue ref — the owning team’s prefix and number, e.g. ENG-14 or QC-8 — or id'),
           body: z
             .string()
             .min(1)
@@ -512,7 +513,7 @@ export class McpServerFactory {
           'an admin/product key owner, may edit it — otherwise it is refused. `mentions` REPLACES the ' +
           'set (names/emails); pass [] to clear them, or omit it to leave them unchanged.',
         inputSchema: {
-          issue: z.string().describe('Issue ref (TSK-7 / BUG-12) or id'),
+          issue: z.string().describe('Issue ref — the owning team’s prefix and number, e.g. ENG-14 or QC-8 — or id'),
           comment: z.string().describe('Comment id to edit'),
           body: z.string().optional().describe('New body — Markdown, HTML or plain text'),
           mentions: z
@@ -540,7 +541,7 @@ export class McpServerFactory {
           'undone. Only the comment’s author, or an admin/product key owner, may delete it. Requires ' +
           'a key with delete access.',
         inputSchema: {
-          issue: z.string().describe('Issue ref (TSK-7 / BUG-12) or id'),
+          issue: z.string().describe('Issue ref — the owning team’s prefix and number, e.g. ENG-14 or QC-8 — or id'),
           comment: z.string().describe('Comment id to delete'),
         },
         annotations: { destructiveHint: true },
@@ -716,13 +717,14 @@ export class McpServerFactory {
       {
         title: 'Link two issues',
         description:
-          'Create a typed relation between two issues by their refs — "TSK-7 blocks TSK-9", ' +
-          '"BUG-3 duplicate-of BUG-1". `type` accepts blocks, blocked-by, parent-of, sub-issue-of, ' +
+          'Create a typed relation between two issues by their refs — "ENG-14 blocks ENG-19", ' +
+          '"QC-8 duplicate-of QC-3" (refs carry the owning team’s prefix, so they differ per team). ' +
+          '`type` accepts blocks, blocked-by, parent-of, sub-issue-of, ' +
           'related-to or duplicate-of; the relation reads from `from` to `to`. An unknown type comes ' +
           'back with the valid choices. Use list_links to see or unlink existing relations.',
         inputSchema: {
-          from: z.string().describe('Source issue ref (TSK-7 / BUG-12) or id'),
-          to: z.string().describe('Target issue ref (TSK-7 / BUG-12) or id'),
+          from: z.string().describe('Source issue ref (e.g. ENG-14) or id'),
+          to: z.string().describe('Target issue ref (e.g. ENG-19) or id'),
           type: z
             .string()
             .describe('blocks · blocked-by · parent-of · sub-issue-of · related-to · duplicate-of'),
@@ -743,11 +745,11 @@ export class McpServerFactory {
       {
         title: 'List an issue’s relations',
         description:
-          'Read the relations on a task or bug by its ref ("TSK-7") or id — each line shows the ' +
+          'Read the relations on a task or bug by its ref ("ENG-14") or id — each line shows the ' +
           'relation, the linked issue’s ref, title and status, and the link id (pass it to ' +
           'unlink_issues to remove the relation). Relations read from the asked-about issue’s side.',
         inputSchema: {
-          issue: z.string().describe('Issue ref (TSK-7 / BUG-12) or id'),
+          issue: z.string().describe('Issue ref — the owning team’s prefix and number, e.g. ENG-14 or QC-8 — or id'),
         },
         annotations: { readOnlyHint: true },
       },

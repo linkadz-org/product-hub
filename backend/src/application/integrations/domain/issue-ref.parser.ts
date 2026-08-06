@@ -23,24 +23,32 @@ import { CodeLinkSubject } from './github.types';
  * legacy prefixes, so it gets the narrower `[A-Z]{2,6}`; a digit-bearing prefix
  * always writes its hyphen.
  *
- * The pattern is deliberately NOT case-insensitive. With a fixed prefix list the
- * `i` flag was free; with an open-ended prefix it would read `well-known` as the
- * ref `WELL-KNOWN`. Refs are stored and displayed upper-case, so requiring upper
- * case is the right trade.
+ * The pattern IS case-insensitive, on the same cost model as everything else here.
+ * Requiring upper case was tried and reversed: it does buy back `well-known`, but
+ * at the price of `eng-14`, `tsk-6hcuhkx` and `feature/bug-3` — lower-case refs
+ * developers really do type into commit messages and branch names — never linking
+ * at all. A spurious match costs one lookup that finds nothing, which nobody ever
+ * sees; a missed real ref silently drops the link the developer was trying to
+ * make, which is exactly the failure this feature exists to prevent. The captured
+ * ref is upper-cased below, so what gets stored and looked up is canonical either
+ * way.
  *
  * The hyphen is required except before a pure digit run: without it `BUGFIXES`
  * would parse as a ref on every commit that mentions fixing bugs.
  *
- * An open prefix does also match ordinary upper-case hyphenated tokens — `UTF-8`,
- * `RFC-822`, `ISO-8601`. That is the accepted price, not a bug: each costs one
+ * An open prefix does also match ordinary hyphenated tokens — `UTF-8`, `RFC-822`,
+ * `ISO-8601`, `well-known`. That is the accepted price, not a bug: each costs one
  * lookup that finds nothing, whereas narrowing the prefix to avoid them would
  * start dropping real team refs.
  *
  * Boundaries are lookarounds rather than `\b`, so `feature/ENG-14_v2` still
  * matches — `_` is a word character, and branch names are full of them.
+ *
+ * The `i` flag is what opens the `[A-Z]` classes below to lower case; they are
+ * written upper-case because that is the canonical form a ref is stored in.
  */
 const REF_PATTERN =
-  /(?<![0-9A-Za-z])(?:([A-Z][0-9A-Z]{1,5})-([0-9A-Z]{1,14})|([A-Z]{2,6})(\d+))(?![0-9A-Za-z])/g;
+  /(?<![0-9A-Za-z])(?:([A-Z][0-9A-Z]{1,5})-([0-9A-Z]{1,14})|([A-Z]{2,6})(\d+))(?![0-9A-Za-z])/gi;
 
 /** A ref found in text, and what it points at. */
 export interface ParsedRef {

@@ -79,7 +79,7 @@ export class McpIssueResponseDto {
   @ApiProperty({ enum: IssueKind })
   kind: IssueKind;
 
-  @ApiProperty({ description: 'Human reference, e.g. TSK-6HCUHKX' })
+  @ApiProperty({ description: 'Human reference, e.g. ENG-14' })
   shortId: string;
 
   @ApiProperty()
@@ -112,7 +112,7 @@ export class McpIssueResponseDto {
   @ApiProperty()
   endDate: string;
 
-  @ApiProperty({ description: 'In-app path, e.g. /issues/TSK-6HCUHKX' })
+  @ApiProperty({ description: 'In-app path, e.g. /issues/ENG-14' })
   link: string;
 
   @ApiProperty()
@@ -124,7 +124,7 @@ export class McpSubtaskDto {
   @ApiProperty()
   id: string;
 
-  @ApiProperty({ description: 'Human reference, e.g. TSK-6HCUHKX' })
+  @ApiProperty({ description: 'Human reference, e.g. ENG-14' })
   shortId: string;
 
   @ApiProperty()
@@ -164,7 +164,7 @@ export class McpCommentResultDto {
   @ApiProperty({ description: 'The issue the comment lives on' })
   issueId: string;
 
-  @ApiProperty({ description: 'Issue ref, e.g. TSK-7' })
+  @ApiProperty({ description: 'Issue ref, e.g. ENG-14' })
   issueShortId: string;
 
   @ApiProperty()
@@ -176,7 +176,7 @@ export class McpCommentResultDto {
   @ApiProperty({ description: 'Root comment id when this is a reply; empty for top-level' })
   parentId: string;
 
-  @ApiProperty({ description: 'In-app path to the issue, e.g. /issues/TSK-7' })
+  @ApiProperty({ description: 'In-app path to the issue, e.g. /issues/ENG-14' })
   link: string;
 }
 
@@ -201,7 +201,7 @@ export class McpIssueDetailResponseDto {
   @ApiProperty({ enum: IssueKind })
   kind: IssueKind;
 
-  @ApiProperty({ description: 'Human reference, e.g. TSK-6HCUHKX' })
+  @ApiProperty({ description: 'Human reference, e.g. ENG-14' })
   shortId: string;
 
   @ApiProperty()
@@ -249,7 +249,7 @@ export class McpIssueDetailResponseDto {
   @ApiProperty({ description: 'Total comments on the issue' })
   commentCount: number;
 
-  @ApiProperty({ description: 'In-app path, e.g. /issues/TSK-6HCUHKX' })
+  @ApiProperty({ description: 'In-app path, e.g. /issues/ENG-14' })
   link: string;
 
   @ApiProperty()
@@ -310,7 +310,7 @@ export class McpUpdatedDocResponseDto {
 
 /** One backlog item in a browse listing — flat, enough to pick and link one. */
 export class McpBacklogItemBriefDto {
-  @ApiProperty({ example: 'RM-6HCUHKX', description: 'Ref to quote or link against' })
+  @ApiProperty({ example: 'RM-6', description: 'Ref to quote or link against' })
   shortId: string;
 
   @ApiProperty()
@@ -372,7 +372,7 @@ export class McpBacklogItemResponseDto {
   @ApiProperty()
   id: string;
 
-  @ApiProperty({ example: 'RM-6HCUHKX', description: 'Ref to quote back to the user' })
+  @ApiProperty({ example: 'RM-6', description: 'Ref to quote back to the user' })
   shortId: string;
 
   @ApiProperty()

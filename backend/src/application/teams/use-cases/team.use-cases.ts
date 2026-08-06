@@ -109,7 +109,11 @@ export class CreateTeamUseCase
       } catch (error) {
         // Anything that is not the index rejecting a duplicate is a real
         // failure and must not be retried.
-        if (!isDuplicateKeyError(error) || attempt === CREATE_TEAM_ATTEMPTS - 1) throw error;
+        if (!isDuplicateKeyError(error)) throw error;
+        // Out of attempts: the raw E11000 would leave the controller with an
+        // unmapped throw and the client with a 500. A lost race is a domain
+        // outcome, so it leaves as one.
+        if (attempt === CREATE_TEAM_ATTEMPTS - 1) return Result.fail(TEAM_CREATE_RACE_LOST);
       }
     }
     /* istanbul ignore next — the loop either returns or throws. */
@@ -215,6 +219,10 @@ export class UpdateTeamUseCase
       const archived = team.setArchived(dto.archived);
       if (archived.isFailure) return Result.fail(archived.error as string);
     }
+    // Whether *this* call moved the prefix — the only thing on this path that can
+    // make the unique index reject the save, and so the only case in which a
+    // duplicate-key error may be read as "that prefix is taken".
+    let prefixChanged = false;
     if (dto.refPrefix !== undefined) {
       const wanted = dto.refPrefix.trim().toUpperCase();
       // Re-submitting the current prefix is a no-op, not a change. The settings
@@ -236,10 +244,27 @@ export class UpdateTeamUseCase
 
         const set = team.setRefPrefix(wanted);
         if (set.isFailure) return Result.fail(set.error as string);
+        prefixChanged = true;
       }
     }
 
-    await this.teams.save(team);
+    // The `others.some(...)` check above is a read-then-write: between it and this
+    // save, `CreateTeamUseCase` can derive and commit the same prefix. The unique
+    // partial index is the real guard, and its rejection arrives here as a raw
+    // `MongoServerError` — which the controller, mapping only `Result.isFailure`,
+    // would turn into a 500 rather than the 400 the settings form renders against
+    // the field. Convert it to the same sentinel the pre-check returns.
+    //
+    // Unlike `CreateTeamUseCase` this does *not* retry: there the prefix is
+    // derived, so re-deriving against the winner's row yields a different, free
+    // one. Here the admin named the prefix, so a retry would re-attempt the same
+    // taken value and fail identically. "Taken" is the honest answer.
+    try {
+      await this.teams.save(team);
+    } catch (error) {
+      if (prefixChanged && isDuplicateKeyError(error)) return Result.fail(TEAM_PREFIX_TAKEN);
+      throw error;
+    }
     return Result.ok(team);
   }
 }

@@ -107,7 +107,26 @@ export class CreateIssueUseCase
     // personal task has no team at all; both fall back to the kind's own
     // sequence, so the ref is still sequential and sortable, just not
     // team-scoped.
-    const refPrefix = landingTeam?.refPrefix || ISSUE_REF_PREFIX[kind];
+    //
+    // The prefix is re-read here rather than taken from the `landingTeam` above,
+    // because that row was fetched two round-trips ago (assignees, cycles) and an
+    // admin can move the team's prefix in between. The freeze that normally
+    // prevents a prefix move only refuses once the counter has advanced — and this
+    // create has not drawn yet, so the counter still reads 0 and the move is
+    // allowed. Minting from the stale value would draw `T:ENG` → 1 and stamp
+    // `ENG-1` on a team now called `PLT`: the counter for `ENG` is permanently
+    // ahead of a prefix no team holds, so a future team derived as `ENG` reports
+    // itself frozen before issuing a single ticket and starts at `ENG-2`.
+    //
+    // Residual window: the prefix can still move between this read and the draw
+    // below. That is a single `await` rather than three, and closing it fully would
+    // need the counter draw and the freeze check in one transaction — much more
+    // machinery than the failure justifies. The cost of the remaining window is
+    // also the *smaller* half of the original: the re-read sees any move that
+    // completed before the draw started, so the only losing interleaving left is
+    // one that commits inside the draw itself.
+    const mintFrom = teamId ? (await this.teams.findById(tenantId, teamId)) ?? landingTeam : null;
+    const refPrefix = mintFrom?.refPrefix || ISSUE_REF_PREFIX[kind];
     // `sequentialRef` throws if it cannot find a free number; this use-case's
     // contract is a Result, and an uncaught throw here would surface as a 500
     // instead of a message the caller can act on.

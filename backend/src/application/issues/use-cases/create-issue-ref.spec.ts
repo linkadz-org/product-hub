@@ -171,12 +171,13 @@ describe('CreateIssueUseCase landing team', () => {
     });
 
     expect(result.isSuccess).toBe(true);
-    // The `await this.teams.findById(...)` arm — the primary MCP path.
-    expect(calls.findById).toEqual(['team-mobile']);
+    // The `await this.teams.findById(...)` arm — the primary MCP path — plus the
+    // re-read taken immediately before the draw.
+    expect(calls.findById).toEqual(['team-mobile', 'team-mobile']);
     expect(saved[0]).toMatchObject({ shortId: 'MOB-1', teamId: 'team-mobile' });
   });
 
-  it('does not re-read the team when the issue lands in the kind default', async () => {
+  it('resolves the landing team once, then re-reads only the prefix before minting', async () => {
     const fallback = namedTeam('team-default', DEFAULT_TASK_KEY, 'Engineering', 'ENG');
     const { useCase, saved, calls } = buildTeams([fallback], DEFAULT_TASK_KEY);
 
@@ -187,7 +188,9 @@ describe('CreateIssueUseCase landing team', () => {
       dto: { kind: IssueKind.TASK, title: 'plain', teamId: 'team-default' } as never,
     });
 
-    expect(calls.findById).toEqual([]);
+    // Landing in the kind default costs no lookup to *resolve* — that row is
+    // already in hand. The one read is the deliberate pre-draw refresh.
+    expect(calls.findById).toEqual(['team-default']);
     expect(saved[0].shortId).toBe('ENG-1');
   });
 
@@ -247,5 +250,71 @@ describe('CreateIssueUseCase landing team', () => {
     });
 
     expect(saved[0]).toMatchObject({ shortId: 'MOB-1', cycleId: '' });
+  });
+});
+
+/**
+ * A prefix change that lands while a create is in flight.
+ *
+ * The create reads the team early (it needs the row for the cycle rhythm), then
+ * makes more round-trips before drawing its number. An admin PATCHing the prefix
+ * in that gap is *allowed* to — the freeze only refuses once the counter has
+ * moved, and this create has not drawn yet — so the write goes through and the
+ * create is left holding a prefix no team owns any more.
+ */
+describe('CreateIssueUseCase against a prefix change mid-create', () => {
+  const DEFAULT_TASK_KEY = DEFAULT_TEAMS.find((t) => t.issueType === TeamIssueType.TASK)!.key;
+
+  it('mints from the prefix the team holds at draw time, not the one it held at read time', async () => {
+    const drawn: string[] = [];
+    const saved: { shortId: string; refPrefix?: string }[] = [];
+    // One row, mutated between the two reads — exactly what the admin's PATCH does.
+    let current = namedTeam('team-1', DEFAULT_TASK_KEY, 'Engineering', 'ENG', true);
+    let reads = 0;
+    const teams = {
+      findByKey: async () => current,
+      findById: async () => {
+        reads++;
+        // The PATCH commits after the create's first read of the team and before
+        // its second. `T:ENG` is still 0, so the freeze check let it through.
+        if (reads === 1) current = namedTeam('team-1', DEFAULT_TASK_KEY, 'Engineering', 'PLT', true);
+        return current;
+      },
+    };
+    let seq = 0;
+    const useCase = new CreateIssueUseCase(
+      {
+        findByRef: async () => null,
+        save: async (issue: { shortId: string; refPrefix?: string }) => {
+          saved.push({ shortId: issue.shortId, refPrefix: issue.refPrefix });
+          return issue;
+        },
+      } as never,
+      { findManyByIds: async () => [], findById: async () => null } as never,
+      teams as never,
+      { findById: async () => null, findByTeam: async () => [] } as never,
+      { notify: async () => undefined } as never,
+      {
+        next: async (_t: string, prefix: string) => {
+          drawn.push(prefix);
+          return ++seq;
+        },
+        current: async () => seq,
+        ensureAtLeast: async () => undefined,
+      } as never,
+    );
+
+    const result = await useCase.execute({
+      tenantId: 't1',
+      createdBy: 'u1',
+      createdByName: 'U',
+      dto: { kind: IssueKind.TASK, title: 'racing', teamId: 'team-1' } as never,
+    });
+
+    expect(result.isSuccess).toBe(true);
+    // Stale `ENG` would leave `T:ENG` at 1 with no team holding `ENG` — permanent
+    // and invisible, and it would print another team's prefix on this ticket.
+    expect(drawn).toEqual(['PLT']);
+    expect(saved[0]).toMatchObject({ shortId: 'PLT-1', refPrefix: 'PLT' });
   });
 });

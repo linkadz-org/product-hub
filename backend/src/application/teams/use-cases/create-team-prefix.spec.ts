@@ -1,4 +1,4 @@
-import { CreateTeamUseCase } from './team.use-cases';
+import { CreateTeamUseCase, TEAM_CREATE_RACE_LOST } from './team.use-cases';
 import { TeamEntity } from '../domain/entities/team.entity';
 import { TeamIssueType } from '../domain/enums/team.enums';
 
@@ -106,6 +106,26 @@ describe('CreateTeamUseCase losing a race to the unique index', () => {
     expect(teams.saved[0].refPrefix).toBe('WEB2');
     expect(teams.saved[0].key).toBe('web-platform-2');
     expect(result.getValue().refPrefix).toBe('WEB2');
+  });
+
+  it('fails as a domain result rather than throwing E11000 out of the last attempt', async () => {
+    // Every attempt loses. The raw driver error would leave the controller with an
+    // unmapped throw and the client with a 500 on what is a retryable conflict.
+    const teams = {
+      findByTenant: async () => [],
+      findByKey: async () => null,
+      save: async () => {
+        throw Object.assign(new Error('E11000 duplicate key error'), { code: 11000 });
+      },
+    };
+
+    const result = await new CreateTeamUseCase(teams as never).execute({
+      tenantId: 't1',
+      dto: { name: 'Web Platform', issueType: TeamIssueType.TASK } as never,
+    });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toBe(TEAM_CREATE_RACE_LOST);
   });
 
   it('rethrows an error that is not a duplicate key', async () => {

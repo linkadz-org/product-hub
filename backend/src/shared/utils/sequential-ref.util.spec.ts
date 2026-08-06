@@ -1,4 +1,4 @@
-import { sequentialRef } from './sequential-ref.util';
+import { MAX_REF_SEQ, sequentialRef } from './sequential-ref.util';
 
 /**
  * The real `CounterService` in miniature: `next` is the atomic `$inc`,
@@ -48,6 +48,32 @@ describe('sequentialRef', () => {
     await expect(
       sequentialRef(counters() as never, 't1', 'TSK', async () => true),
     ).rejects.toThrow(/could not mint/i);
+  });
+
+  it('leaves the sequence recoverable when the exists oracle is broken', async () => {
+    // "Taken" for everything is a broken lookup, not real data. Bounding the loop
+    // is not enough: an uncapped gallop would `$max` the counter to ~1.1e12, and
+    // `$max` never comes back down — every later create in the tenant would mint a
+    // twelve-digit ref with no operator tool to reset it.
+    const c = counters();
+    await expect(sequentialRef(c as never, 't1', 'TSK', async () => true)).rejects.toThrow(
+      /could not mint/i,
+    );
+
+    expect(c.value).toBeLessThanOrEqual(MAX_REF_SEQ + 1);
+  });
+
+  it('still clears a legacy block far below the ceiling', async () => {
+    // The cap must not cost the O(log N) gallop: the largest block the suite covers
+    // resolves an order of magnitude under it.
+    const c = counters();
+    const minted = await sequentialRef(c as never, 't1', 'BUG', async (ref) => {
+      const seq = Number(ref.split('-')[1]);
+      return seq >= 1 && seq <= 1_000_000;
+    });
+
+    expect(minted.seq).toBeGreaterThan(1_000_000);
+    expect(minted.seq).toBeLessThan(MAX_REF_SEQ);
   });
 
   describe('a workspace whose counter sits behind its legacy sequential refs', () => {

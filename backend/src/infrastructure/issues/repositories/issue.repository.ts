@@ -43,16 +43,25 @@ import { IssueDoc } from '../entities/issue.schema';
  * orders before every string, so those rows form one block (at the top ascending,
  * at the bottom descending) with `createdAt` ordering them inside it. Nothing is
  * ever written to them to achieve this.
+ *
+ * Every explicit sort ends in `_id`, which is the only field guaranteed unique,
+ * so the order is *total*. Without it the legacy block is ordered by `createdAt`
+ * alone, and the historical `migrate-issues` script bulk-created rows that share a
+ * `createdAt` to the millisecond — ties Mongo may break differently between two
+ * pages of the same list, which shows one row twice and skips another. The same
+ * exposure exists for the `created`/`updated` sorts, so they get the tiebreak too.
  */
 export function issueSortStage(
   sort?: IssueSortField,
   dir?: IssueSortDir,
 ): Record<string, 1 | -1> {
+  // The no-sort branch stays byte-for-byte historical — no `_id` tiebreak here,
+  // because every caller written before sorting existed depends on this shape.
   if (!sort) return { order: 1, createdAt: -1 };
   const d: 1 | -1 = dir === 'asc' ? 1 : -1;
-  if (sort === 'created') return { createdAt: d };
-  if (sort === 'updated') return { updatedAt: d };
-  return { refPrefix: d, refSeq: d, createdAt: d };
+  if (sort === 'created') return { createdAt: d, _id: d };
+  if (sort === 'updated') return { updatedAt: d, _id: d };
+  return { refPrefix: d, refSeq: d, createdAt: d, _id: d };
 }
 
 @Injectable()

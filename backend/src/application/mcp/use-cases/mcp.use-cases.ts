@@ -288,7 +288,7 @@ export class McpCreateIssueUseCase
       }
     }
 
-    // A backlog item is addressed by its ref (`RM-6HCUHKX`) or uuid — the roadmap
+    // A backlog item is addressed by its ref (`RM-6`) or uuid — the roadmap
     // holding it is found here, because the caller has no reason to know which one
     // that is. What gets stored on the issue is always the item's uuid: that's
     // what the app's own back-links (the item's Tasks panel) read.
@@ -1319,7 +1319,7 @@ export class McpSearchIssuesUseCase
     }
 
     // parent: list an issue's subtasks. Resolve the ref to a uuid — parentId is
-    // stored as an id — so "search_issues parent: TSK-7" reads TSK-7's children.
+    // stored as an id — so "search_issues parent: ENG-14" reads ENG-14’s children.
     let parentId: string[] | undefined;
     if (dto.parent) {
       const parent = await resolveIssueRef(this.issues, actor.tenantId, dto.parent);

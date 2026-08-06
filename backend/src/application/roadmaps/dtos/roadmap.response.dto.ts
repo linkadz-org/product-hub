@@ -18,7 +18,7 @@ export class RoadmapColumnDto {
 export class RoadmapItemDto {
   @ApiProperty() id: string;
   @ApiProperty({
-    example: 'RM-6HCUHKX',
+    example: 'RM-6',
     description: 'Human-friendly ref used in the item URL. Empty for legacy items.',
   })
   shortId: string;

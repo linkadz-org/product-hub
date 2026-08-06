@@ -18,21 +18,35 @@ describe('parseRefs', () => {
     expect(refs('fix login redirect\n\nFixes TSK-6HCUHKX')).toEqual(['TSK-6HCUHKX']);
   });
 
-  it('requires upper case, because the prefix is no longer a fixed list', () => {
-    // This used to match case-insensitively. Once the prefix opened up to any
-    // upper-case run — team prefixes are minted at runtime — the `i` flag would
-    // have read `well-known` as the ref `WELL-KNOWN`. Refs are stored and shown
-    // upper-case, so requiring upper case is the trade we take.
-    expect(refs('tsk-6hcuhkx done')).toEqual([]);
-    expect(refs('TSK-6hcuhkx done')).toEqual([]);
+  it('matches a ref whatever case the developer typed it in', () => {
+    // Requiring upper case was tried and reversed. A spurious match costs one
+    // lookup that finds nothing; a lower-case ref that never matches silently
+    // drops the link — the expensive half of the trade, and the failure this
+    // feature exists to prevent.
+    expect(refs('tsk-6hcuhkx done')).toEqual(['TSK-6HCUHKX']);
+    expect(refs('TSK-6hcuhkx done')).toEqual(['TSK-6HCUHKX']);
+    expect(refs('closes eng-14')).toEqual(['ENG-14']);
+    expect(refs('feature/bug-3-retry')).toEqual(['BUG-3']);
   });
 
   it('canonicalises the matched ref to upper case', () => {
     expect(refs('TSK-6HCUHKX done')).toEqual(['TSK-6HCUHKX']);
+    // Case-insensitive matching must not leak into what is stored or looked up.
+    expect(refs('eng-14 and ENG-14')).toEqual(['ENG-14']);
+  });
+
+  it('classifies a lower-case backlog ref as a roadmap item', () => {
+    // The subject split reads the *canonical* prefix, so it survives the flag.
+    expect(parseRefs('groundwork for rm-4')).toEqual([
+      { ref: 'RM-4', subjectType: CodeLinkSubject.ROADMAP_ITEM },
+    ]);
   });
 
   it('finds a ref in a branch name, including a slashed one', () => {
-    expect(refs('feature/TSK-6HCUHKX-fix-login')).toEqual(['TSK-6HCUHKX']);
+    // The trailing slug (`fix-login`) also matches now that case is ignored —
+    // it is shaped exactly like a ref and no rule can tell them apart. It costs a
+    // lookup that finds nothing; what matters is that the real ref is in the list.
+    expect(refs('feature/TSK-6HCUHKX-fix-login')).toContain('TSK-6HCUHKX');
   });
 
   it('finds a ref followed by an underscore, which \\b would refuse', () => {
@@ -67,15 +81,32 @@ describe('parseRefs', () => {
 
   it('returns each ref once even when several texts mention it', () => {
     // The everyday case: a branch named for the issue, and a message naming it too.
-    expect(refs('TSK-6HCUHKX fix login', 'TSK-6HCUHKX-fix-login')).toEqual(['TSK-6HCUHKX']);
+    // One commit must produce one link, not two.
+    const found = refs('TSK-6HCUHKX fix login', 'TSK-6HCUHKX-fix-login');
+    expect(found.filter((r) => r === 'TSK-6HCUHKX')).toEqual(['TSK-6HCUHKX']);
   });
 
   it('does not read a ref out of an ordinary word', () => {
+    // The no-hyphen branch needs a digit run, so no plain word can reach it —
+    // this holds in either case.
     expect(refs('bugfixes for the tasks page')).toEqual([]);
+    expect(refs('BUGFIXES landed')).toEqual([]);
   });
 
-  it('does not match a prefix glued to the end of another word', () => {
-    expect(refs('mytsk-7 is not a ref')).toEqual([]);
+  it('reads a glued-on prefix as a prefix of its own, not as the ref inside it', () => {
+    // `mytsk-7` used to match nothing. Case-insensitively `MYTSK` is a perfectly
+    // legal 5-character team prefix, so it now parses as `MYTSK-7` — a lookup that
+    // finds nothing. What must never happen is it resolving to the real `TSK-7`:
+    // the lookbehind still refuses to start matching mid-word.
+    expect(refs('mytsk-7 is not a ref')).toEqual(['MYTSK-7']);
+    expect(refs('mytsk-7 is not a ref')).not.toContain('TSK-7');
+  });
+
+  it('keeps the no-hyphen branch narrow even case-insensitively', () => {
+    // The two-branch shape is what stops `TSK42` being read as prefix `TSK4`,
+    // issue 2. Opening the flag must not merge the branches.
+    expect(refs('fixed tsk42 today')).toEqual(['TSK-42']);
+    expect(refs('closes bug1234')).toEqual(['BUG-1234']);
   });
 
   it('matches a team-scoped ref minted after this code shipped', () => {
@@ -94,9 +125,13 @@ describe('parseRefs', () => {
     ]);
   });
 
-  it('does not treat an ordinary hyphenated word as a ref', () => {
-    expect(refs('this is a well-known problem')).toEqual([]);
-    expect(refs('BUGFIXES landed')).toEqual([]);
+  it('accepts that an ordinary hyphenated word can look like a ref', () => {
+    // `well-known`, `UTF-8`, `ISO-8601`: with prefixes minted at runtime there is
+    // no way to exclude these without also excluding real team refs. Each costs
+    // one lookup that resolves to nothing and links nothing — invisible, unlike a
+    // dropped link.
+    expect(refs('this is a well-known problem')).toEqual(['WELL-KNOWN']);
+    expect(refs('encode as UTF-8')).toEqual(['UTF-8']);
   });
 
   it('ignores an empty or missing text', () => {

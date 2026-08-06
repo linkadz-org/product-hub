@@ -18,6 +18,22 @@ export interface MintedRef {
 const MAX_DRAWS = 40;
 
 /**
+ * The ceiling the gallop may raise a sequence to.
+ *
+ * `MAX_DRAWS` alone bounds the *loop*, not the *damage*: a broken `exists` that
+ * answers "taken" every time would double 40 times before throwing, leaving the
+ * tenant's counter at ~1.1e12 — and since `$max` can only go up, every later
+ * create in that workspace would mint `PREFIX-1099511627776` forever, with no
+ * operator tool to wind it back. Capping the jump keeps that failure legible and
+ * recoverable: the counter cannot leave the range a human can reason about.
+ *
+ * Ten million is far above any real workspace's issue count and still leaves the
+ * O(log N) property intact — the largest legacy block the tests cover (1,000,000)
+ * is cleared at draw 21, well under the cap and under `MAX_DRAWS`.
+ */
+export const MAX_REF_SEQ = 10_000_000;
+
+/**
  * The next ref in `prefix`'s per-tenant sequence, proven free.
  *
  * The `exists` check matters for two reasons:
@@ -57,9 +73,13 @@ export async function sequentialRef(
     const seq = await counters.next(tenantId, prefix);
     const ref = `${prefix}-${seq}`;
     if (!(await exists(ref))) return { ref, prefix, seq };
+    // Still colliding at the ceiling means the sequence is not what's wrong — the
+    // `exists` oracle is. Stop here rather than galloping the counter somewhere no
+    // operator can bring it back from; the number stays inside `MAX_REF_SEQ`.
+    if (seq >= MAX_REF_SEQ) break;
     // Taken → jump the shared sequence past the conflicting block instead of
-    // stepping one number at a time.
-    await counters.ensureAtLeast(tenantId, prefix, seq * 2);
+    // stepping one number at a time, but never past the ceiling.
+    await counters.ensureAtLeast(tenantId, prefix, Math.min(seq * 2, MAX_REF_SEQ));
   }
   throw new Error(`Could not mint a free ${prefix} ref after ${MAX_DRAWS} draws`);
 }

@@ -111,3 +111,71 @@ describe('UpdateTeamUseCase refPrefix', () => {
     expect(d.saved[0].refPrefix).toBe('ENG');
   });
 });
+
+/**
+ * The `others.some(...)` pre-check reads and *then* writes, so a create deriving
+ * the same prefix can land in between. The unique partial index is the real guard,
+ * and its rejection must reach the settings form as the same field-level 400 the
+ * pre-check produces — not as a 500.
+ */
+describe('UpdateTeamUseCase losing a race to the unique index', () => {
+  /** Deps whose save always loses to a racer that just took the wanted prefix. */
+  function racingDeps(subject: TeamEntity, error: unknown) {
+    return {
+      teams: {
+        findById: async () => subject,
+        // The winner's row is not visible yet — that is the whole race.
+        findByTenant: async () => [subject],
+        save: async () => {
+          throw error;
+        },
+      },
+      prefixLock: { one: async () => false },
+    };
+  }
+
+  it('converts a lost race into TEAM_PREFIX_TAKEN', async () => {
+    const d = racingDeps(
+      team('ENG'),
+      Object.assign(new Error('E11000 duplicate key error'), { code: 11000 }),
+    );
+
+    const result = await new UpdateTeamUseCase(d.teams as never, d.prefixLock as never).execute({
+      tenantId: 't1',
+      id: 'team-1',
+      dto: { refPrefix: 'WEB' } as never,
+    });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toBe(TEAM_PREFIX_TAKEN);
+  });
+
+  it('rethrows an error that is not a duplicate key', async () => {
+    const d = racingDeps(team('ENG'), new Error('connection reset'));
+
+    await expect(
+      new UpdateTeamUseCase(d.teams as never, d.prefixLock as never).execute({
+        tenantId: 't1',
+        id: 'team-1',
+        dto: { refPrefix: 'WEB' } as never,
+      }),
+    ).rejects.toThrow('connection reset');
+  });
+
+  it('rethrows a duplicate key raised by an update that never touched the prefix', async () => {
+    // Only a prefix move can be read as "prefix taken". Anything else duplicating
+    // is a genuine fault and must not be dressed up as a field error.
+    const d = racingDeps(
+      team('ENG'),
+      Object.assign(new Error('E11000 duplicate key error'), { code: 11000 }),
+    );
+
+    await expect(
+      new UpdateTeamUseCase(d.teams as never, d.prefixLock as never).execute({
+        tenantId: 't1',
+        id: 'team-1',
+        dto: { name: 'Platform' } as never,
+      }),
+    ).rejects.toThrow('E11000');
+  });
+});

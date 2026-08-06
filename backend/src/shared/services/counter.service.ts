@@ -14,13 +14,21 @@ export const CounterSchema = new Schema<CounterDoc>({
 });
 
 /**
- * Per-tenant sequence for human-friendly short ids (`BUG-12`, `TSK-7`).
+ * Per-tenant sequence for human-friendly short ids (`ENG-14`, `QC-8`, `RM-6`).
+ *
+ * This is the **primary** mechanism every ref is minted from — issues, roadmap
+ * items and docs all draw here — not a leftover from an older scheme.
  *
  * A single atomic `findOneAndUpdate($inc)` hands out each number, so two
- * simultaneous creates can never receive the same one. Sequences are per
- * tenant *and* per prefix, so every workspace starts at 1 and bugs/tasks
- * number independently. Gaps are expected and fine — a number is burned if the
- * create that claimed it later fails.
+ * simultaneous creates can never receive the same one. Sequences are per tenant
+ * *and* per prefix — and a prefix is a **team's**, not a kind's, so a team's tasks
+ * and bugs share one run of numbers while two teams number independently.
+ *
+ * That also makes the counter the source of truth for "has this team issued a
+ * ticket yet?": `current()` reading above 0 is what freezes a team's prefix, so
+ * numbers already printed in commits and comments can never be re-minted. Gaps are
+ * expected and fine — a number is burned if the create that claimed it later
+ * fails, and `ensureAtLeast` burns a range on purpose to step past taken refs.
  */
 @Injectable()
 export class CounterService {

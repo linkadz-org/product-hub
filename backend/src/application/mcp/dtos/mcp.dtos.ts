@@ -485,7 +485,7 @@ export class McpSearchIssuesDto {
 
   @ApiPropertyOptional({
     description:
-      'Backlog (roadmap) item ref (RM-6HCUHKX) or id — lists the tickets linked to that item.',
+      'Backlog (roadmap) item ref (RM-6) or id — lists the tickets linked to that item.',
   })
   @IsOptional()
   @IsString()
