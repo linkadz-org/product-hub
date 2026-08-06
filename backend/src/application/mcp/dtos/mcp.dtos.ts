@@ -412,12 +412,40 @@ export class McpAppendPageDto {
   content?: string;
 }
 
+/** Read one doc's metadata and its page list — the page ids update_doc targets. */
+export class McpGetDocDto {
+  // Supplied by the REST `:doc` path segment; required in the JSON-RPC schema.
+  @ApiPropertyOptional({ description: 'Doc ref (DOC-…) or id' })
+  @IsOptional()
+  @IsString()
+  doc?: string;
+}
+
+/** Read one page's body — the text update_doc would replace. */
+export class McpGetDocPageDto {
+  // Both come from the REST path segments; both are required over JSON-RPC.
+  @ApiPropertyOptional({ description: 'Doc ref (DOC-…) or id' })
+  @IsOptional()
+  @IsString()
+  doc?: string;
+
+  @ApiPropertyOptional({ description: 'Page id, from get_doc' })
+  @IsOptional()
+  @IsString()
+  page?: string;
+}
+
 /**
  * Edit a doc that already exists. `title`/`tags` change the doc itself; `content`
  * REPLACES the body of one page (the given `page`, or the first page when omitted);
  * `appendPage` adds a new page instead of editing one. Every field is optional —
  * pass only the change you mean. `content` and `appendPage.content` are converted
  * exactly like create_doc (HTML kept as-is, Markdown and ```mermaid rendered).
+ *
+ * A `content` write is snapshotted first: the page as it stands becomes a version
+ * in its history, so an overwrite can be undone from the doc's version list.
+ * Only the page's body HTML is replaced — its title, attachments, links and Page
+ * Styles survive the write untouched.
  */
 export class McpUpdateDocDto {
   // Supplied by the REST `:doc` path segment; required in the JSON-RPC schema.

@@ -15,6 +15,8 @@ import {
   McpCreateIssueDto,
   McpDeleteCommentDto,
   McpDeleteIssueDto,
+  McpGetDocDto,
+  McpGetDocPageDto,
   McpGetIssueDto,
   McpLinkIssuesDto,
   McpListBacklogItemsDto,
@@ -41,6 +43,9 @@ import {
   McpContextResponseDto,
   McpDeletedCommentResponseDto,
   McpDeletedIssueResponseDto,
+  McpDocBriefDto,
+  McpDocDetailResponseDto,
+  McpDocPageResponseDto,
   McpDocResponseDto,
   McpIssueDetailResponseDto,
   McpIssueLinkDto,
@@ -69,12 +74,15 @@ import {
   McpDeleteIssueUseCase,
   McpGetBugStatsUseCase,
   McpGetCycleBurndownUseCase,
+  McpGetDocPageUseCase,
+  McpGetDocUseCase,
   McpGetIssueUseCase,
   McpGetTeamVelocityUseCase,
   McpLinkIssuesUseCase,
   McpListBacklogItemsUseCase,
   McpListCommentsUseCase,
   McpListCyclesUseCase,
+  McpListDocsUseCase,
   McpListLinksUseCase,
   McpSearchIssuesUseCase,
   McpSetStatusUseCase,
@@ -160,6 +168,9 @@ export class McpServerFactory {
     private readonly createBacklogItem: McpCreateBacklogItemUseCase,
     private readonly createDoc: McpCreateDocUseCase,
     private readonly updateDoc: McpUpdateDocUseCase,
+    private readonly listDocs: McpListDocsUseCase,
+    private readonly getDoc: McpGetDocUseCase,
+    private readonly getDocPage: McpGetDocPageUseCase,
     private readonly searchIssues: McpSearchIssuesUseCase,
     private readonly listBacklogItems: McpListBacklogItemsUseCase,
     private readonly linkIssues: McpLinkIssuesUseCase,
@@ -210,6 +221,9 @@ export class McpServerFactory {
     this.registerDeleteComment(server, run);
     this.registerCreateBacklogItem(server, run);
     this.registerListBacklogItems(server, run);
+    this.registerListDocs(server, run);
+    this.registerGetDoc(server, run);
+    this.registerGetDocPage(server, run);
     this.registerCreateDoc(server, run);
     this.registerUpdateDoc(server, run);
     this.registerLinkIssues(server, run);
@@ -618,6 +632,79 @@ export class McpServerFactory {
     );
   }
 
+  private registerListDocs(server: McpServer, run: Run): void {
+    registerTool(
+      server,
+      'list_docs',
+      {
+        title: 'List the workspace’s docs',
+        description:
+          'Every document in the workspace — its ref (refs look like DOC-3), title, tags, how many ' +
+          'pages it has and when it last changed. list_workspace does not mention docs, so this is ' +
+          'how you find one you were not given the ref for. Bodies are not included: use get_doc for ' +
+          'a doc’s page list, then get_doc_page for one page’s text.',
+        annotations: { readOnlyHint: true },
+      },
+      () =>
+        run<McpDocBriefDto[]>(
+          (actor) => this.listDocs.execute({ actor }),
+          (docs) =>
+            docs.length
+              ? `${docs.length} doc(s):\n\n${docs.map((d) => this.describeDoc(d)).join('\n\n')}`
+              : 'No docs.',
+        ),
+    );
+  }
+
+  private registerGetDoc(server: McpServer, run: Run): void {
+    registerTool<McpGetDocDto>(
+      server,
+      'get_doc',
+      {
+        title: 'Read a doc’s pages',
+        description:
+          'Read one doc by its ref (DOC-3, from list_docs) or id: its title, tags and the id and ' +
+          'title of every page in it, nested as they are in the app. Page BODIES are not returned — ' +
+          'take the id of the page you want and call get_doc_page for its text.',
+        inputSchema: {
+          doc: z.string().describe('Doc ref (e.g. DOC-3, from list_docs) or id'),
+        },
+        annotations: { readOnlyHint: true },
+      },
+      (dto) =>
+        run<McpDocDetailResponseDto>(
+          (actor) => this.getDoc.execute({ actor, dto }),
+          (doc) => this.describeDocDetail(doc),
+        ),
+    );
+  }
+
+  private registerGetDocPage(server: McpServer, run: Run): void {
+    registerTool<McpGetDocPageDto>(
+      server,
+      'get_doc_page',
+      {
+        title: 'Read one doc page’s body',
+        description:
+          'Read the full body of a single page — the HTML exactly as stored, tables, images and ' +
+          'Mermaid diagrams included. Call this immediately before update_doc: that tool REPLACES ' +
+          'the whole body, so whatever you do not send back is gone, and reading right before ' +
+          'writing keeps the window in which someone else can edit the page as small as possible. ' +
+          'Take `page` from get_doc.',
+        inputSchema: {
+          doc: z.string().describe('Doc ref (e.g. DOC-3) or id'),
+          page: z.string().describe('Page id, from get_doc'),
+        },
+        annotations: { readOnlyHint: true },
+      },
+      (dto) =>
+        run<McpDocPageResponseDto>(
+          (actor) => this.getDocPage.execute({ actor, dto }),
+          (page) => this.describeDocPage(page),
+        ),
+    );
+  }
+
   private registerCreateDoc(server: McpServer, run: Run): void {
     registerTool<McpCreateDocDto>(
       server,
@@ -668,11 +755,16 @@ export class McpServerFactory {
         description:
           'Edit a doc that already exists (create_doc makes a new one). Address it by ref (DOC-…) ' +
           'or id. `title` renames it and `tags` REPLACE its whole tag list. `content` REPLACES the ' +
-          'ENTIRE body of one page — whatever you send becomes the page; to keep existing text, ' +
-          'images or Mermaid diagrams, read them first (the doc in the app) and include them, or ' +
-          'they are gone. The page edited is `page` (a page id) or, when omitted, the doc’s first ' +
-          'page. To ADD a page rather than overwrite one, use `appendPage` instead of `content`. ' +
-          'Body accepts HTML, Markdown or a ```mermaid fence, converted like create_doc.',
+          'ENTIRE body of one page — whatever you send becomes the page. Call get_doc_page first ' +
+          'and include everything you want to keep, or it is gone: other people’s text, tables, ' +
+          'images and Mermaid diagrams all live in that body. Read immediately before writing, ' +
+          'since anything edited in between is overwritten. Only the body is replaced — the page’s ' +
+          'title, its attachments, its links to issues and its Page Styles all survive the write. ' +
+          'The page edited is `page` (a page id from get_doc) or, when omitted, the doc’s first ' +
+          'page. Each body write first saves the current page as a version, so an overwrite can be ' +
+          'restored from the doc’s history. To ADD a page rather than overwrite one, use ' +
+          '`appendPage` instead of `content`. Body accepts HTML, Markdown or a ```mermaid fence, ' +
+          'converted like create_doc.',
         inputSchema: {
           doc: z.string().describe('Doc ref (DOC-…) or id'),
           title: z.string().max(160).optional().describe('Rename the doc'),
@@ -680,13 +772,14 @@ export class McpServerFactory {
           page: z
             .string()
             .optional()
-            .describe('Id of the page to edit; omit to edit the doc’s first page'),
+            .describe('Id of the page to edit (from get_doc); omit to edit the doc’s first page'),
           content: z
             .string()
             .optional()
             .describe(
               'New page body — REPLACES the whole body. HTML is stored as-is; Markdown and a ' +
-                '```mermaid fence are converted. Include any existing content you want to keep.',
+                '```mermaid fence are converted. Read the page with get_doc_page first and include ' +
+                'every part of it you want to keep.',
             ),
           appendPage: z
             .object({
@@ -969,6 +1062,52 @@ export class McpServerFactory {
         (i.assigneeNames.length ? ` · ${i.assigneeNames.join(', ')}` : '') +
         (i.severity ? ` · ${i.severity}` : ''),
       `  ${this.url(i.link)}`,
+    ].join('\n');
+  }
+
+  private describeDoc(d: McpDocBriefDto): string {
+    return [
+      `${d.ref} · ${d.title}`,
+      `  ${d.pageCount} page${d.pageCount === 1 ? '' : 's'}` +
+        (d.tags.length ? ` · ${d.tags.join(', ')}` : '') +
+        (d.updatedAt ? ` · updated ${new Date(d.updatedAt).toISOString().slice(0, 10)}` : ''),
+    ].join('\n');
+  }
+
+  /** A doc's table of contents. Sub-pages are indented under their parent so the
+   *  nesting reads back as it looks in the app; bodies are never printed here. */
+  private describeDocDetail(d: McpDocDetailResponseDto): string {
+    const byParent = new Map<string, typeof d.pages>();
+    for (const p of d.pages) {
+      const siblings = byParent.get(p.parentId) ?? [];
+      siblings.push(p);
+      byParent.set(p.parentId, siblings);
+    }
+    const lines: string[] = [];
+    const walk = (parentId: string, depth: number): void => {
+      const children = [...(byParent.get(parentId) ?? [])].sort((a, b) => a.order - b.order);
+      for (const p of children) {
+        lines.push(`${'  '.repeat(depth + 1)}${p.title} · [${p.id}]`);
+        walk(p.id, depth + 1);
+      }
+    };
+    walk('', 0);
+    return [
+      `${d.ref} · ${d.title}`,
+      `  ${d.pages.length} page${d.pages.length === 1 ? '' : 's'}` +
+        (d.tags.length ? ` · ${d.tags.join(', ')}` : ''),
+      '',
+      ...(lines.length ? ['Pages (get_doc_page with the id in brackets):', ...lines] : ['No pages.']),
+      '',
+      `  ${this.url(`/docs/${d.id}`)}`,
+    ].join('\n');
+  }
+
+  private describeDocPage(p: McpDocPageResponseDto): string {
+    return [
+      `${p.title} · [${p.id}]`,
+      '',
+      p.content || '(this page is empty)',
     ].join('\n');
   }
 

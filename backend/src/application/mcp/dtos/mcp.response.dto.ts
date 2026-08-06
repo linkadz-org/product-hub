@@ -295,6 +295,93 @@ export class McpDocResponseDto {
   link: string;
 }
 
+/**
+ * One row of `list_docs` — enough to recognise a doc and address it in a
+ * follow-up call, without any page body.
+ *
+ * `publicToken` is deliberately absent here and in every shape below: it is the
+ * credential for a doc's public share link, and handing it to a tool reply would
+ * publish the doc to anyone who read the transcript.
+ */
+export class McpDocBriefDto {
+  @ApiProperty({ description: 'Human reference, e.g. DOC-3 — pass it as `doc`' })
+  ref: string;
+
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty()
+  title: string;
+
+  @ApiProperty({ type: [String] })
+  tags: string[];
+
+  @ApiProperty({ description: 'How many pages the doc holds' })
+  pageCount: number;
+
+  @ApiProperty()
+  updatedAt: Date;
+}
+
+/**
+ * One page in a doc's table of contents — **no body**. `parentId` preserves the
+ * nesting and `order` the sequence, so the tree reads back correctly; the body
+ * is fetched one page at a time with get_doc_page.
+ */
+export class McpDocPageBriefDto {
+  @ApiProperty({ description: 'Page id — pass it to get_doc_page or update_doc `page`' })
+  id: string;
+
+  @ApiProperty()
+  title: string;
+
+  @ApiProperty({ description: "Parent page id ('' when top-level)" })
+  parentId: string;
+
+  @ApiProperty({ description: 'Sequence among its siblings' })
+  order: number;
+}
+
+/**
+ * A doc and its page list. Carries no page bodies on purpose — a weekly report
+ * with several long HTML tables would otherwise arrive in full on every lookup.
+ * Read the one page you are about to rewrite with get_doc_page.
+ */
+export class McpDocDetailResponseDto {
+  @ApiProperty({ description: 'Human reference, e.g. DOC-3' })
+  ref: string;
+
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty()
+  title: string;
+
+  @ApiProperty({ type: [String] })
+  tags: string[];
+
+  @ApiProperty({ type: [McpDocPageBriefDto], description: 'The page tree, without bodies' })
+  pages: McpDocPageBriefDto[];
+
+  @ApiProperty()
+  updatedAt: Date;
+}
+
+/** One page's body, exactly as stored — the text update_doc would replace. */
+export class McpDocPageResponseDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty()
+  title: string;
+
+  @ApiProperty({ description: "The page's HTML body" })
+  content: string;
+
+  @ApiProperty()
+  updatedAt: Date;
+}
+
 /** What update_doc hands back — the doc's current state plus a note of what the
  *  call changed, so the assistant can confirm each part it asked for. */
 export class McpUpdatedDocResponseDto {

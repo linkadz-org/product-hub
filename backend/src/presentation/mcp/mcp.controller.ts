@@ -42,6 +42,9 @@ import {
   McpContextResponseDto,
   McpDeletedCommentResponseDto,
   McpDeletedIssueResponseDto,
+  McpDocBriefDto,
+  McpDocDetailResponseDto,
+  McpDocPageResponseDto,
   McpDocResponseDto,
   McpIssueDetailResponseDto,
   McpIssueLinkDto,
@@ -66,12 +69,15 @@ import {
   McpDeleteIssueUseCase,
   McpGetBugStatsUseCase,
   McpGetCycleBurndownUseCase,
+  McpGetDocPageUseCase,
+  McpGetDocUseCase,
   McpGetIssueUseCase,
   McpGetTeamVelocityUseCase,
   McpLinkIssuesUseCase,
   McpListBacklogItemsUseCase,
   McpListCommentsUseCase,
   McpListCyclesUseCase,
+  McpListDocsUseCase,
   McpListLinksUseCase,
   McpSearchIssuesUseCase,
   McpSetStatusUseCase,
@@ -129,6 +135,9 @@ export class McpController {
     private readonly createBacklogItem: McpCreateBacklogItemUseCase,
     private readonly createDoc: McpCreateDocUseCase,
     private readonly updateDoc: McpUpdateDocUseCase,
+    private readonly listDocs: McpListDocsUseCase,
+    private readonly getDoc: McpGetDocUseCase,
+    private readonly getDocPage: McpGetDocPageUseCase,
     private readonly searchIssues: McpSearchIssuesUseCase,
     private readonly listBacklogItems: McpListBacklogItemsUseCase,
     private readonly linkIssues: McpLinkIssuesUseCase,
@@ -229,6 +238,40 @@ export class McpController {
     // via `@Transform` before `@IsArray()` runs, so `query.groupBy` is already an
     // array (or undefined) here — no further normalization needed.
     const result = await this.bugStats.execute({ actor: actorOf(req), dto: query });
+    if (result.isFailure) throw new ValidationException(result.error as string);
+    return result.getValue();
+  }
+
+  // The three doc reads below are deliberately ungated: like GET /issues, a
+  // read-only key must be able to call them. Reading before writing is the point
+  // — gating them would leave the same blind overwrite the writes had.
+  @Get('docs')
+  @ApiOperation({ summary: 'List docs — ref, title, tags, page count (API key)' })
+  async docs(@Req() req: McpRequest): Promise<McpDocBriefDto[]> {
+    const result = await this.listDocs.execute({ actor: actorOf(req) });
+    if (result.isFailure) throw new ValidationException(result.error as string);
+    return result.getValue();
+  }
+
+  @Get('docs/:doc')
+  @ApiOperation({ summary: 'Read a doc’s metadata and page list — no bodies (API key)' })
+  async docDetail(
+    @Req() req: McpRequest,
+    @Param('doc') doc: string,
+  ): Promise<McpDocDetailResponseDto> {
+    const result = await this.getDoc.execute({ actor: actorOf(req), dto: { doc } });
+    if (result.isFailure) throw new ValidationException(result.error as string);
+    return result.getValue();
+  }
+
+  @Get('docs/:doc/pages/:page')
+  @ApiOperation({ summary: 'Read one doc page’s body — call before editing it (API key)' })
+  async docPage(
+    @Req() req: McpRequest,
+    @Param('doc') doc: string,
+    @Param('page') page: string,
+  ): Promise<McpDocPageResponseDto> {
+    const result = await this.getDocPage.execute({ actor: actorOf(req), dto: { doc, page } });
     if (result.isFailure) throw new ValidationException(result.error as string);
     return result.getValue();
   }

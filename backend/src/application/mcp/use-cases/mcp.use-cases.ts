@@ -31,16 +31,20 @@ import { UserEntity } from '@application/users/domain/entities/user.entity';
 import { QueryUserDto } from '@application/users/dtos/query-user.dto';
 import {
   CreateDocUseCase,
+  GetDocsUseCase,
   GetDocUseCase,
   UpdateDocUseCase,
 } from '@application/docs/use-cases/doc.use-cases';
 import {
   CreateDocPageUseCase,
+  GetDocPageUseCase,
   UpdateDocPageUseCase,
 } from '@application/docs/use-cases/doc-page.use-cases';
+import { SaveDocPageVersionUseCase } from '@application/docs/use-cases/doc-page-version.use-cases';
 import {
   CreateDocDto,
   CreateDocPageDto,
+  SaveDocPageVersionDto,
   UpdateDocDto,
   UpdateDocPageDto,
 } from '@application/docs/dtos/doc.dtos';
@@ -85,6 +89,8 @@ import {
   McpCreateIssueDto,
   McpDeleteCommentDto,
   McpDeleteIssueDto,
+  McpGetDocDto,
+  McpGetDocPageDto,
   McpGetIssueDto,
   McpLinkIssuesDto,
   McpListBacklogItemsDto,
@@ -105,6 +111,9 @@ import {
   McpContextResponseDto,
   McpDeletedCommentResponseDto,
   McpDeletedIssueResponseDto,
+  McpDocBriefDto,
+  McpDocDetailResponseDto,
+  McpDocPageResponseDto,
   McpDocResponseDto,
   McpIssueDetailResponseDto,
   McpIssueLinkDto,
@@ -1160,6 +1169,129 @@ export class McpCreateDocUseCase
   }
 }
 
+/**
+ * The label on the version `update_doc` takes before it overwrites a page. It
+ * names the tool so the history list distinguishes it at a glance from a
+ * person's own "Save version" click.
+ */
+const MCP_VERSION_LABEL = 'Before update_doc (MCP)';
+
+/**
+ * Every doc in the workspace, as a one-line row each. This is the only way an
+ * assistant finds a doc it wasn't handed the ref for — `list_workspace` doesn't
+ * mention docs at all. No page bodies: this answers "which doc", not "what does
+ * it say".
+ */
+@Injectable()
+export class McpListDocsUseCase
+  implements IUsecaseExecute<{ actor: McpActor }, Result<McpDocBriefDto[]>>
+{
+  constructor(private readonly getDocs: GetDocsUseCase) {}
+
+  async execute({ actor }: { actor: McpActor }): Promise<Result<McpDocBriefDto[]>> {
+    const found = await this.getDocs.execute({ tenantId: actor.tenantId });
+    if (found.isFailure) return Result.fail(found.error as string);
+    return Result.ok(
+      found.getValue().map(({ doc, pageCount }) => ({
+        ref: doc.ref,
+        id: doc.id.toString(),
+        title: doc.title,
+        tags: doc.tags,
+        pageCount,
+        updatedAt: doc.updatedAt,
+        // `doc.publicToken` is *not* mapped — see McpDocBriefDto.
+      })),
+    );
+  }
+}
+
+/**
+ * One doc's metadata and its table of contents. Deliberately carries no page
+ * bodies — `get_doc_page` fetches the single page about to be rewritten, so a
+ * doc full of long tables doesn't arrive in full on every lookup.
+ */
+@Injectable()
+export class McpGetDocUseCase
+  implements
+    IUsecaseExecute<{ actor: McpActor; dto: McpGetDocDto }, Result<McpDocDetailResponseDto>>
+{
+  constructor(private readonly getDoc: GetDocUseCase) {}
+
+  async execute({
+    actor,
+    dto,
+  }: {
+    actor: McpActor;
+    dto: McpGetDocDto;
+  }): Promise<Result<McpDocDetailResponseDto>> {
+    // `dto.doc` is a DOC-… ref or a uuid; GetDocUseCase resolves both and
+    // enforces the tenant.
+    const found = await this.getDoc.execute({ id: dto.doc ?? '', tenantId: actor.tenantId });
+    if (found.isFailure) return Result.fail(found.error as string);
+    const { doc, pages } = found.getValue();
+    return Result.ok({
+      ref: doc.ref,
+      id: doc.id.toString(),
+      title: doc.title,
+      tags: doc.tags,
+      pages: pages.map((p) => ({
+        id: p.id.toString(),
+        title: p.title,
+        parentId: p.parentId,
+        order: p.order,
+        // No `content` here, ever: the whole reason get_doc and get_doc_page are
+        // two tools is that this one stays cheap.
+      })),
+      updatedAt: doc.updatedAt,
+    });
+  }
+}
+
+/**
+ * One page's body, exactly as stored. Call it immediately before `update_doc` —
+ * that tool replaces the whole body, so this is the current state to edit from.
+ */
+@Injectable()
+export class McpGetDocPageUseCase
+  implements
+    IUsecaseExecute<{ actor: McpActor; dto: McpGetDocPageDto }, Result<McpDocPageResponseDto>>
+{
+  constructor(
+    private readonly getDoc: GetDocUseCase,
+    private readonly getPage: GetDocPageUseCase,
+  ) {}
+
+  async execute({
+    actor,
+    dto,
+  }: {
+    actor: McpActor;
+    dto: McpGetDocPageDto;
+  }): Promise<Result<McpDocPageResponseDto>> {
+    // The ref resolves first because GetDocPageUseCase keys on the doc's uuid.
+    const found = await this.getDoc.execute({ id: dto.doc ?? '', tenantId: actor.tenantId });
+    if (found.isFailure) return Result.fail(found.error as string);
+    const docId = found.getValue().doc.id.toString();
+
+    // GetDocPageUseCase is the authority on "this page belongs to this doc, in
+    // this tenant" — a page id from another doc or another workspace is refused
+    // there rather than re-checked here.
+    const page = await this.getPage.execute({
+      docId,
+      pageId: dto.page ?? '',
+      tenantId: actor.tenantId,
+    });
+    if (page.isFailure) return Result.fail(page.error as string);
+    const p = page.getValue();
+    return Result.ok({
+      id: p.id.toString(),
+      title: p.title,
+      content: p.content,
+      updatedAt: p.updatedAt,
+    });
+  }
+}
+
 @Injectable()
 export class McpUpdateDocUseCase
   implements
@@ -1170,6 +1302,7 @@ export class McpUpdateDocUseCase
     private readonly updateDoc: UpdateDocUseCase,
     private readonly updatePage: UpdateDocPageUseCase,
     private readonly createPage: CreateDocPageUseCase,
+    private readonly saveVersion: SaveDocPageVersionUseCase,
     @Inject(IUserRepository) private readonly users: IUserRepository,
     @Inject(IMcpEventRepository) private readonly events: IMcpEventRepository,
   ) {}
@@ -1225,6 +1358,29 @@ export class McpUpdateDocUseCase
         return this.partial(changed, `Page "${dto.page}" not found in this doc`);
       }
       const pageId = target.id.toString();
+
+      // Freeze the page as it stands BEFORE the body is replaced — the snapshot
+      // has to capture the pre-overwrite text, which is what SaveDocPageVersion
+      // reads off the live page. A write here is one shot with no undo, so the
+      // version list is the only way back.
+      //
+      // A failed snapshot aborts the write. Proceeding would silently drop the
+      // recoverability guarantee at the exact moment it was needed.
+      const snapshot = await this.saveVersion.execute({
+        docId,
+        pageId,
+        tenantId: actor.tenantId,
+        author,
+        dto: { label: MCP_VERSION_LABEL } as SaveDocPageVersionDto,
+      });
+      if (snapshot.isFailure) {
+        return this.partial(
+          changed,
+          `Could not save a version of the page before overwriting it, so the edit was not ` +
+            `applied: ${snapshot.error as string}`,
+        );
+      }
+
       const content = stripEchoedTitle(docBodyToHtml(dto.content), target.title);
       const written = await this.updatePage.execute({
         docId,
