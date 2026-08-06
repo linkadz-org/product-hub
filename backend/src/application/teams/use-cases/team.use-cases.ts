@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { v4 as uuid } from 'uuid';
 import { IUsecaseExecute } from '@core/interfaces';
 import { Result } from '@shared/logic/result';
+import { CounterService } from '@module-shared/services/counter.service';
 import { uniqueSlug } from '@module-shared/utils/slug.util';
 import {
   CreateTeamDto,
@@ -104,12 +105,44 @@ export const TEAM_DEFAULT_LOCKED = 'The default teams cannot be archived';
 /** Sentinel so the controller can tell a missing team from a rejected write. */
 export const TEAM_NOT_FOUND = 'Team not found';
 
+/** Sentinel so the controller can map an after-the-fact prefix change to 400. */
+export const TEAM_PREFIX_FROZEN =
+  'This team has already issued tickets, so its prefix can no longer be changed';
+
+/** Sentinel so the controller can map a duplicate prefix to 400. */
+export const TEAM_PREFIX_TAKEN = 'Another team already uses that prefix';
+
+/**
+ * Answers "can this team's prefix still be edited?" for the response DTO.
+ *
+ * It lives here rather than in `TeamMapper` because the answer is not on the
+ * entity: it is the tenant's counter for that prefix, which only an async
+ * use-case can read. `many` issues the lookups as a single `Promise.all` so the
+ * team list stays one round-trip per team rather than a serial chain.
+ */
+@Injectable()
+export class ResolveTeamPrefixLockUseCase {
+  constructor(private readonly counters: CounterService) {}
+
+  async one(tenantId: string, team: TeamEntity): Promise<boolean> {
+    if (!team.refPrefix) return false;
+    return (await this.counters.current(tenantId, team.refPrefix)) > 0;
+  }
+
+  async many(tenantId: string, teams: TeamEntity[]): Promise<boolean[]> {
+    return Promise.all(teams.map((t) => this.one(tenantId, t)));
+  }
+}
+
 @Injectable()
 export class UpdateTeamUseCase
   implements
     IUsecaseExecute<{ tenantId: string; id: string; dto: UpdateTeamDto }, Result<TeamEntity>>
 {
-  constructor(@Inject(ITeamRepository) private readonly teams: ITeamRepository) {}
+  constructor(
+    @Inject(ITeamRepository) private readonly teams: ITeamRepository,
+    private readonly counters: CounterService,
+  ) {}
 
   async execute({
     tenantId,
@@ -136,6 +169,26 @@ export class UpdateTeamUseCase
     if (dto.archived !== undefined) {
       const archived = team.setArchived(dto.archived);
       if (archived.isFailure) return Result.fail(archived.error as string);
+    }
+    if (dto.refPrefix !== undefined) {
+      const wanted = dto.refPrefix.trim().toUpperCase();
+      // Re-submitting the current prefix is a no-op, not a change. The settings
+      // form PATCHes every field it renders, so a frozen team would otherwise be
+      // unable to save a rename.
+      if (wanted !== team.refPrefix) {
+        // Frozen on the *counter*, not on issue count: deleting every issue in a
+        // team must not free the numbers already printed in commits and comments.
+        if (team.refPrefix && (await this.counters.current(tenantId, team.refPrefix)) > 0) {
+          return Result.fail(TEAM_PREFIX_FROZEN);
+        }
+        const others = (await this.teams.findByTenant(tenantId)).filter(
+          (t) => t.id.toString() !== id,
+        );
+        if (others.some((t) => t.refPrefix === wanted)) return Result.fail(TEAM_PREFIX_TAKEN);
+
+        const set = team.setRefPrefix(wanted);
+        if (set.isFailure) return Result.fail(set.error as string);
+      }
     }
 
     await this.teams.save(team);
