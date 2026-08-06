@@ -665,6 +665,14 @@ export const en = {
   'issues.cappedHint': 'shown — narrow it with search or filters.',
   'issues.kindTasks': 'Tasks',
   'issues.kindBugs': 'Bugs',
+  // Sort control (list view) — field on top, direction below. `sort.title` also
+  // composes into the trigger (`Sort: ID`), so it carries no trailing colon.
+  'sort.title': 'Sort',
+  'sort.fieldId': 'ID',
+  'sort.fieldCreated': 'Created',
+  'sort.fieldUpdated': 'Updated',
+  'sort.ascending': 'Ascending',
+  'sort.descending': 'Descending',
   // Bulk actions — the List-view multi-select toolbar. Count words compose with a
   // number in code (`3 selected`, `2 updated`), so they carry no placeholder.
   'bulk.selected': 'selected',

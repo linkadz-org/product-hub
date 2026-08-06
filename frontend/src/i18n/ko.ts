@@ -662,6 +662,14 @@ export const ko: Record<I18nKey, string> = {
   'issues.cappedHint': '표시됨 — 검색이나 필터로 범위를 좁히세요.',
   'issues.kindTasks': '태스크',
   'issues.kindBugs': '버그',
+  // Sort control (list view) — field on top, direction below. `sort.title` also
+  // composes into the trigger (`정렬: ID`), so it carries no trailing colon.
+  'sort.title': '정렬',
+  'sort.fieldId': 'ID',
+  'sort.fieldCreated': '생성일',
+  'sort.fieldUpdated': '수정일',
+  'sort.ascending': '오름차순',
+  'sort.descending': '내림차순',
   // Bulk actions — the List-view multi-select toolbar. Count words compose with a
   // number in code (`3 selected`, `2 updated`), so they carry no placeholder.
   'bulk.selected': '개 선택됨',

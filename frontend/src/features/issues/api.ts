@@ -38,6 +38,11 @@ export interface IssueQuery {
   reportId?: string;
   /** Free-text search over title / description / id / shortId. */
   search?: string;
+  /** Sort field. Omit to keep the board ordering (drag position, then newest first) —
+   *  the kanban view must always omit it. */
+  sort?: 'id' | 'created' | 'updated';
+  /** Sort direction; defaults to `desc` server-side. */
+  dir?: 'asc' | 'desc';
 }
 
 /**
