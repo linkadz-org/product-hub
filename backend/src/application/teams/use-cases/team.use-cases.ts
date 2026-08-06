@@ -113,18 +113,26 @@ export const TEAM_PREFIX_FROZEN =
 export const TEAM_PREFIX_TAKEN = 'Another team already uses that prefix';
 
 /**
- * Answers "can this team's prefix still be edited?" for the response DTO.
+ * The single definition of "is this team's prefix locked?".
  *
  * It lives here rather than in `TeamMapper` because the answer is not on the
  * entity: it is the tenant's counter for that prefix, which only an async
  * use-case can read. `many` issues the lookups as a single `Promise.all` so the
  * team list stays one round-trip per team rather than a serial chain.
+ *
+ * `UpdateTeamUseCase` enforces the freeze through this same method rather than
+ * reading the counter itself. That is deliberate: the flag the UI disables its
+ * input from and the check the API rejects a write with must be one expression,
+ * or they drift and the UI starts offering edits the API refuses.
  */
 @Injectable()
 export class ResolveTeamPrefixLockUseCase {
   constructor(private readonly counters: CounterService) {}
 
   async one(tenantId: string, team: TeamEntity): Promise<boolean> {
+    // A team with no prefix has never minted anything, so there is nothing to
+    // freeze — and asking the counter would query the meaningless key
+    // `"<tenantId>:"`. Short-circuit before touching the store.
     if (!team.refPrefix) return false;
     return (await this.counters.current(tenantId, team.refPrefix)) > 0;
   }
@@ -141,7 +149,7 @@ export class UpdateTeamUseCase
 {
   constructor(
     @Inject(ITeamRepository) private readonly teams: ITeamRepository,
-    private readonly counters: CounterService,
+    private readonly prefixLock: ResolveTeamPrefixLockUseCase,
   ) {}
 
   async execute({
@@ -178,7 +186,10 @@ export class UpdateTeamUseCase
       if (wanted !== team.refPrefix) {
         // Frozen on the *counter*, not on issue count: deleting every issue in a
         // team must not free the numbers already printed in commits and comments.
-        if (team.refPrefix && (await this.counters.current(tenantId, team.refPrefix)) > 0) {
+        // Asked through the same `one()` the response DTO's `refPrefixLocked` is
+        // built from, so the input the UI disables and the write the API refuses
+        // can never disagree. (`one` already returns false for an empty prefix.)
+        if (await this.prefixLock.one(tenantId, team)) {
           return Result.fail(TEAM_PREFIX_FROZEN);
         }
         const others = (await this.teams.findByTenant(tenantId)).filter(

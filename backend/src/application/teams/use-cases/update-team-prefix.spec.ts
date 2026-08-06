@@ -22,6 +22,13 @@ function team(refPrefix: string, id = 'team-1'): TeamEntity {
   ).getValue();
 }
 
+/**
+ * `seq` is the tenant's counter for the subject's prefix — the stub mirrors
+ * `ResolveTeamPrefixLockUseCase.one`, which is what `UpdateTeamUseCase` now asks
+ * instead of reading `CounterService` itself. Stubbing the lock rather than the
+ * counter is the point of that refactor: there is one definition of "locked", so
+ * there is one thing to stub.
+ */
 function deps(subject: TeamEntity, others: TeamEntity[] = [], seq = 0) {
   const saved: TeamEntity[] = [];
   return {
@@ -33,7 +40,7 @@ function deps(subject: TeamEntity, others: TeamEntity[] = [], seq = 0) {
         saved.push(t);
       },
     },
-    counters: { current: async () => seq },
+    prefixLock: { one: async (_tenantId: string, t: TeamEntity) => !!t.refPrefix && seq > 0 },
   };
 }
 
@@ -41,7 +48,7 @@ describe('UpdateTeamUseCase refPrefix', () => {
   it('changes the prefix while the sequence is untouched', async () => {
     const subject = team('ENG');
     const d = deps(subject, [], 0);
-    const result = await new UpdateTeamUseCase(d.teams as never, d.counters as never).execute({
+    const result = await new UpdateTeamUseCase(d.teams as never, d.prefixLock as never).execute({
       tenantId: 't1',
       id: 'team-1',
       dto: { refPrefix: 'plt' } as never,
@@ -54,7 +61,7 @@ describe('UpdateTeamUseCase refPrefix', () => {
   it('refuses once the sequence has minted a ref', async () => {
     const subject = team('ENG');
     const d = deps(subject, [], 7);
-    const result = await new UpdateTeamUseCase(d.teams as never, d.counters as never).execute({
+    const result = await new UpdateTeamUseCase(d.teams as never, d.prefixLock as never).execute({
       tenantId: 't1',
       id: 'team-1',
       dto: { refPrefix: 'PLT' } as never,
@@ -68,7 +75,7 @@ describe('UpdateTeamUseCase refPrefix', () => {
   it('refuses a prefix another team already holds', async () => {
     const subject = team('ENG');
     const d = deps(subject, [team('WEB', 'team-2')], 0);
-    const result = await new UpdateTeamUseCase(d.teams as never, d.counters as never).execute({
+    const result = await new UpdateTeamUseCase(d.teams as never, d.prefixLock as never).execute({
       tenantId: 't1',
       id: 'team-1',
       dto: { refPrefix: 'WEB' } as never,
@@ -81,7 +88,7 @@ describe('UpdateTeamUseCase refPrefix', () => {
   it('accepts re-submitting the prefix the team already has', async () => {
     const subject = team('ENG');
     const d = deps(subject, [], 4);
-    const result = await new UpdateTeamUseCase(d.teams as never, d.counters as never).execute({
+    const result = await new UpdateTeamUseCase(d.teams as never, d.prefixLock as never).execute({
       tenantId: 't1',
       id: 'team-1',
       dto: { refPrefix: 'ENG' } as never,
@@ -94,7 +101,7 @@ describe('UpdateTeamUseCase refPrefix', () => {
   it('leaves the prefix alone when the dto omits it', async () => {
     const subject = team('ENG');
     const d = deps(subject, [], 9);
-    const result = await new UpdateTeamUseCase(d.teams as never, d.counters as never).execute({
+    const result = await new UpdateTeamUseCase(d.teams as never, d.prefixLock as never).execute({
       tenantId: 't1',
       id: 'team-1',
       dto: { name: 'Platform' } as never,
