@@ -15,6 +15,7 @@ import {
 import { RowsSkeleton } from '@/components/Skeletons';
 import { t } from '@/i18n';
 import { cn } from '@/lib/utils';
+import type { TeamDto } from '@/types/dto';
 import {
   TEAM_COLORS,
   TEAM_ISSUE_TYPES,
@@ -34,7 +35,6 @@ import { useCreateTeam, useTeams, useUpdateTeam } from '@/features/teams/api';
 export function TeamsSection() {
   const { data: teams, isLoading } = useTeams();
   const create = useCreateTeam();
-  const update = useUpdateTeam();
 
   const [name, setName] = useState('');
   const [issueType, setIssueType] = useState<TeamIssueType>(TeamIssueType.TASK);
@@ -141,61 +141,149 @@ export function TeamsSection() {
         ) : (
           <div className="divide-y rounded-xl border">
             {(teams ?? []).map((team) => (
-              <div
-                key={team.id}
-                className="flex flex-wrap items-center gap-3 p-3 sm:gap-4 sm:px-4"
-              >
-                <TeamIconPicker
-                  team={team}
-                  className={cn('size-9 border border-input', team.archived && 'opacity-60')}
-                />
-                <Input
-                  className={cn('min-w-0 flex-1 sm:max-w-xs', team.archived && 'opacity-60')}
-                  defaultValue={team.name}
-                  aria-label={t('teams.name')}
-                  onBlur={(e) => {
-                    const next = e.target.value.trim();
-                    if (next && next !== team.name) update.mutate({ id: team.id, input: { name: next } });
-                  }}
-                />
-                <Badge variant="muted" className="shrink-0">
-                  {TEAM_ISSUE_TYPE_LABEL[team.issueType]}
-                </Badge>
-                <span className="font-mono text-xs text-muted-foreground">{team.key}</span>
-                {team.archived && (
-                  <Badge variant="secondary" className="shrink-0">
-                    {t('teams.archived')}
-                  </Badge>
-                )}
-                <div className="ml-auto">
-                  {team.isDefault ? (
-                    // The seeded teams own the bug/task lists — archiving one
-                    // would strand them, so the backend refuses it too.
-                    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                      {t('settings.builtIn')}
-                    </span>
-                  ) : (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        if (team.archived) {
-                          update.mutate({ id: team.id, input: { archived: false } });
-                        } else if (confirm(t('teams.confirmArchive'))) {
-                          update.mutate({ id: team.id, input: { archived: true } });
-                        }
-                      }}
-                    >
-                      {team.archived ? t('teams.unarchive') : t('teams.archive')}
-                    </Button>
-                  )}
-                </div>
-              </div>
+              <TeamRow key={team.id} team={team} />
             ))}
           </div>
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/** What the server accepts (and what `deriveRefPrefix` mints): 2–6 characters,
+ *  A–Z / 0–9, first character a letter. Checked here so the common typo answers
+ *  in the user's own language instead of round-tripping to an English 400. */
+const REF_PREFIX_RE = /^[A-Z][A-Z0-9]{1,5}$/;
+
+/**
+ * One team's row: symbol, name, ticket prefix, then its archive control.
+ *
+ * Its own `useUpdateTeam()` — not one shared by the list — so a rejected prefix
+ * reports under the team that was edited rather than every row at once.
+ */
+function TeamRow({ team }: { team: TeamDto }) {
+  const update = useUpdateTeam();
+  const [prefix, setPrefix] = useState(team.refPrefix);
+  // The row outlives a refetch (keyed by team.id), so the field is re-seeded when
+  // the server's value actually moves — after a save, or another admin's edit.
+  const [seen, setSeen] = useState(team.refPrefix);
+  const [error, setError] = useState<string | null>(null);
+  if (seen !== team.refPrefix) {
+    setSeen(team.refPrefix);
+    setPrefix(team.refPrefix);
+    setError(null);
+  }
+
+  function savePrefix() {
+    if (team.refPrefixLocked) return;
+    const next = prefix.trim();
+    // Blurring an untouched field must not PATCH — and an emptied one reverts
+    // rather than clearing, since a team with no prefix can't number a ticket.
+    if (next === team.refPrefix) return setError(null);
+    if (!next) {
+      setPrefix(team.refPrefix);
+      return setError(null);
+    }
+    if (!REF_PREFIX_RE.test(next)) return setError(t('teams.prefixInvalid'));
+    setError(null);
+    update.mutate(
+      { id: team.id, input: { refPrefix: next } },
+      // Taken / reserved / frozen all arrive as a 400 whose message is written
+      // for a human — show it rather than guessing which rule was broken.
+      { onError: (e) => setError(e instanceof Error ? e.message : t('teams.prefixInvalid')) },
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 p-3 sm:gap-4 sm:px-4">
+      <TeamIconPicker
+        team={team}
+        className={cn('size-9 border border-input', team.archived && 'opacity-60')}
+      />
+      <Input
+        className={cn('min-w-0 flex-1 basis-40 sm:max-w-xs', team.archived && 'opacity-60')}
+        defaultValue={team.name}
+        aria-label={t('teams.name')}
+        onBlur={(e) => {
+          const next = e.target.value.trim();
+          if (next && next !== team.name) update.mutate({ id: team.id, input: { name: next } });
+        }}
+      />
+      <Input
+        className={cn(
+          'w-24 shrink-0 font-mono uppercase tracking-wider',
+          team.archived && 'opacity-60',
+          error && 'border-destructive focus-visible:ring-destructive',
+        )}
+        value={prefix}
+        maxLength={6}
+        aria-label={t('teams.prefix')}
+        // Frozen prefixes are refused by the API too; disabling up front means the
+        // row never offers an edit that can't land. `disabled:opacity-50` is the
+        // Input's own locked look — same as every other inert control in settings.
+        disabled={team.refPrefixLocked}
+        title={team.refPrefixLocked ? t('teams.prefixLocked') : undefined}
+        onChange={(e) => setPrefix(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+        onBlur={savePrefix}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur();
+          if (e.key === 'Escape') {
+            setPrefix(team.refPrefix);
+            setError(null);
+          }
+        }}
+      />
+      <Badge variant="muted" className="shrink-0">
+        {TEAM_ISSUE_TYPE_LABEL[team.issueType]}
+      </Badge>
+      <span className="font-mono text-xs text-muted-foreground">{team.key}</span>
+      {team.archived && (
+        <Badge variant="secondary" className="shrink-0">
+          {t('teams.archived')}
+        </Badge>
+      )}
+      <div className="ml-auto">
+        {team.isDefault ? (
+          // The seeded teams own the bug/task lists — archiving one
+          // would strand them, so the backend refuses it too.
+          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+            {t('settings.builtIn')}
+          </span>
+        ) : (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              if (team.archived) {
+                update.mutate({ id: team.id, input: { archived: false } });
+              } else if (confirm(t('teams.confirmArchive'))) {
+                update.mutate({ id: team.id, input: { archived: true } });
+              }
+            }}
+          >
+            {team.archived ? t('teams.unarchive') : t('teams.archive')}
+          </Button>
+        )}
+      </div>
+      {/* Full-width so it reads under the fields on a phone and never disturbs
+          the row's alignment — the prefix is the only field here that explains
+          itself, and at 390px every control has already wrapped above it. */}
+      <p
+        className={cn(
+          '-mt-1 w-full text-xs',
+          error ? 'text-destructive' : 'text-muted-foreground',
+        )}
+      >
+        {error ??
+          (team.refPrefixLocked
+            ? t('teams.prefixLocked')
+            : prefix
+              ? // Previews what is in the field, so the example updates as it is
+                // typed rather than after the blur that saves it.
+                t('teams.prefixHint').split('{prefix}').join(prefix)
+              : t('teams.prefixEmptyHint'))}
+      </p>
+    </div>
   );
 }

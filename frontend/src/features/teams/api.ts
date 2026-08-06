@@ -37,7 +37,15 @@ export function useUpdateTeam() {
       input,
     }: {
       id: string;
-      input: { name?: string; archived?: boolean; icon?: string; color?: string | null };
+      input: {
+        name?: string;
+        archived?: boolean;
+        icon?: string;
+        color?: string | null;
+        /** Ref prefix (`ENG`). The server trims + uppercases, and 400s on a
+         *  reserved/taken prefix or a change to one that is already frozen. */
+        refPrefix?: string;
+      };
     }) =>
       apiPatch<TeamDto>(`/teams/${id}`, input),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['teams'] }),
