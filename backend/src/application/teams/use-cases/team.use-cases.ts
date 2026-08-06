@@ -12,6 +12,7 @@ import {
 } from '../dtos/team.dtos';
 import { TeamEntity } from '../domain/entities/team.entity';
 import { DEFAULT_TEAMS } from '../domain/enums/team.enums';
+import { deriveRefPrefix } from '../domain/team-ref-prefix';
 import { ITeamRepository } from '../repositories/team.repository';
 
 /**
@@ -36,6 +37,7 @@ export class EnsureDefaultTeamsUseCase
         name: def.name,
         issueType: def.issueType,
         order: i,
+        refPrefix: def.refPrefix,
       });
       if (result.isFailure) return Result.fail(result.error as string);
       const team = result.getValue();
@@ -74,6 +76,11 @@ export class CreateTeamUseCase
     const key = await uniqueSlug(dto.name, async (c) => !!(await this.teams.findByKey(tenantId, c)));
 
     const existing = await this.teams.findByTenant(tenantId);
+    // Archived teams are in this list, and that is deliberate: a prefix is never
+    // released, so refs minted under it can never be minted a second time.
+    const takenPrefixes = new Set(
+      existing.map((t) => t.refPrefix).filter((p): p is string => !!p),
+    );
     const result = TeamEntity.create({
       tenantId,
       key,
@@ -82,6 +89,7 @@ export class CreateTeamUseCase
       icon: dto.icon,
       color: dto.color,
       order: existing.length,
+      refPrefix: deriveRefPrefix(dto.name, takenPrefixes),
     });
     if (result.isFailure) return Result.fail(result.error as string);
     const team = result.getValue();
