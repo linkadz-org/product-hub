@@ -1,13 +1,29 @@
 import { useEffect, useState } from 'react';
-import { MoveHorizontal } from 'lucide-react';
+import { MoveHorizontal, Target } from 'lucide-react';
 import { toast } from 'sonner';
 import { t } from '@/i18n';
 import { formatDate } from '@/lib/format';
-import { GanttChart, GANTT_DAY, firstEpoch, isEpoch, toEpoch, type GanttRow } from '@/components/GanttChart';
+import { AssigneeBadge } from '@/components/AssigneeBadge';
+import {
+  GanttChart,
+  GanttChip,
+  GANTT_DAY,
+  firstEpoch,
+  isEpoch,
+  toEpoch,
+  type GanttRow,
+} from '@/components/GanttChart';
+import { LabelChips } from '@/features/labels/LabelChips';
+import { TeamChip, type TeamChipTeam } from '@/features/teams/TeamChip';
 import { useTasks, useUpdateTask } from '@/features/tasks/api';
-import { useTeamStatusesLookup } from '@/features/teams/api';
+import { useTeamLabelsLookup, useTeamLookup, useTeamStatusesLookup } from '@/features/teams/api';
 import { useAuth } from '@/lib/auth';
-import { TeamIssueType } from '@/types/enums';
+import {
+  ROADMAP_ITEM_STATUS_COLOR,
+  ROADMAP_ITEM_STATUS_LABEL,
+  TeamIssueType,
+  type TaskLabelConfig,
+} from '@/types/enums';
 import type { RoadmapColumn, RoadmapItem, TaskDto } from '@/types/dto';
 import { useReplaceRoadmapItems } from '../api';
 import { IssuePeekDrawer, type IssuePeek } from '@/features/issues/IssuePeekDrawer';
@@ -55,6 +71,13 @@ interface RoadmapGanttProps {
   tasksByItem?: Map<string, TaskDto[]>;
   /** Marker colour + label for a linked task; only consulted when `tasksByItem` has rows. */
   taskStatus?: (task: TaskDto) => { color: string; label: string };
+  /** The task's team labels, for its chips. Injected like `taskStatus` so the
+   *  public view renders no label chips instead of firing an authed `/teams`. */
+  taskLabels?: (task: TaskDto) => TaskLabelConfig[];
+  /** The task's owning team, for its chip — a backlog item's tasks routinely span
+   *  Design / Frontend / Backend, and the bar alone doesn't say which. Injected
+   *  for the same reason as `taskLabels`. */
+  taskTeam?: (task: TaskDto) => TeamChipTeam | undefined;
   /** A linked task's detail link; omit → the row isn't a link (public). */
   taskHref?: (task: TaskDto) => string | undefined;
   /** Peek a linked task in place (a drawer) instead of following `taskHref`.
@@ -100,6 +123,8 @@ export function RoadmapGantt({
   onOpenItem,
   tasksByItem,
   taskStatus,
+  taskLabels,
+  taskTeam,
   taskHref,
   onOpenTask,
   onTaskDatesChange,
@@ -131,6 +156,34 @@ export function RoadmapGantt({
           ? t('roadmaps.ganttTasks').replace('{count}', String(tasks.length))
           : t('roadmaps.ganttNoTasks')
       }`,
+      // The card's chips, minus the ones a timeline already answers: no age (the
+      // axis shows it) and no difficulty (a planning axis, not a schedule one).
+      // RICE and the linked OKR stay — they're *why* this item is in "Now".
+      meta: (
+        <>
+          <GanttChip color={ROADMAP_ITEM_STATUS_COLOR[item.status]}>
+            {ROADMAP_ITEM_STATUS_LABEL[item.status]}
+          </GanttChip>
+          <GanttChip title="RICE score">
+            <span className="font-mono">{item.rice}</span>
+          </GanttChip>
+          {item.okrLabel && (
+            <GanttChip
+              title={item.okrLabel}
+              icon={<Target className="size-3 shrink-0 text-primary" aria-hidden />}
+            >
+              {item.okrLabel}
+            </GanttChip>
+          )}
+          {item.assignees.length > 0 && (
+            <AssigneeBadge
+              assignees={item.assignees}
+              unassignedLabel={t('tasks.unassigned')}
+              className="max-w-[160px] py-0 text-[11px] font-medium"
+            />
+          )}
+        </>
+      ),
       onClick: () => onOpenItem(item.id),
       bar: { start, end, color: barColor, progress: item.progress },
     };
@@ -151,6 +204,28 @@ export function RoadmapGantt({
         depth: 1,
         dotColor: st.color,
         label: tk.title,
+        // Same chips a task carries on the issue timeline, so a linked task reads
+        // the same wherever it's charted.
+        meta: (
+          <>
+            {tk.shortId && (
+              <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{tk.shortId}</span>
+            )}
+            {/* Always named here, even when today's tasks happen to share a team:
+                a roadmap isn't a team's board, so "which space is doing this" is
+                never implied by the page around it. */}
+            <TeamChip team={taskTeam?.(tk)} />
+            <GanttChip color={st.color}>{st.label}</GanttChip>
+            <LabelChips keys={tk.labelKeys} labels={taskLabels?.(tk)} max={2} />
+            {tk.assignees.length > 0 && (
+              <AssigneeBadge
+                assignees={tk.assignees}
+                unassignedLabel={t('tasks.unassigned')}
+                className="max-w-[160px] py-0 text-[11px] font-medium"
+              />
+            )}
+          </>
+        ),
         // A peek drawer when one is offered (it carries its own full-page link),
         // else a plain link to the detail — the public view's only option.
         ...(onOpenTask ? { onClick: () => onOpenTask(tk) } : { href: taskHref?.(tk) }),
@@ -246,6 +321,8 @@ interface RoadmapGanttViewProps {
 export function RoadmapGanttView({ roadmapId, items, columns }: RoadmapGanttViewProps) {
   const { canWrite } = useAuth();
   const statusesFor = useTeamStatusesLookup();
+  const labelsFor = useTeamLabelsLookup();
+  const teamFor = useTeamLookup();
   // One query for the whole roadmap; grouped under each item below.
   const { data, isLoading } = useTasks({ roadmapId: [roadmapId] });
   const update = useUpdateTask();
@@ -331,6 +408,8 @@ export function RoadmapGanttView({ roadmapId, items, columns }: RoadmapGanttView
           const cfg = statusesFor(tk.teamId, TeamIssueType.TASK).find((c) => c.key === tk.status);
           return { color: cfg?.color ?? 'hsl(var(--muted-foreground))', label: cfg?.label ?? tk.status };
         }}
+        taskLabels={(tk) => labelsFor(tk.teamId)}
+        taskTeam={(tk) => teamFor(tk.teamId)}
         onOpenTask={(tk) =>
           setTaskPeek({
             id: tk.id,
