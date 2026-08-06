@@ -185,8 +185,19 @@ export class IssueRepository
 
   async findByRef(tenantId: string, ref: string): Promise<IssueEntity | null> {
     // shortId first (the URL-facing id), then uuid for pre-shortId links.
+    //
+    // The shortId lookup is upper-cased because refs are minted and stored upper
+    // case but are now typed by hand: `ENG-14` is short enough to retype from a
+    // chat message or a whiteboard, unlike the random `BUG-ESP4F4T` refs that
+    // came before it. The commit-message parser already accepts any casing, so
+    // resolving `eng-14` in a URL keeps the two entry points consistent — without
+    // it, the same ref links from a commit but 404s in the address bar. The uuid
+    // fallback stays exact: uuids are lower case and never retyped.
     const doc =
-      (await this.model.findOne({ tenantId, shortId: ref }).lean<IssueDoc>().exec()) ??
+      (await this.model
+        .findOne({ tenantId, shortId: ref.toUpperCase() })
+        .lean<IssueDoc>()
+        .exec()) ??
       (await this.model.findOne({ tenantId, _id: ref }).lean<IssueDoc>().exec());
     return doc ? this.toDomain(doc) : null;
   }
