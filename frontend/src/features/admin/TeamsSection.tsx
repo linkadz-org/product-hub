@@ -13,7 +13,8 @@ import {
   Select,
 } from '@/components/ui';
 import { RowsSkeleton } from '@/components/Skeletons';
-import { t } from '@/i18n';
+import { t, type I18nKey } from '@/i18n';
+import { ApiError } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import type { TeamDto } from '@/types/dto';
 import {
@@ -156,6 +157,31 @@ export function TeamsSection() {
 const REF_PREFIX_RE = /^[A-Z][A-Z0-9]{1,5}$/;
 
 /**
+ * The server's rejection codes → what to say about them here.
+ *
+ * The API sends a `code` beside its `message` precisely so this side owns the
+ * wording: the message is English, and a Korean admin editing a prefix should be
+ * told "이미 사용 중인 접두사입니다", not handed the server's log line. Any code
+ * not listed — an older frontend against a newer API, or a rule added later —
+ * falls through to the message, which is always true even when it isn't
+ * translated.
+ */
+const PREFIX_ERROR_KEYS: Record<string, I18nKey> = {
+  TEAM_PREFIX_FROZEN: 'teams.prefixFrozen',
+  TEAM_PREFIX_TAKEN: 'teams.prefixTaken',
+  REF_PREFIX_INVALID: 'teams.prefixInvalid',
+  REF_PREFIX_RESERVED: 'teams.prefixReserved',
+};
+
+/** What to show for a failed prefix save: our own wording when we recognise the
+ *  code, the server's message otherwise, and a generic line if there is neither. */
+function prefixErrorText(e: unknown): string {
+  const key = e instanceof ApiError && e.code ? PREFIX_ERROR_KEYS[e.code] : undefined;
+  if (key) return t(key);
+  return e instanceof Error && e.message ? e.message : t('teams.prefixInvalid');
+}
+
+/**
  * One team's row: symbol, name, ticket prefix, then its archive control.
  *
  * Its own `useUpdateTeam()` — not one shared by the list — so a rejected prefix
@@ -188,9 +214,9 @@ function TeamRow({ team }: { team: TeamDto }) {
     setError(null);
     update.mutate(
       { id: team.id, input: { refPrefix: next } },
-      // Taken / reserved / frozen all arrive as a 400 whose message is written
-      // for a human — show it rather than guessing which rule was broken.
-      { onError: (e) => setError(e instanceof Error ? e.message : t('teams.prefixInvalid')) },
+      // Taken / reserved / frozen all arrive as a 400 carrying a `code`, so each
+      // one is said in the reader's language rather than the server's.
+      { onError: (e) => setError(prefixErrorText(e)) },
     );
   }
 

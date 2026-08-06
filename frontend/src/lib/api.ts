@@ -32,10 +32,24 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Normalize errors to a plain Error carrying the API's message.
+/**
+ * The API's message, plus the stable `code` it sends with a rejection a UI has to
+ * word itself (e.g. a taken ticket prefix). Still an `Error` with the message on
+ * it, so every existing `e.message` call site is untouched — `code` is there for
+ * the handful of places that would rather show a translated string, and those
+ * fall back to `message` for any code they don't know.
+ */
+export class ApiError extends Error {
+  constructor(message: string, readonly code?: string) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+// Normalize errors to an ApiError carrying the API's message (and code).
 api.interceptors.response.use(
   (res) => res,
-  async (error: AxiosError<{ message?: string | string[] }>) => {
+  async (error: AxiosError<{ message?: string | string[]; code?: string }>) => {
     if (error.response?.status === 401 && getToken()) {
       setToken(null);
     }
@@ -43,7 +57,9 @@ api.interceptors.response.use(
     const message = Array.isArray(data?.message)
       ? data?.message.join(', ')
       : data?.message;
-    return Promise.reject(new Error(message || error.message || 'Request failed'));
+    return Promise.reject(
+      new ApiError(message || error.message || 'Request failed', data?.code),
+    );
   },
 );
 
@@ -54,7 +70,7 @@ api.interceptors.response.use(
  */
 async function errorBody(
   data: unknown,
-): Promise<{ message?: string | string[] } | undefined> {
+): Promise<{ message?: string | string[]; code?: string } | undefined> {
   if (data instanceof Blob) {
     try {
       return JSON.parse(await data.text());
@@ -62,7 +78,7 @@ async function errorBody(
       return undefined;
     }
   }
-  return data as { message?: string | string[] } | undefined;
+  return data as { message?: string | string[]; code?: string } | undefined;
 }
 
 /*

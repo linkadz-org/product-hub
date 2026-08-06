@@ -7,7 +7,7 @@ import { BoardSkeleton, ListSkeleton, TimelineSkeleton } from '@/components/Skel
 import { BOARD_GUTTER, IssueBoardLayout } from '@/components/IssueBoardLayout';
 import { BoardCard, BoardCardAge, KanbanBoard, KanbanCardToolbar } from '@/components/KanbanBoard';
 import { IssueTimelineView } from '@/features/issues/IssueTimelineView';
-import { DEFAULT_ISSUE_SORT, SortMenu, type IssueSort } from '@/features/issues/SortMenu';
+import { NO_ISSUE_SORT, SortMenu, type IssueSort } from '@/features/issues/SortMenu';
 import { LabelChips } from '@/features/labels/LabelChips';
 import {
   FilterMenu,
@@ -117,9 +117,10 @@ export function MyTasksPage({ teamId, teamName, titleIcon, shareTeam }: MyTasksP
 
   const [filters, setFilters] = useState<FilterSelections>({});
   const [search, setSearch] = useState('');
-  // List-view ordering only (see `SortMenu`). Board and timeline send neither
-  // param, so their ordering stays exactly what it is today.
-  const [sort, setSort] = useState<IssueSort>(DEFAULT_ISSUE_SORT);
+  // List-view ordering only (see `SortMenu`), and opt-in: until the user picks
+  // one, neither param is sent, so board, timeline and a fresh list all keep the
+  // ordering they have today.
+  const [sort, setSort] = useState<IssueSort | null>(NO_ISSUE_SORT);
   const isList = view === 'list';
 
   // Strictly assigned to me — the view is titled "Assigned to me". Tasks I create
@@ -138,8 +139,8 @@ export function MyTasksPage({ teamId, teamName, titleIcon, shareTeam }: MyTasksP
     // Only the list view orders itself. Sending `sort` makes the API drop the
     // stored `order`, so the board (whose order *is* the drag position) and the
     // timeline must send neither param.
-    sort: isList ? sort.field : undefined,
-    dir: isList ? sort.dir : undefined,
+    sort: isList && sort ? sort.field : undefined,
+    dir: isList && sort ? sort.dir : undefined,
   });
   const tasks = data?.items ?? [];
   // Offer the toggle only when there's something to hide; filter client-side (the

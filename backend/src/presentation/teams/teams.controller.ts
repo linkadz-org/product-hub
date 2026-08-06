@@ -33,6 +33,7 @@ import {
   UpdateTeamStatusesDto,
 } from '@application/teams/dtos/team.dtos';
 import { TeamMapper } from '@application/teams/mappers/team.mapper';
+import { teamErrorBody } from '@application/teams/domain/team-error-codes';
 
 @ApiTags('Teams')
 @ApiBearerAuth('JWT-auth')
@@ -66,7 +67,7 @@ export class TeamsController {
     @Body() dto: CreateTeamDto,
   ): Promise<TeamResponseDto> {
     const result = await this.createTeam.execute({ tenantId: auth.tenantId, dto });
-    if (result.isFailure) throw new BadRequestException(result.error as string);
+    if (result.isFailure) throw new BadRequestException(teamErrorBody(result.error as string));
     const team = result.getValue();
     return TeamMapper.toResponseDto(team, await this.prefixLock.one(auth.tenantId, team));
   }
@@ -86,8 +87,12 @@ export class TeamsController {
       // of a default team, a frozen or duplicate prefix — is a rejected write, so
       // it must be a 400 the settings form can show against the offending field.
       // This matches every sibling handler below; it used to be the inverse.
+      //
+      // `teamErrorBody` adds a machine-readable `code` to the four prefix
+      // rejections, so a non-English UI can translate them instead of printing
+      // the English message it used to be handed.
       if (msg === TEAM_NOT_FOUND) throw new EntityNotFoundException(msg);
-      throw new BadRequestException(msg);
+      throw new BadRequestException(teamErrorBody(msg));
     }
     const team = result.getValue();
     return TeamMapper.toResponseDto(team, await this.prefixLock.one(auth.tenantId, team));
@@ -107,7 +112,7 @@ export class TeamsController {
     if (result.isFailure) {
       const msg = result.error as string;
       if (msg === TEAM_NOT_FOUND) throw new EntityNotFoundException(msg);
-      throw new BadRequestException(msg);
+      throw new BadRequestException(teamErrorBody(msg));
     }
     const team = result.getValue();
     return TeamMapper.toResponseDto(team, await this.prefixLock.one(auth.tenantId, team));
@@ -125,7 +130,7 @@ export class TeamsController {
     if (result.isFailure) {
       const msg = result.error as string;
       if (msg === TEAM_NOT_FOUND) throw new EntityNotFoundException(msg);
-      throw new BadRequestException(msg);
+      throw new BadRequestException(teamErrorBody(msg));
     }
     const team = result.getValue();
     return TeamMapper.toResponseDto(team, await this.prefixLock.one(auth.tenantId, team));
@@ -143,7 +148,7 @@ export class TeamsController {
     if (result.isFailure) {
       const msg = result.error as string;
       if (msg === TEAM_NOT_FOUND) throw new EntityNotFoundException(msg);
-      throw new BadRequestException(msg);
+      throw new BadRequestException(teamErrorBody(msg));
     }
     const team = result.getValue();
     return TeamMapper.toResponseDto(team, await this.prefixLock.one(auth.tenantId, team));

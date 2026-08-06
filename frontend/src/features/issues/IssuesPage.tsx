@@ -8,7 +8,7 @@ import { BOARD_GUTTER, IssueBoardLayout } from '@/components/IssueBoardLayout';
 import { KanbanBoard, KanbanCardToolbar } from '@/components/KanbanBoard';
 import { Icon } from '@/components/Icon';
 import { IssueTimelineView } from '@/features/issues/IssueTimelineView';
-import { DEFAULT_ISSUE_SORT, SortMenu, type IssueSort } from '@/features/issues/SortMenu';
+import { NO_ISSUE_SORT, SortMenu, type IssueSort } from '@/features/issues/SortMenu';
 import { LabelChips } from '@/features/labels/LabelChips';
 import {
   FilterMenu,
@@ -126,9 +126,10 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
 
   const [filters, setFilters] = useState<FilterSelections>({});
   const [search, setSearch] = useState('');
-  // List-view ordering only (see `SortMenu`). Newest ticket first is what people
-  // read a list for; the board keeps its drag order by sending neither param.
-  const [sort, setSort] = useState<IssueSort>(DEFAULT_ISSUE_SORT);
+  // List-view ordering only (see `SortMenu`), and opt-in: until the user picks
+  // one, neither param is sent and the list is exactly the page the API returns
+  // by default. The board keeps its drag order the same way.
+  const [sort, setSort] = useState<IssueSort | null>(NO_ISSUE_SORT);
 
   // Switching kind rides in the URL (shareable) and clears the filters — severity
   // is bug-only, backlog item is task-only, and the status columns differ, so
@@ -179,8 +180,8 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
     // Only the list view orders itself. Sending `sort` makes the API drop the
     // stored `order`, so the board and the timeline must send neither param to
     // keep today's drag-position-first ordering exactly as it is.
-    sort: isList ? sort.field : undefined,
-    dir: isList ? sort.dir : undefined,
+    sort: isList && sort ? sort.field : undefined,
+    dir: isList && sort ? sort.dir : undefined,
   });
   const items = data?.items ?? [];
   // A board titled "All issues" must not hide a row it has no column for, so any

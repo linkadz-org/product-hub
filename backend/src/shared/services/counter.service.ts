@@ -61,11 +61,6 @@ export class CounterService {
     return doc?.seq ?? 0;
   }
 
-  /** Next short id, e.g. `BUG-12`. */
-  async nextShortId(tenantId: string, prefix: string): Promise<string> {
-    return `${prefix}-${await this.next(tenantId, prefix)}`;
-  }
-
   /**
    * Seeds the sequence so it never re-issues a number already in use — used by
    * the backfill, which assigns ids to rows created before short ids existed.

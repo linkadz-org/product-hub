@@ -665,6 +665,7 @@ export const ko: Record<I18nKey, string> = {
   // Sort control (list view) — field on top, direction below. `sort.title` also
   // composes into the trigger (`정렬: ID`), so it carries no trailing colon.
   'sort.title': '정렬',
+  'sort.fieldDefault': '기본 순서',
   'sort.fieldId': 'ID',
   'sort.fieldCreated': '생성일',
   'sort.fieldUpdated': '수정일',
@@ -939,7 +940,7 @@ export const ko: Record<I18nKey, string> = {
 
   'settings.github': 'GitHub',
   'settings.githubHint':
-    '항목 뒤의 작업을 보여줍니다. 커밋 메시지, 브랜치 이름, 풀 리퀘스트 제목에 TSK-6HCUHKX 같은 참조를 적으면 해당 작업·버그·백로그 항목에 나타납니다.',
+    '항목 뒤의 작업을 보여줍니다. 커밋 메시지, 브랜치 이름, 풀 리퀘스트 제목에 ENG-14 같은 참조를 적으면 해당 작업·버그·백로그 항목에 나타납니다.',
   'settings.githubStep1': '워크스페이스 연결',
   'settings.githubStep1Hint':
     'GitHub이 전송할 주소와 서명에 사용할 시크릿을 만듭니다. 시크릿은 한 번만 표시됩니다.',
@@ -970,8 +971,9 @@ export const ko: Record<I18nKey, string> = {
   'settings.githubStep3': '작업에 항목을 언급하기',
   'settings.githubStep3Hint':
     '항목의 제목 옆에 있는 참조를 복사해 메시지 어디에나 넣으면 됩니다.',
+  'settings.githubCommitExample': 'git commit -m "ENG-14 fix the login redirect"',
   'settings.githubRefsHint':
-    '브랜치 이름과 풀 리퀘스트 제목도 인식하므로 git checkout -b 할 때 한 번만 적어도 충분합니다. 작업(TSK-), 버그(BUG-), 백로그 항목(RM-) 모두 지원합니다.',
+    '브랜치 이름과 풀 리퀘스트 제목도 인식하므로 git checkout -b 할 때 한 번만 적어도 충분합니다. 모든 티켓을 지원합니다 — 팀 접두사(ENG-14, QC-8)와 백로그 항목(RM-6). 팀별 접두사는 설정 → 팀에서 지정합니다.',
   'settings.githubActivity': '수신 기록',
   'settings.githubActivityHint':
     '연결이 살아 있다는 증거입니다 — GitHub이 마지막으로 보낸 내용과 저장소.',
@@ -1206,6 +1208,9 @@ export const ko: Record<I18nKey, string> = {
   'teams.prefixEmptyHint': '이 팀의 티켓에 번호를 매기려면 접두사를 설정하세요.',
   'teams.prefixLocked': '잠김 — 이 팀은 이미 티켓을 발행했습니다',
   'teams.prefixInvalid': '영문자와 숫자 2~6자, 첫 글자는 영문자여야 합니다.',
+  'teams.prefixTaken': '다른 팀이 이미 사용 중인 접두사입니다.',
+  'teams.prefixReserved': '워크스페이스가 예약한 접두사입니다.',
+  'teams.prefixFrozen': '이 팀은 이미 티켓을 발행했으므로 접두사를 변경할 수 없습니다.',
   'teams.issueType': '이슈',
   'teams.archive': '보관',
   'teams.unarchive': '보관 해제',
