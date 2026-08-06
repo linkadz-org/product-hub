@@ -39,6 +39,20 @@ export class CounterService {
     return doc?.seq ?? 1;
   }
 
+  /**
+   * Current value of the sequence **without consuming one** — 0 when it has never
+   * been drawn from. This is what "has this prefix minted anything yet?" must ask:
+   * counting a team's issues would answer wrong after a delete, and re-issuing a
+   * number already printed in a commit message is exactly what freezing prevents.
+   */
+  async current(tenantId: string, prefix: string): Promise<number> {
+    const doc = await this.model
+      .findById(`${tenantId}:${prefix}`)
+      .lean<CounterDoc>()
+      .exec();
+    return doc?.seq ?? 0;
+  }
+
   /** Next short id, e.g. `BUG-12`. */
   async nextShortId(tenantId: string, prefix: string): Promise<string> {
     return `${prefix}-${await this.next(tenantId, prefix)}`;
