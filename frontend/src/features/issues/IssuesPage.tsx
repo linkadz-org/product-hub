@@ -1,22 +1,14 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowDownNarrowWide, ArrowUpNarrowWide, CalendarRange, LayoutGrid, List } from 'lucide-react';
-import {
-  Button,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui';
+import { CalendarRange, LayoutGrid, List } from 'lucide-react';
+import { Button } from '@/components/ui';
 import { AssigneeBadge } from '@/components/AssigneeBadge';
 import { BoardSkeleton, ListSkeleton, TimelineSkeleton } from '@/components/Skeletons';
 import { BOARD_GUTTER, IssueBoardLayout } from '@/components/IssueBoardLayout';
 import { KanbanBoard, KanbanCardToolbar } from '@/components/KanbanBoard';
 import { Icon } from '@/components/Icon';
 import { IssueTimelineView } from '@/features/issues/IssueTimelineView';
+import { DEFAULT_ISSUE_SORT, SortMenu, type IssueSort } from '@/features/issues/SortMenu';
 import { LabelChips } from '@/features/labels/LabelChips';
 import {
   FilterMenu,
@@ -83,72 +75,6 @@ function KindSwitch({ value, onChange }: { value: IssueKind; onChange: (k: Issue
   );
 }
 
-/** What the list can be ordered by. Mirrors the API's `sort` values, in menu order. */
-const SORT_FIELDS = [
-  { field: 'id', labelKey: 'sort.fieldId' },
-  { field: 'created', labelKey: 'sort.fieldCreated' },
-  { field: 'updated', labelKey: 'sort.fieldUpdated' },
-] as const;
-
-/** The picked ordering — exactly the API's `sort` + `dir` pair. */
-export interface IssueSort {
-  field: 'id' | 'created' | 'updated';
-  dir: 'asc' | 'desc';
-}
-
-/**
- * Sort control for the list view — field on top, direction below, in one menu.
- * Built on the same `DropdownMenu` primitive as `FilterMenu` (the Filter control
- * beside it), so the two triggers are the same button and open the same surface;
- * radio items, because both axes are a single choice. The trigger shows the field
- * and an arrow for the direction, so the current ordering is readable without
- * opening it — and on a narrow screen the field word drops away, leaving the icon
- * (the toolbar cluster wraps, so it never pushes anything off the edge).
- *
- * Only the list view renders this: the board's order is the drag position, which
- * a sort would silently overwrite (the API drops `order` the moment `sort` is sent).
- */
-function SortMenu({ value, onChange }: { value: IssueSort; onChange: (next: IssueSort) => void }) {
-  const active = SORT_FIELDS.find((f) => f.field === value.field) ?? SORT_FIELDS[0];
-  const DirIcon = value.dir === 'asc' ? ArrowUpNarrowWide : ArrowDownNarrowWide;
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="outline"
-          className="gap-1.5"
-          aria-label={`${t('sort.title')}: ${t(active.labelKey)}`}
-        >
-          <DirIcon className="size-3.5" aria-hidden />
-          <span className="hidden sm:inline">{t('sort.title')}:</span>
-          <span>{t(active.labelKey)}</span>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-44">
-        <DropdownMenuLabel>{t('sort.title')}</DropdownMenuLabel>
-        <DropdownMenuRadioGroup
-          value={value.field}
-          onValueChange={(field) => onChange({ ...value, field: field as IssueSort['field'] })}
-        >
-          {SORT_FIELDS.map((f) => (
-            <DropdownMenuRadioItem key={f.field} value={f.field}>
-              {t(f.labelKey)}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuRadioGroup
-          value={value.dir}
-          onValueChange={(dir) => onChange({ ...value, dir: dir as IssueSort['dir'] })}
-        >
-          <DropdownMenuRadioItem value="asc">{t('sort.ascending')}</DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="desc">{t('sort.descending')}</DropdownMenuRadioItem>
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
 /**
  * Columns for a board that spans teams. The default team's set is the baseline;
  * any status a fetched issue actually carries that's missing from it is appended,
@@ -202,7 +128,7 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
   const [search, setSearch] = useState('');
   // List-view ordering only (see `SortMenu`). Newest ticket first is what people
   // read a list for; the board keeps its drag order by sending neither param.
-  const [sort, setSort] = useState<IssueSort>({ field: 'id', dir: 'desc' });
+  const [sort, setSort] = useState<IssueSort>(DEFAULT_ISSUE_SORT);
 
   // Switching kind rides in the URL (shareable) and clears the filters — severity
   // is bug-only, backlog item is task-only, and the status columns differ, so

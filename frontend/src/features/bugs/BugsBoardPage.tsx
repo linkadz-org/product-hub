@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { t } from '@/i18n';
 import { BOARD_GUTTER, IssueBoardLayout } from '@/components/IssueBoardLayout';
 import { IssueTimelineView } from '@/features/issues/IssueTimelineView';
+import { DEFAULT_ISSUE_SORT, SortMenu, type IssueSort } from '@/features/issues/SortMenu';
 import { Icon } from '@/components/Icon';
 import { BackLink } from '@/components/BackLink';
 import { BoardCard, BoardCardAge, KanbanBoard, KanbanCardToolbar } from '@/components/KanbanBoard';
@@ -120,6 +121,10 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
     else next.set('view', v);
     setParams(next, { replace: true });
   };
+  const isList = view === 'list';
+  // List-view ordering only (see `SortMenu`). Board and timeline send neither
+  // param, so their ordering stays exactly what it is today.
+  const [sort, setSort] = useState<IssueSort>(DEFAULT_ISSUE_SORT);
   // Cycle scope rides in ?cycle= (an id or current/upcoming/none — the API
   // resolves the sentinels against this team, so the sidebar's saved links stay
   // valid as cycles roll). Only meaningful on a team board.
@@ -193,6 +198,11 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
     createdTo: created.to,
     resolvedFrom: solved.from,
     resolvedTo: solved.to,
+    // Only the list view orders itself. Sending `sort` makes the API drop the
+    // stored `order`, so the board (whose order *is* the drag position) and the
+    // timeline must send neither param.
+    sort: isList ? sort.field : undefined,
+    dir: isList ? sort.dir : undefined,
   });
 
   const filterCategories: FilterCategory[] = [
@@ -280,6 +290,7 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
           <FilterMenu size="default" categories={filterCategories} value={filters} onChange={setFilters} />
         </div>
       }
+      sort={isList ? <SortMenu value={sort} onChange={setSort} /> : undefined}
       filtersEnd={
         <>
           {/* Insights lives in the cycle bar; that bar only exists when the board

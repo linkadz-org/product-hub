@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPatch, apiPut } from '@/lib/api';
 import { IssueKind } from '@/types/enums';
 import { makeIssueHooks } from '@/features/issues/hook-factory';
+import type { IssueSortDir, IssueSortField } from '@/features/issues/api';
 import type { TaskDto } from '@/types/dto';
 import type { CustomFieldValue, TaskStatus, TeamStatusConfig } from '@/types/enums';
 
@@ -38,6 +39,11 @@ export interface TaskQuery {
    *  resolve server-side against `teamId`, so saved links never go stale. */
   cycleId?: string;
   search?: string;
+  /** Sort field. Omit to keep the board ordering (drag position, then newest first) —
+   *  the kanban view must always omit it. */
+  sort?: IssueSortField;
+  /** Sort direction; defaults to `desc` server-side. */
+  dir?: IssueSortDir;
 }
 
 export interface CreateTaskInput {
