@@ -13,7 +13,11 @@ import {
 } from '@application/issues/repositories/issue.repository';
 import { IssueEntity } from '@application/issues/domain/entities/issue.entity';
 import { BugSeverity, IssueKind } from '@application/issues/domain/enums/issue.enums';
-import { QueryIssueDto } from '@application/issues/dtos/query-issue.dto';
+import {
+  IssueSortDir,
+  IssueSortField,
+  QueryIssueDto,
+} from '@application/issues/dtos/query-issue.dto';
 import {
   BugStatDimension,
   RawBucket,
@@ -21,6 +25,35 @@ import {
   RawTrendRow,
 } from '@application/mcp/domain/mcp-bug-stats';
 import { IssueDoc } from '../entities/issue.schema';
+
+/**
+ * The Mongo sort for a list request.
+ *
+ * With no `sort` this is exactly the historical `{order: 1, createdAt: -1}` — the
+ * board and every caller written before sorting existed depend on it byte for
+ * byte.
+ *
+ * With an explicit sort, `order` is **dropped**. It is the drag position *within a
+ * status column* (`IssueProps.order`), it leads the sort, and issues carry
+ * distinct values — leaving it in would make a sort control that visibly does
+ * nothing.
+ *
+ * The ID sort is `refPrefix` then `refSeq`, both indexed. Issues created before
+ * sequential refs have neither field; Mongo sorts a missing field as null, which
+ * orders before every string, so those rows form one block (at the top ascending,
+ * at the bottom descending) with `createdAt` ordering them inside it. Nothing is
+ * ever written to them to achieve this.
+ */
+export function issueSortStage(
+  sort?: IssueSortField,
+  dir?: IssueSortDir,
+): Record<string, 1 | -1> {
+  if (!sort) return { order: 1, createdAt: -1 };
+  const d: 1 | -1 = dir === 'asc' ? 1 : -1;
+  if (sort === 'created') return { createdAt: d };
+  if (sort === 'updated') return { updatedAt: d };
+  return { refPrefix: d, refSeq: d, createdAt: d };
+}
 
 @Injectable()
 export class IssueRepository
@@ -247,7 +280,7 @@ export class IssueRepository
     const [docs, total] = await Promise.all([
       this.model
         .find(filter)
-        .sort({ order: 1, createdAt: -1 })
+        .sort(issueSortStage(query.sort, query.dir))
         .skip((page - 1) * limit)
         .limit(limit)
         .lean<IssueDoc[]>()
