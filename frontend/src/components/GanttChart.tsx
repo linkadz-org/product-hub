@@ -22,9 +22,17 @@ export const GANTT_DAY = 86_400_000;
 // run from "Login" to a full user story. Every place that needs the width reads
 // the state (inline styles, not Tailwind classes, which can't take a JS value).
 const RAIL_KEY = 'ph_gantt_rail_w';
-const RAIL_DEFAULT = 200;
+// Wide enough out of the box for a title *and* the row's chips (status, labels,
+// people — see `GanttRow.meta`); on a phone the rail is sticky and would eat the
+// whole viewport at that width, so it starts narrower there and is dragged out.
+const RAIL_DEFAULT = 264;
+const RAIL_DEFAULT_SM = 180;
 const RAIL_MIN = 120;
-const RAIL_MAX = 520;
+const RAIL_MAX = 560;
+
+/** The starting width for this viewport — also what `Home` restores. */
+const defaultRail = () =>
+  typeof window !== 'undefined' && window.innerWidth < 640 ? RAIL_DEFAULT_SM : RAIL_DEFAULT;
 /** How much the timeline track keeps for itself — the chart scrolls below this. */
 const TRACK_MIN = 560;
 /** Keyboard resize step (the rail is a focusable separator). */
@@ -34,9 +42,9 @@ const clampRail = (n: number) => Math.min(RAIL_MAX, Math.max(RAIL_MIN, Math.roun
 function readRail(): number {
   try {
     const raw = Number(localStorage.getItem(RAIL_KEY));
-    return raw ? clampRail(raw) : RAIL_DEFAULT;
+    return raw ? clampRail(raw) : defaultRail();
   } catch {
-    return RAIL_DEFAULT;
+    return defaultRail();
   }
 }
 function writeRail(w: number) {
@@ -116,6 +124,14 @@ export interface GanttRow {
   label: string;
   /** Secondary line under the label (e.g. "60% · 3 tasks"). */
   sublabel?: string;
+  /**
+   * The row's **chips** — status, severity, labels, assignees: everything a card
+   * or a list row shows beside its title, so a timeline identifies a row as fully
+   * as the other views of the same board do. Filled by the adapter (it owns what
+   * a row *is*); built from {@link GanttChip}, `LabelChips` and `AssigneeBadge`
+   * so all three surfaces stay one treatment. Wraps when the rail is narrow.
+   */
+  meta?: ReactNode;
   /** 0 = top-level, 1 = an indented child (e.g. a task under a roadmap item). */
   depth?: number;
   /** Leading dot before the label — a status/severity colour. */
@@ -195,7 +211,7 @@ export function GanttChart({ rows, labelHeader, legend, isLoading, empty }: Gant
    *  Home restores the default. Pointer-only would leave it unreachable. */
   const railKeys = (e: ReactKeyboardEvent<HTMLElement>) => {
     const step = e.key === 'ArrowLeft' ? -RAIL_STEP : e.key === 'ArrowRight' ? RAIL_STEP : 0;
-    const next = e.key === 'Home' ? RAIL_DEFAULT : step ? clampRail(railW + step) : null;
+    const next = e.key === 'Home' ? defaultRail() : step ? clampRail(railW + step) : null;
     if (next === null) return;
     e.preventDefault();
     setRailW(next);
@@ -341,20 +357,20 @@ function GanttRowView({
       {row.label}
     </span>
   );
-  /** A child indents into a single flex row; a top-level row is a flex column so
-   *  it can carry a sublabel line under the title. */
-  const body = child ? (
-    <>
-      {dot}
-      {title}
-    </>
-  ) : (
+  /** Title line, then whatever the row carries under it — a sublabel and/or the
+   *  chips row. Child rows use the same stack (just indented and quieter), so a
+   *  linked task on the roadmap timeline reads like an issue on its own. */
+  const body = (
     <>
       <div className="flex min-w-0 items-center gap-2">
         {dot}
         {title}
       </div>
       {row.sublabel && <span className="truncate text-[11px] text-muted-foreground">{row.sublabel}</span>}
+      {/* Chips **wrap** rather than truncate: the rail is narrow by default and a
+          half-clipped chip reads as broken, whereas a second line only makes the
+          row a little taller (bars stay centred in it). */}
+      {row.meta && <span className="flex flex-wrap items-center gap-1">{row.meta}</span>}
     </>
   );
 
@@ -364,8 +380,8 @@ function GanttRowView({
   // this fixes. One element wraps the lot (link, button, or inert div) rather
   // than a target per line, so there are no dead gaps left between them.
   const cellCls = cn(
-    'flex min-w-0 flex-1',
-    child ? 'items-center gap-2 py-1.5 pl-6 pr-3' : 'flex-col justify-center gap-0.5 px-3 py-2',
+    'flex min-w-0 flex-1 flex-col justify-center gap-0.5',
+    child ? 'py-1.5 pl-6 pr-3' : 'px-3 py-2',
     interactive &&
       'text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
   );
@@ -408,6 +424,48 @@ function GanttRowView({
         ) : null}
       </div>
     </div>
+  );
+}
+
+/**
+ * One chip on a row's {@link GanttRow.meta} line — a status, a severity, a score.
+ * Tinted from its own colour with the same `color-mix` idiom `LabelChips` uses,
+ * so a status chip and a label chip beside it read as one family; without a
+ * colour it falls back to the muted token (a plain count or ref).
+ *
+ * Exported the way `KanbanBoard` exports `KanbanCard`: an adapter fills the meta
+ * line with these rather than styling a pill of its own, which is what keeps the
+ * issue timeline and the roadmap timeline looking like the same product.
+ */
+export function GanttChip({
+  color,
+  icon,
+  title,
+  children,
+}: {
+  /** The thing's own colour — team status, severity, roadmap status. */
+  color?: string;
+  /** A leading glyph instead of the colour dot (e.g. the OKR target). */
+  icon?: ReactNode;
+  title?: string;
+  children: ReactNode;
+}) {
+  return (
+    <span
+      title={title}
+      className={cn(
+        'inline-flex min-w-0 max-w-full items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium leading-none',
+        !color && 'bg-muted text-muted-foreground',
+      )}
+      style={
+        color
+          ? { color, backgroundColor: `color-mix(in srgb, ${color} 14%, transparent)` }
+          : undefined
+      }
+    >
+      {icon ?? (color && <span className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} aria-hidden />)}
+      <span className="truncate">{children}</span>
+    </span>
   );
 }
 

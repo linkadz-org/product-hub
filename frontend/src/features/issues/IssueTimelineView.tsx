@@ -1,9 +1,20 @@
 import { useState } from 'react';
 import { t } from '@/i18n';
 import { formatDate } from '@/lib/format';
-import { GanttChart, firstEpoch, isEpoch, toEpoch, type GanttRow } from '@/components/GanttChart';
-import { useTeamStatusesLookup } from '@/features/teams/api';
-import { TeamIssueType, type TeamStatusConfig } from '@/types/enums';
+import { AssigneeBadge } from '@/components/AssigneeBadge';
+import { GanttChart, GanttChip, firstEpoch, isEpoch, toEpoch, type GanttRow } from '@/components/GanttChart';
+import { LabelChips } from '@/features/labels/LabelChips';
+import { TeamChip, type TeamChipTeam } from '@/features/teams/TeamChip';
+import { useTeamLabelsLookup, useTeamLookup, useTeamStatusesLookup } from '@/features/teams/api';
+import {
+  BUG_SEVERITY_COLOR,
+  BUG_SEVERITY_LABEL,
+  TeamIssueType,
+  type BugSeverity,
+  type TaskLabelConfig,
+  type TeamStatusConfig,
+} from '@/types/enums';
+import type { IssueAssigneeDto } from '@/types/dto';
 import { IssuePeekDrawer, type IssuePeek } from './IssuePeekDrawer';
 
 /**
@@ -21,6 +32,12 @@ export interface IssueTimelineItem {
   endDate?: string;
   /** Task-only legacy alias of `endDate`; used as an end fallback when present. */
   dueDate?: string;
+  /** Bug-only ('' on a task) — drawn as its own chip beside the status. */
+  severity?: BugSeverity | '';
+  /** Team label keys, resolved against the item's own team (see `labelsFor`). */
+  labelKeys?: string[];
+  /** Everyone on the issue, primary first. */
+  assignees?: IssueAssigneeDto[];
 }
 
 interface IssueTimelineViewProps {
@@ -32,6 +49,11 @@ interface IssueTimelineViewProps {
    *  fetch — for a caller (e.g. a public board) that already has its one team's
    *  statuses in hand. */
   statusesFor?: (teamId: string | undefined, issueType: TeamIssueType) => TeamStatusConfig[];
+  /** The same escape hatch for the label chips — supply it and no `/teams` fetch
+   *  happens for them either. */
+  labelsFor?: (teamId: string | undefined) => TaskLabelConfig[];
+  /** …and for the team chip. */
+  teamFor?: (teamId: string | undefined) => TeamChipTeam | undefined;
   /** Overrides what a row opens (e.g. the public board's read-only dialog) instead
    *  of this view's own peek drawer, which needs an account. */
   onOpenItem?: (item: IssueTimelineItem) => void;
@@ -50,6 +72,11 @@ function anchor(i: IssueTimelineItem): number {
  * that date; an issue with neither is listed but not placed. A thin adapter over
  * the shared `<GanttChart>` — the same surface the roadmap timeline uses.
  *
+ * Each row carries the **same chips the board card and the list row carry** —
+ * ref, team, status, severity, labels, assignees — because a timeline you can't
+ * identify a row in is just a picture of dates: you'd have to open every bar to
+ * find whose it is, which team owns it, or whether it's blocked.
+ *
  * Clicking a row **peeks** it in a drawer rather than navigating, for the reason
  * the roadmap timeline does: leaving the chart to read one issue and coming back
  * loses your place on the axis, and a timeline is about the rows *around* the one
@@ -60,13 +87,24 @@ export function IssueTimelineView({
   issueType,
   isLoading,
   statusesFor: statusesForOverride,
+  labelsFor: labelsForOverride,
+  teamFor: teamForOverride,
   onOpenItem,
 }: IssueTimelineViewProps) {
-  // Same hook either way (rules of hooks) — `enabled` just skips its fetch
+  // Same hooks either way (rules of hooks) — `enabled` just skips their fetch
   // when the caller supplies its own lookup.
   const statusesForHook = useTeamStatusesLookup(!statusesForOverride);
+  const labelsForHook = useTeamLabelsLookup(!labelsForOverride);
+  const teamForHook = useTeamLookup(!teamForOverride);
   const statusesFor = statusesForOverride ?? statusesForHook;
+  const labelsFor = labelsForOverride ?? labelsForHook;
+  const teamFor = teamForOverride ?? teamForHook;
   const [peek, setPeek] = useState<IssuePeek | null>(null);
+
+  // Name the team only on a board whose rows actually span teams — "All issues",
+  // "Assigned to me", a roadmap's tasks. On a single team's board every chip
+  // would say the same thing the page title already does, and the rail is narrow.
+  const showTeam = new Set(items.map((i) => i.teamId).filter(Boolean)).size > 1;
 
   // One detail URL for both kinds — the ref names its own kind, so nothing here
   // branches on task vs bug to build a link.
@@ -93,9 +131,34 @@ export function IssueTimelineView({
     const row: GanttRow = {
       id: issue.id,
       label: issue.title,
-      sublabel: issue.shortId ? `${issue.shortId} · ${statusLabel}` : statusLabel,
       dotColor: color,
       onClick: () => open(issue),
+      // The row's identity, widest scope first: ref, team, state, labels, people.
+      // Assignees only when there are any — an "Unassigned" pill on every row
+      // would crowd out the labels in a rail this narrow, and an empty slot says
+      // the same thing.
+      meta: (
+        <>
+          {issue.shortId && (
+            <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{issue.shortId}</span>
+          )}
+          {showTeam && <TeamChip team={teamFor(issue.teamId)} />}
+          <GanttChip color={color}>{statusLabel}</GanttChip>
+          {issue.severity && (
+            <GanttChip color={BUG_SEVERITY_COLOR[issue.severity]} title={t('bugs.severity')}>
+              {BUG_SEVERITY_LABEL[issue.severity]}
+            </GanttChip>
+          )}
+          <LabelChips keys={issue.labelKeys} labels={labelsFor(issue.teamId)} max={2} />
+          {issue.assignees && issue.assignees.length > 0 && (
+            <AssigneeBadge
+              assignees={issue.assignees}
+              unassignedLabel={t('tasks.unassigned')}
+              className="max-w-[160px] py-0 text-[11px] font-medium"
+            />
+          )}
+        </>
+      ),
     };
 
     if (isEpoch(start) && isEpoch(end)) {

@@ -129,6 +129,15 @@ export function useTeamStatusesLookup(enabled = true): (
 }
 
 /**
+ * A team by id — for rows that name their own team (see `TeamChip`), on a board
+ * whose rows span teams. `enabled=false` skips the fetch, like the lookups above.
+ */
+export function useTeamLookup(enabled = true): (teamId: string | undefined) => TeamDto | undefined {
+  const { data: teams } = useTeams(enabled);
+  return (teamId) => (teamId ? teams?.find((t) => t.id === teamId) : undefined);
+}
+
+/**
  * A team's item labels (shared by its tasks/bugs). Unlike statuses there are no
  * code defaults — an empty list is the expected start — so this just reads the
  * team's own set. Teams are already cached for the nav, so it costs no request.
@@ -141,9 +150,13 @@ export function useTeamLabels(teamId: string | undefined): TaskLabelConfig[] {
  * Same resolution, as a function — for boards/lists whose rows can belong to
  * different teams (e.g. "assigned to me"), where a hook per row isn't legal.
  * Resolve each card against its own item's `teamId`.
+ *
+ * `enabled=false` skips the `/teams` fetch entirely — same escape hatch as
+ * {@link useTeamStatusesLookup}, for a public page that already holds its one
+ * team's labels and supplies its own lookup.
  */
-export function useTeamLabelsLookup(): (teamId: string | undefined) => TaskLabelConfig[] {
-  const { data: teams } = useTeams();
+export function useTeamLabelsLookup(enabled = true): (teamId: string | undefined) => TaskLabelConfig[] {
+  const { data: teams } = useTeams(enabled);
   return (teamId) => teams?.find((t) => t.id === teamId)?.labels ?? [];
 }
 
