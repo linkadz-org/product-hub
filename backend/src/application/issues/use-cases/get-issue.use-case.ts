@@ -12,17 +12,45 @@ export interface GetIssueRequest {
   isAdmin: boolean;
 }
 
+/**
+ * The issue plus the one thing it can't show without a second read: **its
+ * parent**. Nesting is stored as a bare `parentId`, so every surface that wanted
+ * to name the parent (the detail breadcrumb, `get_issue` over MCP) had only an
+ * opaque id and showed nothing instead — a sub-issue read as top-level.
+ */
+export interface IssueWithParent {
+  issue: IssueEntity;
+  /** `null` when top-level, and equally when the parent is gone or the caller
+   *  can't see it — a dangling `parentId` degrades to "no parent", never to a
+   *  broken crumb. */
+  parent: IssueEntity | null;
+}
+
 @Injectable()
-export class GetIssueUseCase implements IUsecaseExecute<GetIssueRequest, Result<IssueEntity>> {
+export class GetIssueUseCase implements IUsecaseExecute<GetIssueRequest, Result<IssueWithParent>> {
   constructor(@Inject(IIssueRepository) private readonly issues: IIssueRepository) {}
 
-  async execute({ id, tenantId, requesterId, isAdmin }: GetIssueRequest): Promise<Result<IssueEntity>> {
+  async execute({
+    id,
+    tenantId,
+    requesterId,
+    isAdmin,
+  }: GetIssueRequest): Promise<Result<IssueWithParent>> {
     // `id` is the URL ref: a shortId (TSK-7 / BUG-12) or a legacy uuid.
     const issue = await this.issues.findByRef(tenantId, id);
     if (!issue) return Result.fail('Issue not found');
     // A personal task is private to its owner (+ admins). Report "not found"
     // rather than "forbidden" so a stranger can't even confirm the ref exists.
     if (!issue.isVisibleTo(requesterId, isAdmin)) return Result.fail('Issue not found');
-    return Result.ok(issue);
+
+    // The parent goes through the same tenant scope and the same visibility
+    // rule, so a crumb can't leak the title of a private task the caller isn't
+    // allowed to open.
+    const parent = issue.parentId ? await this.issues.findByRef(tenantId, issue.parentId) : null;
+
+    return Result.ok({
+      issue,
+      parent: parent?.isVisibleTo(requesterId, isAdmin) ? parent : null,
+    });
   }
 }

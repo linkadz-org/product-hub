@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Ban, Copy, Flag, GitBranch, GitMerge, Link2 } from 'lucide-react';
+import { Ban, Copy, Flag, Link2 } from 'lucide-react';
 import type { MenuItem } from '@/components/ui';
 import { t } from '@/i18n';
 import { IssueKind, RELATION_TYPES, RELATION_TYPE_LABEL, RelationType } from '@/types/enums';
@@ -7,8 +7,6 @@ import { PickIssueDialog } from './PickIssueDialog';
 import { useCreateIssueRelation } from './relations.api';
 
 const ICON: Record<RelationType, typeof Flag> = {
-  [RelationType.PARENT_OF]: GitBranch,
-  [RelationType.SUB_ISSUE_OF]: GitMerge,
   [RelationType.RELATED_TO]: Link2,
   [RelationType.BLOCKED_BY]: Ban,
   [RelationType.BLOCKS]: Ban,
@@ -45,10 +43,11 @@ export function useRelationActions(subject: IssueKind, issueId: string) {
       title={type ? RELATION_TYPE_LABEL[type] : ''}
       pending={create.isPending}
       onClose={() => setType(null)}
-      onPick={(targetId) => {
-        if (!type) return;
+      onPick={([target]) => {
+        // Single-pick: one relation has exactly one target, so no `multiple` here.
+        if (!type || !target) return;
         create.mutate(
-          { issueType: subject, sourceId: issueId, targetId, relationType: type },
+          { issueType: subject, sourceId: issueId, targetId: target.id, relationType: type },
           { onSuccess: () => setType(null) },
         );
       }}

@@ -6,14 +6,35 @@ import { ChevronRight } from 'lucide-react';
 import { usePageChrome } from '@/layouts/headers/PageChrome';
 import { findNavItem } from '@/layouts/sidebar/menuConfig';
 
+/** Crumbs shrink and truncate rather than pushing the title out: on a narrow
+ *  screen a long parent title would otherwise squeeze out the page's own name. */
+const CRUMB =
+  'max-w-[9rem] shrink truncate font-medium text-muted-foreground transition-colors hover:text-foreground sm:max-w-[14rem]';
+
+/** One step in the trail leading to this page's title. Every crumb is a place
+ *  you can go — a trail entry that acts instead of navigating is a control, and
+ *  belongs on the page, not in the breadcrumb. */
+export interface PageCrumb {
+  to: string;
+  label: string;
+  /** Hover text — used where the label is a bare ref (`BUG-12`) whose meaning
+   *  only the title gives away. */
+  title?: string;
+}
+
 interface PageHeaderProps {
   title: string;
   /**
-   * A crumb to sit in front of the title. Only needed for routes the nav model
-   * doesn't know — Bugs, Tasks and team boards hang off the dynamic Teams list,
-   * so `AppLayout` can't infer their parent. Everywhere else, leave it off.
+   * The crumb(s) to sit in front of the title, outermost first. Only needed for
+   * routes the nav model doesn't know — Bugs, Tasks and team boards hang off the
+   * dynamic Teams list, so `AppLayout` can't infer their parent. Everywhere
+   * else, leave it off.
+   *
+   * Takes a list because depth isn't fixed: a sub-issue sits under its team
+   * *and* its parent issue (`… › QC › BUG-12 › BUG-34`). A lone crumb still
+   * passes as-is.
    */
-  parent?: { to: string; label: string };
+  parent?: PageCrumb | PageCrumb[];
   /**
    * Explains the page. There's no room for it in the topbar, so it rides along
    * as the crumb's tooltip rather than being thrown away.
@@ -75,6 +96,7 @@ export function PageHeader({
   // itself, and there `leading` is the root icon.
   const { pathname } = useLocation();
   const ownsRootCrumb = !findNavItem(pathname);
+  const crumbs = parent ? (Array.isArray(parent) ? parent : [parent]) : [];
 
   /** Blank or unchanged snaps back rather than saving — the field is
    *  uncontrolled, so nothing else would restore it. */
@@ -92,17 +114,14 @@ export function PageHeader({
     // it's the thing the breadcrumb ends on.
     <h1 className="flex min-w-0 items-center gap-1.5 text-[13px] font-semibold tracking-tight text-foreground">
       {ownsRootCrumb && leading}
-      {parent && (
-        <>
-          <Link
-            to={parent.to}
-            className="shrink-0 font-medium text-muted-foreground transition-colors hover:text-foreground"
-          >
-            {parent.label}
+      {crumbs.map((crumbLink) => (
+        <span key={crumbLink.to} className="flex min-w-0 items-center gap-1.5">
+          <Link to={crumbLink.to} title={crumbLink.title} className={CRUMB}>
+            {crumbLink.label}
           </Link>
           <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/50" aria-hidden />
-        </>
-      )}
+        </span>
+      ))}
       {onTitleChange ? (
         <input
           // Remounts when the title changes server-side, which is also what

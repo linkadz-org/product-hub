@@ -38,6 +38,20 @@ re-exported (not redefined) from `backend/src/application/issues/domain/enums/is
   `components/SeverityBadge.tsx`, `bugTemplates.ts` (description templates), and `api.ts`
   which binds `makeIssueHooks` (shared with tasks) to the bug cache namespace
   (`['bugs']`/`['bug']`) and `kind: bug`.
+- **Hierarchy is shown, not just stored.** A bug nests via `parentId` exactly as a task does,
+  so `BugDetail` composes the *same* `SubtaskSection` as `TaskDetail` (own team in the
+  composer → children are bugs; `PickIssueDialog kind=BUG multiple` links existing ones), and
+  `BugDetailPage` gets its whole trail (team board › backlog item › parent) from the shared
+  `useIssueCrumbParent`. Neither is
+  bug-specific code — if hierarchy UI changes, change the shared component so both kinds move
+  together. The Properties sidebar mounts the shared `ParentPropField` for the other direction
+  (setting *this* bug's own parent), whose picker spans both kinds — a bug found while doing a
+  task belongs under that task. It was the *absence* of this that hid 14 real sub-issues: they were stored fine and
+  rendered nowhere.
+- **A bug's panel deliberately does *not* pass `separateBugs`.** That switch (used by the
+  roadmap) pulls bugs out of the sub-task list and out of the progress rollup — here every
+  child is a bug, so it would empty the list and move the whole thing below its own heading.
+  The bugs-are-found-work argument is about a *backlog item*, not about a bug's own children.
 
 ## Data model & key fields
 Bugs live in the `issues` collection as `IssueProps` with `kind: 'bug'`
@@ -88,8 +102,10 @@ No dedicated `/bugs` endpoint — bugs read/write the unified `/v1/issues` API, 
   `labelKeys`/`customFields` resolve against the team's `labels`/custom fields.
 - [[module-cycles]] — a bug can be committed to a team cycle (`cycleId`), carried over
   (`carryOverCount`) if unfinished when the cycle ends.
-- [[module-roadmaps]] — indirectly via shared issue plumbing (`roadmapItemId` is task-only,
-  not used by bugs).
+- [[module-roadmaps]] — a bug carries `roadmapId`/`roadmapItemId`/`roadmapItemLabel` like any
+  issue (the mapper serves them for every kind); a roadmap item's panel lists its linked bugs
+  in a separate "Bugs" block, out of the progress rollup, and `BugDetail`'s Properties sets
+  the link via the shared `BacklogItemPropField`.
 - [[module-storage]] — `attachments` (screenshots/recordings) are uploaded to the tenant's
   configured cloud storage; the schema mirrors the upload endpoint's response shape.
 - [[module-activity]] — comments on a bug use the same `issue-comment.use-cases.ts` as any

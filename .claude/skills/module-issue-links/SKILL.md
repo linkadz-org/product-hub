@@ -1,6 +1,6 @@
 ---
 name: module-issue-links
-description: Use when working on Issue Links — typed relations (blocks, parent-of, related-to, duplicate-of) between two issues, rendered in the task/bug detail sidebar. Relates closely to module-issues, module-bugs, module-tasks.
+description: Use when working on Issue Links — typed *peer* relations (blocks, blocked-by, related-to, duplicate-of) between two issues, rendered in the task/bug detail sidebar. Parent/child is NOT here — that is the child's `parentId` (see module-issues). Relates closely to module-issues, module-bugs, module-tasks.
 ---
 
 # Module: Issue Links
@@ -8,7 +8,15 @@ description: Use when working on Issue Links — typed relations (blocks, parent
 **Apps/paths:** `backend/src/presentation/issue-links`, `backend/src/application/issue-links`, `backend/src/infrastructure/issue-links`, `frontend/src/features/issues/{IssueRelations.tsx,relations.api.ts,useRelationActions.tsx}`
 
 ## Purpose
-Lets a task or bug declare a typed, directional relationship to another issue — "blocks", "is blocked by", "parent of", "sub-issue of", "related to", "duplicate of". Relations are cross-type (a bug can block a task) and rendered as a grouped list in the issue detail sidebar, with a "Mark as ▸" menu + issue picker to create them.
+Lets a task or bug declare a typed, directional relationship to another issue — "blocks", "is blocked by", "related to", "duplicate of". Relations are cross-type (a bug can block a task) and rendered as a grouped list in the issue detail sidebar, with a "Mark as ▸" menu + issue picker to create them.
+
+**Peer relations only — hierarchy is deliberately not a link.** "Sub-issue of" is the
+child's `parentId` ([[module-issues]]), one parent per issue, and nothing else. The two
+used to coexist (`PARENT_OF`/`SUB_ISSUE_OF` link types *and* `parentId`) with no
+synchronisation between them, which drifted in both directions: a `parentId` child was
+invisible to this module's relations panel, and a link-only child was missed by the
+parent's progress rollup. Removed on 2026-08-06 — don't add them back. `link_issues`
+(MCP) answers a parent/child word by naming `update_issue { parent }` instead.
 
 ## Where it lives
 - Backend: `IssueLinksController` (presentation) → `GetIssueLinksUseCase` / `CreateIssueLinkUseCase` / `DeleteIssueLinkUseCase` (application) → `IIssueLinkRepository` port, implemented in infrastructure against Mongoose `IssueLinkSchema`.
@@ -18,7 +26,7 @@ Lets a task or bug declare a typed, directional relationship to another issue �
 Mongoose collection backing `IssueLinkDoc` (via `IssueLinkSchema`):
 - `_id` (uuid), `tenantId`, `issueType` (source end's kind, `'task'|'bug'`), `sourceId`, `targetId`, `relationType`, `createdBy`, `createdAt` (no `updatedAt`).
 - Stored **directionally** source → target. Unique index on `(tenantId, issueType, sourceId, targetId, relationType)` — repeat create is idempotent. Two extra indexes `(tenantId, sourceId)` and `(tenantId, targetId)` (kind-agnostic, no `issueType`) back the "both directions for this issue" read.
-- `RelationType` enum: `BLOCKS`, `BLOCKED_BY`, `PARENT_OF`, `SUB_ISSUE_OF`, `RELATED_TO` (symmetric), `DUPLICATE_OF` (symmetric, its own inverse). `INVERSE_RELATION` map flips a row's meaning when read from the target side (one stored row reads correctly from both issues).
+- `RelationType` enum: `BLOCKS`, `BLOCKED_BY`, `RELATED_TO` (symmetric), `DUPLICATE_OF` (symmetric, its own inverse) — four values, all peer relations. `INVERSE_RELATION` map flips a row's meaning when read from the target side (one stored row reads correctly from both issues).
 - `IssueKind` enum (`Task`/`Bug`) — mirrors the frontend `IssueKind`; both kinds live in the same unified `issues` collection, read via `IIssueRepository`.
 
 ## API surface

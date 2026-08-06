@@ -522,7 +522,8 @@ export class McpLinkIssuesDto {
 
   @ApiProperty({
     description:
-      'Relation from `from` to `to` — blocks, blocked-by, parent-of, sub-issue-of, related-to, duplicate-of',
+      'Peer relation from `from` to `to` — blocks, blocked-by, related-to, duplicate-of. ' +
+      'Parent/child is not a link: set `parent` on the child via update_issue.',
   })
   @IsString()
   @IsNotEmpty()

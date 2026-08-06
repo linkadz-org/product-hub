@@ -21,7 +21,7 @@ import { DetailGrid, PropField, PropSection, PropSidebar } from '@/features/issu
 import { useTeams, useTeamStatuses } from '@/features/teams/api';
 import { TeamIconPicker } from '@/features/teams/TeamIconPicker';
 import { CyclePropField } from '@/features/cycles/CycleControls';
-import { useRoadmaps } from '@/features/roadmaps/api';
+import { useBacklogLink } from '@/features/roadmaps/useBacklogLink';
 import { TASK_ESTIMATES, TeamIssueType, taskEstimateLabel } from '@/types/enums';
 import { CenteredPageLayout } from '@/layouts/shared';
 import { useCreateTask } from './api';
@@ -51,7 +51,6 @@ export function NewTaskPage() {
   const presetCycleId = searchParams.get('cycleId') || undefined;
 
   const create = useCreateTask();
-  const { data: roadmaps } = useRoadmaps();
   // Columns of the team that will own the task (default task team when standalone).
   const columns = useTeamStatuses(teamId, TeamIssueType.TASK);
 
@@ -99,38 +98,15 @@ export function NewTaskPage() {
     </span>
   );
 
-  // "No backlog item" first, then every roadmap item (roadmap-qualified for clarity).
-  const itemOptions = useMemo(
-    () => [
-      { value: '', label: t('tasks.noBacklogItem') },
-      ...(roadmaps ?? []).flatMap((r) =>
-        (r.items ?? []).map((it) => ({
-          value: it.id,
-          label: `${r.title} · ${r.columns?.find((c) => c.key === it.phase)?.label ?? it.phase} · ${it.title}`,
-        })),
-      ),
-    ],
-    [roadmaps],
-  );
-  // itemId → the flat backlog link stored on the task (same shape the panel writes).
-  const linkFor = useMemo(() => {
-    const map = new Map<string, { roadmapId: string; projectId: string; label: string }>();
-    (roadmaps ?? []).forEach((r) =>
-      (r.items ?? []).forEach((it) =>
-        map.set(it.id, {
-          roadmapId: r.id,
-          projectId: r.projectId,
-          label: `${r.columns?.find((c) => c.key === it.phase)?.label ?? it.phase} · ${it.title}`,
-        }),
-      ),
-    );
-    return map;
-  }, [roadmaps]);
+  // "No backlog item" first, then every roadmap item — and the flat link to store
+  // for the chosen one. Shared with both detail sidebars so the label a task is
+  // created with is the same one re-linking it later would write.
+  const { options: itemOptions, linkFor } = useBacklogLink();
 
   function submit() {
     if (!title.trim() || create.isPending) return;
     setError(null);
-    const link = itemId ? linkFor.get(itemId) : undefined;
+    const link = linkFor(itemId);
     create.mutate(
       {
         title: title.trim(),
@@ -143,10 +119,10 @@ export function NewTaskPage() {
         startDate: startDate || undefined,
         endDate: endDate || undefined,
         estimate: estimate || undefined,
-        roadmapItemId: itemId || undefined,
-        roadmapItemLabel: link?.label,
-        roadmapId: link?.roadmapId,
-        projectId: link?.projectId,
+        roadmapItemId: link.roadmapItemId || undefined,
+        roadmapItemLabel: link.roadmapItemLabel || undefined,
+        roadmapId: link.roadmapId || undefined,
+        projectId: link.projectId || undefined,
       },
       {
         // Straight into the task we just made — replace, so Back skips the form.

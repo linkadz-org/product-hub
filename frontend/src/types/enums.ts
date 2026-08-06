@@ -149,12 +149,15 @@ export enum DocPageWidth {
 export const REACTION_EMOJIS = ['👍', '❤️', '🎉', '😄', '🚀', '👀'] as const;
 export type ReactionEmoji = (typeof REACTION_EMOJIS)[number];
 
-/** How two same-type issues relate — the "Mark as" options (mirrors the backend). */
+/**
+ * How two issues relate *as peers* — the "Mark as" options (mirrors the backend).
+ * Parent/child is deliberately not here: nesting is the child's `parentId`, set
+ * from the Sub-tasks section, so there is exactly one parent and one place that
+ * says so.
+ */
 export enum RelationType {
   BLOCKS = 'blocks',
   BLOCKED_BY = 'blocked_by',
-  PARENT_OF = 'parent_of',
-  SUB_ISSUE_OF = 'sub_issue_of',
   RELATED_TO = 'related_to',
   DUPLICATE_OF = 'duplicate_of',
 }
@@ -198,10 +201,8 @@ export const API_KEY_SCOPE_LABEL: Record<ApiKeyScope, string> = {
   [ApiKeyScope.READ_WRITE_DELETE]: t('enum.apiKeyScope.readWriteDelete'),
 };
 
-/** The six relation options in "Mark as" menu order (matches the mockup). */
+/** The four relation options in "Mark as" menu order (matches the mockup). */
 export const RELATION_TYPES: RelationType[] = [
-  RelationType.PARENT_OF,
-  RelationType.SUB_ISSUE_OF,
   RelationType.RELATED_TO,
   RelationType.BLOCKED_BY,
   RelationType.BLOCKS,
@@ -210,8 +211,6 @@ export const RELATION_TYPES: RelationType[] = [
 
 /** Verb form, used in the "Mark as" menu and the relation row ("Blocked by PRO-13"). */
 export const RELATION_TYPE_LABEL: Record<RelationType, string> = {
-  [RelationType.PARENT_OF]: t('enum.relation.parentOf'),
-  [RelationType.SUB_ISSUE_OF]: t('enum.relation.subIssueOf'),
   [RelationType.RELATED_TO]: t('enum.relation.relatedTo'),
   [RelationType.BLOCKED_BY]: t('enum.relation.blockedBy'),
   [RelationType.BLOCKS]: t('enum.relation.blocks'),

@@ -47,6 +47,15 @@ export class UpdateIssueUseCase
       issue.setAssignees(resolved.getValue());
     }
 
+    if (dto.parentId !== undefined && dto.parentId !== '' && dto.parentId !== issue.parentId) {
+      const ok = await this.parentIsSafe(
+        { tenantId, requesterId, isAdmin },
+        issue.id.toString(),
+        dto.parentId,
+      );
+      if (ok.isFailure) return Result.fail(ok.error as string);
+    }
+
     if (dto.cycleId !== undefined && dto.cycleId !== issue.cycleId) {
       if (dto.cycleId === '') {
         issue.setCycle('');
@@ -90,5 +99,46 @@ export class UpdateIssueUseCase
 
     await this.issues.update(issue);
     return Result.ok(issue);
+  }
+
+  /**
+   * Refuse a parent that would close a loop — itself, or any of its own
+   * descendants. A cycle isn't a cosmetic problem: `parentId` is the *only*
+   * record of hierarchy, so a loop makes "walk up to the root" and "roll up the
+   * children" both non-terminating, and every reader has to defend itself with a
+   * depth cap. Cheaper to make the loop unrepresentable at the one write that can
+   * create it. Walks *up* from the proposed parent, so it costs the depth of the
+   * tree (1–2 reads in practice), not the size of the subtree.
+   */
+  private async parentIsSafe(
+    scope: { tenantId: string; requesterId: string; isAdmin: boolean },
+    childId: string,
+    parentId: string,
+  ): Promise<Result<void>> {
+    if (parentId === childId) return Result.fail('An issue cannot be its own parent');
+
+    const seen = new Set<string>([childId]);
+    let cursor: string | undefined = parentId;
+    while (cursor) {
+      // A pre-existing loop above the target would spin forever otherwise — the
+      // guard is new, so corrupt rows may already be out there.
+      if (seen.has(cursor)) break;
+      seen.add(cursor);
+      const ancestor: IssueEntity | null = await this.issues.findById(cursor);
+      // Same wording for missing, other-tenant and not-yours: nesting under an
+      // issue you can't read shouldn't confirm that it exists.
+      if (
+        !ancestor ||
+        ancestor.tenantId !== scope.tenantId ||
+        !ancestor.isVisibleTo(scope.requesterId, scope.isAdmin)
+      ) {
+        return Result.fail('Parent issue not found');
+      }
+      if (ancestor.parentId === childId) {
+        return Result.fail('That issue is already below this one');
+      }
+      cursor = ancestor.parentId || undefined;
+    }
+    return Result.ok();
   }
 }
