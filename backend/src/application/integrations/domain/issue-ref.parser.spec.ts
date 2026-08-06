@@ -43,6 +43,15 @@ describe('parseRefs', () => {
     expect(refs('BUG-12 and TSK7 both fixed')).toEqual(['BUG-12', 'TSK-7']);
   });
 
+  it('keeps every digit of a no-hyphen legacy ref with the number, not the prefix', () => {
+    // A shared prefix class would greedily eat the first digits — `TSK42` read as
+    // prefix `TSK4`, issue 2 — producing a confidently wrong ref that resolves to
+    // nothing. Sequential ids past 9 are the norm, so this is the common case.
+    expect(refs('fixed TSK42 today')).toEqual(['TSK-42']);
+    expect(refs('TSK12')).toEqual(['TSK-12']);
+    expect(refs('closes BUG1234')).toEqual(['BUG-1234']);
+  });
+
   it('accepts a backlog item ref and names it as one', () => {
     expect(parseRefs('RM-4KQP2XZ groundwork')).toEqual([
       { ref: 'RM-4KQP2XZ', subjectType: CodeLinkSubject.ROADMAP_ITEM },
