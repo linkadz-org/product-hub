@@ -2,7 +2,10 @@ import { Controller, Get, Param } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '@core/decorators';
 import { EntityNotFoundException } from '@core/exceptions';
-import { GetPublicTeamUseCase } from '@application/teams/use-cases/team.use-cases';
+import {
+  GetPublicTeamUseCase,
+  ResolveTeamPrefixLockUseCase,
+} from '@application/teams/use-cases/team.use-cases';
 import { TeamMapper } from '@application/teams/mappers/team.mapper';
 import { TeamResponseDto } from '@application/teams/dtos/team.dtos';
 import { TeamIssueType } from '@application/teams/domain/enums/team.enums';
@@ -39,6 +42,7 @@ export class PublicTeamsController {
     private readonly getIssues: GetIssuesUseCase,
     private readonly getIssue: GetIssueUseCase,
     private readonly getIssueComments: GetIssueCommentsUseCase,
+    private readonly prefixLock: ResolveTeamPrefixLockUseCase,
   ) {}
 
   @Get(':token')
@@ -59,7 +63,15 @@ export class PublicTeamsController {
       query: { teamId, kind: [kind] } as QueryIssueDto,
     });
     const items = IssueMapper.toResponseDtoArray(issues.getValue().data);
-    return { team: TeamMapper.toResponseDto(team), issueType: team.issueType, items };
+    // Nothing on a shared board is editable, but the flag must still tell the
+    // truth rather than default to `false` — an absent answer is fine, a wrong
+    // one is not, and `tenantId` is right here to resolve it properly.
+    const refPrefixLocked = await this.prefixLock.one(tenantId, team);
+    return {
+      team: TeamMapper.toResponseDto(team, refPrefixLocked),
+      issueType: team.issueType,
+      items,
+    };
   }
 
   @Get(':token/items/:itemId/comments')
