@@ -96,15 +96,65 @@ function promoteMermaid(html: string): string {
   return html.replace(HTML_PRE, (whole, pre = '', code = '', body = '') => {
     const attrs = `${pre} ${code}`;
     if (ALREADY_A_DIAGRAM.test(attrs) || !NAMES_MERMAID.test(attrs)) return whole;
-    return mermaidFigure(unescapeHtml(body.replace(/<[^>]+>/g, '')));
+    return mermaidFigure(unescapeHtml(stripTagsKeepingLines(body)));
   });
 }
+
+/** `<br>`, `<br/>`, `<br />` — the only tag a hand-pasted `<pre>` normally
+ *  carries, and the only one whose removal changes the text. */
+const LINE_BREAK_TAG = /<br\s*\/?>/gi;
+
+/**
+ * Flatten the markup inside a `<pre>` to the text it stood for.
+ *
+ * Mermaid source is line-oriented — `graph TD;` and each edge sit on their own
+ * line, and the parser fails on a source folded onto one. A `<pre>` that was
+ * hand-pasted (or produced by an editor that normalises newlines) carries those
+ * breaks as `<br/>`, so a blanket tag strip silently welds the whole diagram
+ * into a single unparseable line. Turn the breaks back into newlines first,
+ * then drop what is left — `<span>` wrappers and the like, which carry nothing.
+ */
+const stripTagsKeepingLines = (s: string): string =>
+  s.replace(LINE_BREAK_TAG, '\n').replace(/<[^>]+>/g, '');
 
 const escapeHtml = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+/**
+ * Named and numeric character references back to the characters they stand for.
+ *
+ * Mermaid source is full of them: `A--&gt;B` for an edge, and `&quot;` around
+ * every quoted node label, which is the shape any editor or paste pipeline
+ * produces. Decoding only `&lt; &gt; &amp;` left `&quot;` intact, and since the
+ * decoded text is re-escaped on the way into the figure, the bare `&` in it
+ * became `&amp;quot;` — a literal `&quot;` printed inside the diagram and a
+ * label that never renders.
+ *
+ * `&amp;` is decoded last, so `&amp;quot;` (an author who really did mean to
+ * write the text `&quot;`) survives as `&quot;` rather than collapsing a second
+ * time into a quote character.
+ */
+const NAMED_ENTITIES: Record<string, string> = {
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: ' ',
+};
+
+const ENTITY = /&(?:#(\d+)|#[xX]([0-9a-fA-F]+)|([a-zA-Z]+));/g;
+
 const unescapeHtml = (s: string): string =>
-  s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+  s
+    .replace(ENTITY, (whole, dec: string, hex: string, name: string) => {
+      if (dec) return String.fromCodePoint(Number.parseInt(dec, 10));
+      if (hex) return String.fromCodePoint(Number.parseInt(hex, 16));
+      // `amp` is deliberately absent from the table and handled in the second
+      // pass, so one round of decoding never eats two rounds of escaping.
+      const named = NAMED_ENTITIES[name.toLowerCase()];
+      return named ?? whole;
+    })
+    .replace(/&amp;/gi, '&');
 
 /**
  * Whether this line opens a block — and so ends the paragraph above it.

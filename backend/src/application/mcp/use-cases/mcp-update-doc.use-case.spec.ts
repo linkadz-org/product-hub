@@ -1,5 +1,5 @@
 import { Result } from '@shared/logic/result';
-import { McpUpdateDocUseCase, type McpActor } from './mcp.use-cases';
+import { McpCreateDocUseCase, McpUpdateDocUseCase, type McpActor } from './mcp.use-cases';
 import { ApiKeyScope } from '@application/api-keys/domain/api-key.enums';
 
 /**
@@ -21,9 +21,13 @@ const fakeDoc = {
   tags: ['discovery'],
 };
 
+// `content` matters: the use-case compares the incoming body against the stored
+// one to skip a pointless snapshot, and the *title* of the first page equals the
+// doc's — which is the ordinary shape (a doc's first page is named after it) and
+// exactly the case where a title-stripping write-back would shave the heading.
 const fakePages = [
-  { id: { toString: () => FIRST_PAGE_ID }, title: 'Discovery notes' },
-  { id: { toString: () => SECOND_PAGE_ID }, title: 'Appendix' },
+  { id: { toString: () => FIRST_PAGE_ID }, title: 'Discovery notes', content: '<p>old</p>' },
+  { id: { toString: () => SECOND_PAGE_ID }, title: 'Appendix', content: '<p>old</p>' },
 ];
 
 const actor: McpActor = {
@@ -35,7 +39,7 @@ const actor: McpActor = {
   clientName: 'claude-code/1.0',
 };
 
-const buildDeps = (over: { saveVersion?: jest.Mock } = {}) => {
+const buildDeps = (over: { saveVersion?: jest.Mock; collabReset?: jest.Mock } = {}) => {
   const getDoc = {
     execute: jest.fn().mockResolvedValue(Result.ok({ doc: fakeDoc, pages: fakePages })),
   };
@@ -51,16 +55,23 @@ const buildDeps = (over: { saveVersion?: jest.Mock } = {}) => {
   };
   const users = { findById: jest.fn().mockResolvedValue({ name: 'Ada' }) };
   const events = { append: jest.fn().mockResolvedValue(undefined) };
+  // Default: collab is configured and the room took the refresh. The port never
+  // rejects — a refresh problem is reported, not thrown — so the mock resolves
+  // in every case too.
+  const collab = {
+    resetPage: over.collabReset ?? jest.fn().mockResolvedValue({ status: 'refreshed' }),
+  };
   const useCase = new McpUpdateDocUseCase(
     getDoc as never,
     updateDoc as never,
     updatePage as never,
     createPage as never,
     saveVersion as never,
+    collab as never,
     users as never,
     events as never,
   );
-  return { useCase, getDoc, updateDoc, updatePage, createPage, saveVersion, events };
+  return { useCase, getDoc, updateDoc, updatePage, createPage, saveVersion, collab, events };
 };
 
 describe('McpUpdateDocUseCase', () => {
@@ -219,8 +230,12 @@ describe('McpUpdateDocUseCase — snapshot before overwrite', () => {
  * code block, the leading heading shaved.
  */
 describe('McpUpdateDocUseCase — read → write-back is byte-identical', () => {
+  // The opening heading is the target page's own title on purpose. With any
+  // other text the title-strip branch never runs and this suite quietly proves
+  // nothing about the risk its name claims to cover — which is what it did while
+  // the heading read "Week 31" and the page was called "Discovery notes".
   const STORED =
-    '<h2>Week 31</h2>' +
+    '<h2>Discovery notes</h2>' +
     '<p>Notes with <b>bold</b>, a <a href="https://x.test">link</a> and a pipe | character.</p>' +
     '<table><thead><tr><th>Who</th><th>Status</th></tr></thead>' +
     '<tbody><tr><td>Ada</td><td>shipped</td></tr><tr><td>Linh</td><td>blocked</td></tr></tbody></table>' +
@@ -244,5 +259,194 @@ describe('McpUpdateDocUseCase — read → write-back is byte-identical', () => 
     const first = updatePage.execute.mock.calls[0][0].dto.content as string;
     await useCase.execute({ actor, dto: { doc: DOC_REF, content: first } });
     expect(updatePage.execute.mock.calls[1][0].dto.content).toBe(first);
+  });
+});
+
+/**
+ * The title echo, and who it applies to.
+ *
+ * `stripEchoedTitle` exists because an assistant asked for a doc called X opens
+ * with "# X", and the page already prints its title above the body. That is true
+ * of content being *composed* — and false of content being *replaced*: a page's
+ * body very often opens on a heading of its own name (a doc's first page shares
+ * the doc's title), so shaving it on write-back deletes a real heading a person
+ * typed, once per edit, until it is gone.
+ *
+ * So: compose strips, replace does not.
+ */
+describe('McpUpdateDocUseCase — a replaced body keeps its leading heading', () => {
+  const ECHOES_TITLE = '<h2>Discovery notes</h2><p>Body.</p>';
+
+  it('update_doc preserves a heading that matches the page title', async () => {
+    const { useCase, updatePage } = buildDeps();
+
+    const result = await useCase.execute({
+      actor,
+      dto: { doc: DOC_REF, page: FIRST_PAGE_ID, content: ECHOES_TITLE },
+    });
+
+    expect(result.isSuccess).toBe(true);
+    expect(updatePage.execute.mock.calls[0][0].dto.content).toBe(ECHOES_TITLE);
+  });
+
+  it('does not shave a little more off on each successive write-back', async () => {
+    const { useCase, updatePage } = buildDeps();
+    // Three passes of read → edit nothing → write. Under the old rule the first
+    // pass drops the heading and the page is permanently one heading shorter.
+    let body = ECHOES_TITLE;
+    for (let pass = 0; pass < 3; pass++) {
+      await useCase.execute({ actor, dto: { doc: DOC_REF, page: FIRST_PAGE_ID, content: body } });
+      body = updatePage.execute.mock.calls[pass][0].dto.content as string;
+    }
+    expect(body).toBe(ECHOES_TITLE);
+  });
+
+  it('appendPage still strips it — a brand-new page is composed, not replaced', async () => {
+    const { useCase, createPage } = buildDeps();
+
+    const result = await useCase.execute({
+      actor,
+      dto: { doc: DOC_REF, appendPage: { title: 'Appendix B', content: '<h2>Appendix B</h2><p>Body.</p>' } },
+    });
+
+    expect(result.isSuccess).toBe(true);
+    expect(createPage.execute.mock.calls[0][0].dto.content).toBe('<p>Body.</p>');
+  });
+});
+
+describe('McpCreateDocUseCase — composed content still strips the echoed title', () => {
+  it('drops an opening heading that repeats the doc title', async () => {
+    const createDoc = {
+      execute: jest.fn().mockResolvedValue(
+        Result.ok({
+          doc: { id: { toString: () => DOC_UUID }, ref: DOC_REF, title: 'Discovery notes', tags: [] },
+          pages: [{ id: { toString: () => FIRST_PAGE_ID } }],
+        }),
+      ),
+    };
+    const updatePage = { execute: jest.fn().mockResolvedValue(Result.ok({})) };
+    const useCase = new McpCreateDocUseCase(
+      createDoc as never,
+      updatePage as never,
+      { findById: jest.fn().mockResolvedValue({ name: 'Ada' }) } as never,
+      { append: jest.fn().mockResolvedValue(undefined) } as never,
+    );
+
+    const result = await useCase.execute({
+      actor,
+      dto: { title: 'Discovery notes', content: '<h2>Discovery notes</h2><p>Body.</p>' },
+    });
+
+    expect(result.isSuccess).toBe(true);
+    expect(updatePage.execute.mock.calls[0][0].dto.content).toBe('<p>Body.</p>');
+  });
+});
+
+/**
+ * Reaching the live editing session.
+ *
+ * `update_doc` writes `docpages.content`, but while anyone has the page open the
+ * Y.Doc in the collab room is the copy they are looking at, and the mirror writes
+ * that back over the column on store. A write that skipped the room reports
+ * success and is then silently reverted by the next keystroke — so the room is
+ * asked to re-read the stored body, and if it can't be, the caller is told.
+ */
+describe('McpUpdateDocUseCase — refreshing the live editing session', () => {
+  it('refreshes the room after a body write, naming the page it wrote', async () => {
+    const { useCase, collab, updatePage } = buildDeps();
+
+    const result = await useCase.execute({
+      actor,
+      dto: { doc: DOC_REF, page: SECOND_PAGE_ID, content: 'New text' },
+    });
+
+    expect(result.isSuccess).toBe(true);
+    expect(collab.resetPage).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId: 't1', pageId: SECOND_PAGE_ID, userId: 'u1' }),
+    );
+    // After the write: refreshing the room from the stored body before the body
+    // is stored would push the OLD text at every open editor.
+    expect(collab.resetPage.mock.invocationCallOrder[0]).toBeGreaterThan(
+      updatePage.execute.mock.invocationCallOrder[0],
+    );
+    expect(result.getValue().warning).toBe('');
+  });
+
+  it('does not refresh a title/tags-only edit — no body changed', async () => {
+    const { useCase, collab } = buildDeps();
+    const result = await useCase.execute({ actor, dto: { doc: DOC_REF, title: 'Renamed' } });
+    expect(result.isSuccess).toBe(true);
+    expect(collab.resetPage).not.toHaveBeenCalled();
+  });
+
+  it('is a clean no-op when no collab server is configured', async () => {
+    const { useCase } = buildDeps({
+      collabReset: jest.fn().mockResolvedValue({ status: 'not-configured' }),
+    });
+
+    const result = await useCase.execute({ actor, dto: { doc: DOC_REF, content: 'New text' } });
+
+    // A deployment that doesn't run collab has no room to refresh and nothing to
+    // warn about — the write is plainly successful.
+    expect(result.isSuccess).toBe(true);
+    expect(result.getValue().warning).toBe('');
+    expect(result.getValue().changed).toContain('edited a page');
+  });
+
+  it('reports a failed refresh without failing the write', async () => {
+    const { useCase, updatePage } = buildDeps({
+      collabReset: jest
+        .fn()
+        .mockResolvedValue({ status: 'failed', error: 'collab server answered 502' }),
+    });
+
+    const result = await useCase.execute({ actor, dto: { doc: DOC_REF, content: 'New text' } });
+
+    // The write committed — rolling it back is not on offer and pretending it
+    // didn't happen would be a second lie.
+    expect(result.isSuccess).toBe(true);
+    expect(updatePage.execute).toHaveBeenCalledTimes(1);
+    expect(result.getValue().changed).toContain('edited a page');
+    // ...but the caller has to be able to act on it, so the cause and the
+    // consequence are both spelled out.
+    const { warning } = result.getValue();
+    expect(warning).toContain('502');
+    expect(warning.toLowerCase()).toContain('saved');
+    expect(warning.toLowerCase()).toContain('write it back over');
+  });
+});
+
+/**
+ * Version history is not free. Each `update_doc` snapshot is a full copy of the
+ * page body, so an assistant iterating on a 300 KB page would otherwise leave one
+ * behind per pass — including the passes that changed nothing at all.
+ */
+describe('McpUpdateDocUseCase — no snapshot for a write that changes nothing', () => {
+  it('skips the version and the write when the body already matches', async () => {
+    const { useCase, saveVersion, updatePage, collab } = buildDeps();
+
+    // `fakePages[0].content` is exactly this.
+    const result = await useCase.execute({
+      actor,
+      dto: { doc: DOC_REF, page: FIRST_PAGE_ID, content: '<p>old</p>' },
+    });
+
+    expect(result.isSuccess).toBe(true);
+    expect(saveVersion.execute).not.toHaveBeenCalled();
+    expect(updatePage.execute).not.toHaveBeenCalled();
+    // Nothing was written, so no room needs refreshing either.
+    expect(collab.resetPage).not.toHaveBeenCalled();
+    // And it says so rather than claiming an edit it did not make.
+    expect(result.getValue().changed).toContain('already matched');
+  });
+
+  it('caps how many of its own snapshots one page keeps', async () => {
+    const { useCase, saveVersion } = buildDeps();
+    await useCase.execute({ actor, dto: { doc: DOC_REF, content: 'New text' } });
+    // Retention is label-scoped inside SaveDocPageVersionUseCase, so this can
+    // only ever prune MCP's own snapshots — never a version a person saved.
+    const call = saveVersion.execute.mock.calls[0][0];
+    expect(typeof call.retain).toBe('number');
+    expect(call.retain).toBeGreaterThan(0);
   });
 });

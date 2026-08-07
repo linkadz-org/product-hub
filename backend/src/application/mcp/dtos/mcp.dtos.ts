@@ -412,6 +412,20 @@ export class McpAppendPageDto {
   content?: string;
 }
 
+/**
+ * Browse the workspace's docs. Bounded like `search_issues`: a workspace with
+ * hundreds of docs would otherwise return every one of them in a single reply.
+ */
+export class McpListDocsDto {
+  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 50 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  limit?: number = 20;
+}
+
 /** Read one doc's metadata and its page list — the page ids update_doc targets. */
 export class McpGetDocDto {
   // Supplied by the REST `:doc` path segment; required in the JSON-RPC schema.

@@ -87,3 +87,67 @@ describe('docBodyToHtml — không phá thứ đang chạy', () => {
     expect(html).toBe('<p>Đã là HTML</p>');
   });
 });
+
+/**
+ * Hand-pasted mermaid.
+ *
+ * The app stores a diagram as `<figure class="mermaid-block"><pre
+ * class="mermaid-source">`, and that form is passed through untouched. What a
+ * person pastes is the other form — mermaid's own `<pre class="mermaid">` — and
+ * it arrives with the two things HTML always does to code: newlines as `<br/>`
+ * and quotes as `&quot;`. Losing either breaks the diagram rather than the page,
+ * so it comes back as an error message where the picture should be.
+ */
+describe('docBodyToHtml — hand-pasted mermaid', () => {
+  const sourceOf = (html: string): string => {
+    const match = html.match(/<pre class="mermaid-source"><code>([\s\S]*?)<\/code><\/pre>/);
+    return match ? match[1] : '';
+  };
+
+  it('keeps the line breaks a <br/> stood for', () => {
+    const html = docBodyToHtml('<pre class="mermaid">graph TD;<br/>A--&gt;B<br/>B--&gt;C</pre>');
+    // Folded onto one line the source does not parse — mermaid is line-oriented.
+    expect(sourceOf(html)).toBe('graph TD;\nA--&gt;B\nB--&gt;C');
+  });
+
+  it('decodes &quot; instead of printing it', () => {
+    const html = docBodyToHtml('<pre class="mermaid">graph TD;<br/>C[&quot;q&quot;]</pre>');
+    const source = sourceOf(html);
+    // The escape survived `unescapeHtml`, then the `&` in it was escaped again —
+    // so the label rendered as the six characters `&quot;` on the diagram.
+    expect(source).not.toContain('&amp;quot;');
+    expect(source).toContain('C["q"]');
+  });
+
+  it('handles &apos;, &#39; and numeric references too', () => {
+    const html = docBodyToHtml(
+      '<pre class="mermaid">graph TD;<br/>A[&apos;x&apos;]--&gt;B[&#39;y&#39;]--&gt;C[&#x27;z&#x27;]</pre>',
+    );
+    expect(sourceOf(html)).toBe("graph TD;\nA['x']--&gt;B['y']--&gt;C['z']");
+  });
+
+  it('does not eat an author’s literal &quot; — &amp;quot; decodes one level only', () => {
+    const html = docBodyToHtml('<pre class="mermaid">graph TD;<br/>A[&amp;quot;]</pre>');
+    // They wrote the *text* `&quot;`, so that is what the diagram should show.
+    expect(sourceOf(html)).toBe('graph TD;\nA[&amp;quot;]');
+  });
+
+  it('becomes the figure the editor draws from', () => {
+    const html = docBodyToHtml('<pre class="mermaid">graph TD;<br/>A--&gt;B</pre>');
+    expect(html).toContain('<figure class="mermaid-block">');
+    expect(html).toContain('<pre class="mermaid-source"><code>');
+  });
+
+  it('leaves the app’s own storage form exactly as it is', () => {
+    const stored =
+      '<figure class="mermaid-block"><pre class="mermaid-source"><code>graph TD;\nA--&gt;B</code></pre></figure>';
+    // A second pass must not re-promote (and so re-escape) what is already a
+    // diagram — that is what read → write-back does on every edit.
+    expect(docBodyToHtml(stored)).toBe(stored);
+  });
+
+  it('leaves a code block that is not mermaid alone', () => {
+    const code = '<pre><code class="language-ts">const a = 1;</code></pre><p>x</p>';
+    expect(docBodyToHtml(code)).toBe(code);
+  });
+});

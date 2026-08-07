@@ -21,6 +21,7 @@ import {
   McpCreateIssueDto,
   McpLinkIssuesDto,
   McpListBacklogItemsDto,
+  McpListDocsDto,
   McpSearchIssuesDto,
   McpSetStatusDto,
   McpUpdateCommentDto,
@@ -42,8 +43,8 @@ import {
   McpContextResponseDto,
   McpDeletedCommentResponseDto,
   McpDeletedIssueResponseDto,
-  McpDocBriefDto,
   McpDocDetailResponseDto,
+  McpDocListResponseDto,
   McpDocPageResponseDto,
   McpDocResponseDto,
   McpIssueDetailResponseDto,
@@ -247,8 +248,11 @@ export class McpController {
   // — gating them would leave the same blind overwrite the writes had.
   @Get('docs')
   @ApiOperation({ summary: 'List docs — ref, title, tags, page count (API key)' })
-  async docs(@Req() req: McpRequest): Promise<McpDocBriefDto[]> {
-    const result = await this.listDocs.execute({ actor: actorOf(req) });
+  async docs(
+    @Req() req: McpRequest,
+    @Query() query: McpListDocsDto,
+  ): Promise<McpDocListResponseDto> {
+    const result = await this.listDocs.execute({ actor: actorOf(req), dto: query });
     if (result.isFailure) throw new ValidationException(result.error as string);
     return result.getValue();
   }

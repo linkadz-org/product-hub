@@ -21,6 +21,7 @@ import {
   McpLinkIssuesDto,
   McpListBacklogItemsDto,
   McpListCommentsDto,
+  McpListDocsDto,
   McpListLinksDto,
   McpSearchIssuesDto,
   McpSetStatusDto,
@@ -45,6 +46,7 @@ import {
   McpDeletedIssueResponseDto,
   McpDocBriefDto,
   McpDocDetailResponseDto,
+  McpDocListResponseDto,
   McpDocPageResponseDto,
   McpDocResponseDto,
   McpIssueDetailResponseDto,
@@ -633,24 +635,33 @@ export class McpServerFactory {
   }
 
   private registerListDocs(server: McpServer, run: Run): void {
-    registerTool(
+    registerTool<McpListDocsDto>(
       server,
       'list_docs',
       {
         title: 'List the workspace’s docs',
         description:
-          'Every document in the workspace — its ref (refs look like DOC-3), title, tags, how many ' +
-          'pages it has and when it last changed. list_workspace does not mention docs, so this is ' +
-          'how you find one you were not given the ref for. Bodies are not included: use get_doc for ' +
-          'a doc’s page list, then get_doc_page for one page’s text.',
+          'The workspace’s documents, most recently changed first — each one’s ref (refs look like ' +
+          'DOC-3), title, tags, how many pages it has and when it last changed. list_workspace does ' +
+          'not mention docs, so this is how you find one you were not given the ref for. Bodies are ' +
+          'not included: use get_doc for a doc’s page list, then get_doc_page for one page’s text.',
+        inputSchema: {
+          limit: z.number().int().min(1).max(50).optional().describe('Default 20'),
+        },
         annotations: { readOnlyHint: true },
       },
-      () =>
-        run<McpDocBriefDto[]>(
-          (actor) => this.listDocs.execute({ actor }),
-          (docs) =>
+      (dto) =>
+        run<McpDocListResponseDto>(
+          (actor) => this.listDocs.execute({ actor, dto }),
+          ({ docs, total }) =>
             docs.length
-              ? `${docs.length} doc(s):\n\n${docs.map((d) => this.describeDoc(d)).join('\n\n')}`
+              ? // Say when the list was cut short: a reply that shows 20 of 140
+                // and doesn't mention the 140 reads as the whole workspace.
+                `${
+                  docs.length < total
+                    ? `${docs.length} of ${total} docs (most recent first — raise \`limit\` for more)`
+                    : `${docs.length} doc(s)`
+                }:\n\n${docs.map((d) => this.describeDoc(d)).join('\n\n')}`
               : 'No docs.',
         ),
     );
@@ -798,6 +809,10 @@ export class McpServerFactory {
               `Updated doc "${doc.title}"${doc.changed ? ` — ${doc.changed}` : ''}` +
                 `${doc.tags.length ? ` · ${doc.tags.join(', ')}` : ''}`,
               this.url(doc.link),
+              // A caveat on a write that did commit. It goes last so it is the
+              // final thing read, and it is spelled out rather than logged: the
+              // whole failure mode here is a success the caller can't act on.
+              ...(doc.warning ? ['', `⚠ ${doc.warning}`] : []),
             ].join('\n'),
         ),
     );
@@ -1065,17 +1080,38 @@ export class McpServerFactory {
     ].join('\n');
   }
 
+  /**
+   * A doc as one row. The first token is what `get_doc` takes back — the ref
+   * when there is one, the id otherwise, because a doc created before refs
+   * existed carries `ref: ''` until the backfill script runs, and a row that led
+   * with an empty ref left nothing on the line to address the doc by.
+   */
   private describeDoc(d: McpDocBriefDto): string {
     return [
-      `${d.ref} · ${d.title}`,
+      `${d.ref || d.id} · ${d.title}`,
       `  ${d.pageCount} page${d.pageCount === 1 ? '' : 's'}` +
         (d.tags.length ? ` · ${d.tags.join(', ')}` : '') +
         (d.updatedAt ? ` · updated ${new Date(d.updatedAt).toISOString().slice(0, 10)}` : ''),
+      `  ${this.url(`/docs/${d.id}`)}`,
     ].join('\n');
   }
 
-  /** A doc's table of contents. Sub-pages are indented under their parent so the
-   *  nesting reads back as it looks in the app; bodies are never printed here. */
+  /**
+   * A doc's table of contents. Sub-pages are indented under their parent so the
+   * nesting reads back as it looks in the app; bodies are never printed here.
+   *
+   * Two things the data can do that a plain recursion cannot survive:
+   *
+   * - **A cycle.** `ReorderDocPagesUseCase` refuses to *create* one but
+   *   deliberately tolerates one that already exists ("pre-existing cycle: don't
+   *   spin on it"), so a walk with no `seen` set recurses until the stack goes —
+   *   which reaches the user as "Maximum call stack size exceeded", not as a
+   *   doc it can't draw. `seen` bounds it to one visit per page.
+   * - **An orphan.** A page whose `parentId` names a page that isn't here hangs
+   *   off nothing, so walking down from `''` never reaches it. It is still a
+   *   page of this doc with a body someone can read, and the header counts it —
+   *   so anything the tree missed is listed after it rather than quietly lost.
+   */
   private describeDocDetail(d: McpDocDetailResponseDto): string {
     const byParent = new Map<string, typeof d.pages>();
     for (const p of d.pages) {
@@ -1084,14 +1120,24 @@ export class McpServerFactory {
       byParent.set(p.parentId, siblings);
     }
     const lines: string[] = [];
+    const seen = new Set<string>();
     const walk = (parentId: string, depth: number): void => {
       const children = [...(byParent.get(parentId) ?? [])].sort((a, b) => a.order - b.order);
       for (const p of children) {
+        if (seen.has(p.id)) continue;
+        seen.add(p.id);
         lines.push(`${'  '.repeat(depth + 1)}${p.title} · [${p.id}]`);
         walk(p.id, depth + 1);
       }
     };
     walk('', 0);
+
+    const detached = d.pages.filter((p) => !seen.has(p.id));
+    if (detached.length) {
+      lines.push('', '  Not attached to the tree (their parent page is missing):');
+      for (const p of detached) lines.push(`  ${p.title} · [${p.id}]`);
+    }
+
     return [
       `${d.ref} · ${d.title}`,
       `  ${d.pages.length} page${d.pages.length === 1 ? '' : 's'}` +

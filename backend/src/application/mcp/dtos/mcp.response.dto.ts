@@ -399,6 +399,29 @@ export class McpUpdatedDocResponseDto {
 
   @ApiProperty({ description: 'Human summary of what changed, e.g. "renamed, edited a page"' })
   changed: string;
+
+  /**
+   * Empty on a clean write. Set when the write committed but something the
+   * caller has to know about did not — today: the live editing session could not
+   * be refreshed, so an open editor may write its stale copy back over the
+   * change. Reported rather than thrown: the write already happened, and the one
+   * thing worse than a warning here is a silent success.
+   */
+  @ApiProperty({ description: 'Set when the write committed but needs a caveat; else empty' })
+  warning: string;
+}
+
+/**
+ * What `list_docs` hands back. `total` is the whole workspace's doc count, so a
+ * reply built from a truncated `docs` can say how many it did not show rather
+ * than implying the workspace holds only these.
+ */
+export class McpDocListResponseDto {
+  @ApiProperty({ type: [McpDocBriefDto] })
+  docs: McpDocBriefDto[];
+
+  @ApiProperty({ description: 'How many docs the workspace holds, before the limit' })
+  total: number;
 }
 
 /** One backlog item in a browse listing — flat, enough to pick and link one. */

@@ -66,7 +66,9 @@ function registerDocReads(): Record<string, Registered> {
   const factory = Object.create(McpServerFactory.prototype) as McpServerFactory;
   Object.assign(factory, {
     appUrl: 'http://localhost:3001',
-    listDocs: { execute: jest.fn().mockResolvedValue(Result.ok([DOC_BRIEF])) },
+    listDocs: {
+      execute: jest.fn().mockResolvedValue(Result.ok({ docs: [DOC_BRIEF], total: 1 })),
+    },
     getDoc: { execute: jest.fn().mockResolvedValue(Result.ok(DOC_DETAIL)) },
     getDocPage: { execute: jest.fn().mockResolvedValue(Result.ok(DOC_PAGE)) },
   });
@@ -138,7 +140,9 @@ describe('the doc read tools', () => {
 function controller() {
   const c = Object.create(McpController.prototype) as McpController;
   Object.assign(c, {
-    listDocs: { execute: jest.fn().mockResolvedValue(Result.ok([DOC_BRIEF])) },
+    listDocs: {
+      execute: jest.fn().mockResolvedValue(Result.ok({ docs: [DOC_BRIEF], total: 1 })),
+    },
     getDoc: { execute: jest.fn().mockResolvedValue(Result.ok(DOC_DETAIL)) },
     getDocPage: { execute: jest.fn().mockResolvedValue(Result.ok(DOC_PAGE)) },
   });
@@ -151,7 +155,7 @@ describe('the doc read routes', () => {
   beforeEach(() => (assertCanWrite as jest.Mock).mockClear());
 
   it('GET /mcp/docs serves a read-only key', async () => {
-    await expect(controller().docs(req)).resolves.toEqual([DOC_BRIEF]);
+    await expect(controller().docs(req, {})).resolves.toEqual({ docs: [DOC_BRIEF], total: 1 });
     expect(assertCanWrite).not.toHaveBeenCalled();
   });
 
@@ -194,5 +198,142 @@ describe('the update_doc description', () => {
     expect(d).toContain('Only the body is replaced');
     expect(d).toContain('attachments');
     expect(d).toContain('links');
+  });
+});
+
+/* ── The page tree, and the data it has to survive ────────────────────────── */
+
+/** Register `get_doc` alone against a supplied detail payload. */
+function getDocWith(detail: unknown): Registered {
+  const factory = Object.create(McpServerFactory.prototype) as McpServerFactory;
+  Object.assign(factory, {
+    appUrl: 'http://localhost:3001',
+    getDoc: { execute: jest.fn().mockResolvedValue(Result.ok(detail)) },
+  });
+  const registered: Record<string, Registered> = {};
+  const server = {
+    registerTool: (name: string, config: Registered['config'], handler: Registered['handler']) => {
+      registered[name] = { name, config, handler };
+    },
+  };
+  const run = async <T,>(
+    call: (actor: typeof READ_ONLY_ACTOR) => Promise<Result<T>>,
+    describe: (value: T) => string,
+  ) => {
+    const result = await call(READ_ONLY_ACTOR);
+    if (result.isFailure) return { isError: true, content: [{ text: result.error as string }] };
+    return { content: [{ text: describe(result.getValue()) }] };
+  };
+  (factory as unknown as Record<string, (s: unknown, r: unknown) => void>).registerGetDoc.call(
+    factory,
+    server,
+    run,
+  );
+  return registered.get_doc;
+}
+
+const docWithPages = (pages: unknown[]) => ({ ...DOC_DETAIL, pages });
+
+describe('get_doc — a page tree the data can actually contain', () => {
+  it('lists a page whose parent is missing rather than dropping it', async () => {
+    // The header says "3 pages"; walking down from '' reaches only two of them.
+    // The third has a body someone can read and an id `update_doc` takes — losing
+    // it silently is worse than an ugly tree.
+    const reply = await getDocWith(
+      docWithPages([
+        { id: 'page-1', title: 'Week 31', parentId: '', order: 0 },
+        { id: 'page-2', title: 'Appendix', parentId: 'page-1', order: 1 },
+        { id: 'page-9', title: 'Orphan', parentId: 'page-deleted', order: 2 },
+      ]),
+    ).handler({ doc: 'DOC-3' });
+
+    const out = reply.content[0].text;
+    expect(out).toContain('Orphan');
+    expect(out).toContain('page-9');
+    expect(out).toContain('3 pages');
+  });
+
+  it('terminates on a pre-existing cycle instead of overflowing the stack', async () => {
+    // ReorderDocPagesUseCase refuses to *create* a cycle but tolerates one that
+    // already exists, so this shape is reachable. Without a `seen` set the walk
+    // recurses forever and the user is told "Maximum call stack size exceeded".
+    const reply = await getDocWith(
+      docWithPages([
+        { id: 'page-1', title: 'Week 31', parentId: '', order: 0 },
+        { id: 'a', title: 'A', parentId: 'b', order: 1 },
+        { id: 'b', title: 'B', parentId: 'a', order: 2 },
+      ]),
+    ).handler({ doc: 'DOC-3' });
+
+    expect(reply.isError).toBeFalsy();
+    const out = reply.content[0].text;
+    // Both survive the cycle — one of them attaches to nothing, so it is listed
+    // as detached rather than omitted.
+    expect(out).toContain('A');
+    expect(out).toContain('B');
+  });
+
+  it('prints each page exactly once', async () => {
+    const reply = await getDocWith(
+      docWithPages([
+        { id: 'page-1', title: 'Week 31', parentId: '', order: 0 },
+        { id: 'page-2', title: 'Appendix', parentId: 'page-1', order: 1 },
+      ]),
+    ).handler({ doc: 'DOC-3' });
+
+    const out = reply.content[0].text;
+    expect(out.match(/\[page-2\]/g)).toHaveLength(1);
+  });
+});
+
+/* ── Addressability ───────────────────────────────────────────────────────── */
+
+describe('list_docs — every listed doc can be passed back', () => {
+  const listWith = (docs: unknown[], total = docs.length): Registered => {
+    const factory = Object.create(McpServerFactory.prototype) as McpServerFactory;
+    Object.assign(factory, {
+      appUrl: 'http://localhost:3001',
+      listDocs: { execute: jest.fn().mockResolvedValue(Result.ok({ docs, total })) },
+    });
+    const registered: Record<string, Registered> = {};
+    const server = {
+      registerTool: (
+        name: string,
+        config: Registered['config'],
+        handler: Registered['handler'],
+      ) => {
+        registered[name] = { name, config, handler };
+      },
+    };
+    const run = async <T,>(
+      call: (actor: typeof READ_ONLY_ACTOR) => Promise<Result<T>>,
+      describe: (value: T) => string,
+    ) => {
+      const result = await call(READ_ONLY_ACTOR);
+      if (result.isFailure) return { isError: true, content: [{ text: result.error as string }] };
+      return { content: [{ text: describe(result.getValue()) }] };
+    };
+    (
+      factory as unknown as Record<string, (s: unknown, r: unknown) => void>
+    ).registerListDocs.call(factory, server, run);
+    return registered.list_docs;
+  };
+
+  it('prints a link, like every other listed entity does', async () => {
+    const reply = await listWith([DOC_BRIEF]).handler({});
+    expect(reply.content[0].text).toContain('http://localhost:3001/docs/doc-uuid');
+  });
+
+  it('falls back to the id when the doc has no ref yet', async () => {
+    // `ref: ''` is a documented state — docs created before refs existed carry
+    // it until backfill:doc-refs runs. A row led by an empty ref left the
+    // assistant nothing on the line to pass to get_doc.
+    const reply = await listWith([{ ...DOC_BRIEF, ref: '' }]).handler({});
+    expect(reply.content[0].text).toContain('doc-uuid');
+  });
+
+  it('says how many it did not show when the list was cut short', async () => {
+    const reply = await listWith([DOC_BRIEF], 140).handler({ limit: 1 });
+    expect(reply.content[0].text).toContain('140');
   });
 });

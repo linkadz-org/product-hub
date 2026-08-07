@@ -38,11 +38,22 @@ function snapshot(page: DocPageEntity, author: Author, label: string): Result<Do
   });
 }
 
+/**
+ * Freeze a page, optionally keeping only the last `retain` snapshots that share
+ * this one's label.
+ *
+ * `retain` is for callers that snapshot on *every* write — MCP's `update_doc`,
+ * where an assistant iterating on a page would otherwise leave a full copy of
+ * the body behind per pass. A person clicking "Save version" passes no `retain`,
+ * so their history is still append-only and nothing they saved is ever pruned;
+ * pruning also matches on the label, so a machine cap can only ever remove the
+ * machine's own snapshots.
+ */
 @Injectable()
 export class SaveDocPageVersionUseCase
   implements
     IUsecaseExecute<
-      PageScope & { author: Author; dto: SaveDocPageVersionDto },
+      PageScope & { author: Author; dto: SaveDocPageVersionDto; retain?: number },
       Result<DocPageVersionEntity>
     >
 {
@@ -57,17 +68,29 @@ export class SaveDocPageVersionUseCase
     tenantId,
     author,
     dto,
-  }: PageScope & { author: Author; dto: SaveDocPageVersionDto }): Promise<
+    retain,
+  }: PageScope & { author: Author; dto: SaveDocPageVersionDto; retain?: number }): Promise<
     Result<DocPageVersionEntity>
   > {
     const page = await this.pages.findById(pageId);
     if (!page || page.tenantId !== tenantId || page.docId !== docId) {
       return Result.fail('Page not found');
     }
-    const created = snapshot(page, author, dto.label ?? '');
+    const label = dto.label ?? '';
+    const created = snapshot(page, author, label);
     if (created.isFailure) return Result.fail(created.error as string);
     const version = created.getValue();
     await this.versions.save(version);
+    // After the save, so a cap of N leaves exactly N — this one included. A
+    // failed prune must not fail the snapshot: the version is already stored and
+    // the caller is about to rely on it.
+    if (retain !== undefined && label) {
+      try {
+        await this.versions.pruneByPageAndLabel(pageId, label, retain);
+      } catch {
+        // Retention is housekeeping; losing a round of it costs disk, not data.
+      }
+    }
     return Result.ok(version);
   }
 }

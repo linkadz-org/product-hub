@@ -6,6 +6,7 @@ import { ApplicationIssuesModule } from '@application/issues/issues.module';
 import { ApplicationTeamsModule } from '@application/teams/teams.module';
 import { ApplicationRoadmapsModule } from '@application/roadmaps/roadmaps.module';
 import { ApplicationDocsModule } from '@application/docs/docs.module';
+import { InfrastructureCollabModule } from '@infrastructure/collab/collab.module';
 import { ApplicationActivityModule } from '@application/activity/activity.module';
 import { ApplicationIssueLinksModule } from '@application/issue-links/issue-links.module';
 import { ApplicationCyclesModule } from '@application/cycles/cycles.module';
@@ -78,6 +79,10 @@ const useCases = [
     ApplicationTeamsModule,
     ApplicationRoadmapsModule,
     ApplicationDocsModule,
+    // `update_doc` writes Mongo, but a page anyone has open is being served from
+    // the collab server's Y.Doc, which would mirror its stale copy back over the
+    // write. This is how the API asks that room to re-read what was stored.
+    InfrastructureCollabModule,
     // The 4 issue-comment use-cases (list/add/update/delete) inject from here —
     // without it the comment wrappers can't resolve their dependencies.
     ApplicationActivityModule,

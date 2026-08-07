@@ -124,8 +124,9 @@ describe('list_docs', () => {
     const result = await listDocs.execute({ actor: actor() });
 
     expect(result.isSuccess).toBe(true);
-    const docs = result.getValue();
+    const { docs, total } = result.getValue();
     expect(docs).toHaveLength(2);
+    expect(total).toBe(2);
     expect(docs[0]).toEqual({
       ref: DOC_REF,
       id: DOC_UUID,
@@ -147,6 +148,64 @@ describe('list_docs', () => {
     const json = JSON.stringify((await listDocs.execute({ actor: actor() })).getValue());
     expect(json).not.toContain(PUBLIC_TOKEN);
     expect(json).not.toContain('publicToken');
+  });
+
+  /**
+   * The cap. Every other list on the MCP read surface has one — `search_issues`
+   * defaults to 20 and stops at 50, `list_comments` at 100 — because a reply is
+   * read by a model with a context window, and a workspace with hundreds of docs
+   * would spend the whole of it on a browse. `total` rides along so a truncated
+   * reply can say how much it did not show.
+   */
+  describe('bounded like the other lists', () => {
+    /** A workspace big enough to hit the cap. */
+    const manyDocs = (count: number) =>
+      Array.from({ length: count }, (_, i) => ({
+        id: { toString: () => `doc-${i}` },
+        tenantId: TENANT,
+        ref: `DOC-${i}`,
+        title: `Doc ${i}`,
+        tags: [],
+        updatedAt: new Date('2026-08-01T00:00:00Z'),
+        publicToken: null,
+      }));
+
+    const listing = (count: number) => {
+      const docs = manyDocs(count);
+      const docRepo = { findByTenant: jest.fn(async () => docs) };
+      const pageRepo = {
+        countByDocIds: jest.fn(async () =>
+          Object.fromEntries(docs.map((d) => [d.id.toString(), 1])),
+        ),
+      };
+      return new McpListDocsUseCase(new GetDocsUseCase(docRepo as never, pageRepo as never));
+    };
+
+    it('returns 20 by default and reports the true total', async () => {
+      const result = await listing(140).execute({ actor: actor() });
+      const { docs, total } = result.getValue();
+      expect(docs).toHaveLength(20);
+      // Without this the caller cannot tell 20-of-140 from a 20-doc workspace.
+      expect(total).toBe(140);
+    });
+
+    it('honours a smaller limit', async () => {
+      const { docs } = (await listing(140).execute({ actor: actor(), dto: { limit: 5 } })).getValue();
+      expect(docs).toHaveLength(5);
+    });
+
+    it('never exceeds the cap, however large a limit is asked for', async () => {
+      const { docs } = (
+        await listing(140).execute({ actor: actor(), dto: { limit: 5000 } })
+      ).getValue();
+      expect(docs).toHaveLength(50);
+    });
+
+    it('returns everything when the workspace is smaller than the limit', async () => {
+      const { docs, total } = (await listing(3).execute({ actor: actor() })).getValue();
+      expect(docs).toHaveLength(3);
+      expect(total).toBe(3);
+    });
   });
 });
 

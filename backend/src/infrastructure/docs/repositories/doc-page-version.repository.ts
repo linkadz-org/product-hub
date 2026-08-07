@@ -77,4 +77,20 @@ export class DocPageVersionRepository
   async deleteByDoc(docId: string): Promise<void> {
     await this.model.deleteMany({ docId }).exec();
   }
+
+  async pruneByPageAndLabel(pageId: string, label: string, keep: number): Promise<void> {
+    if (!label || keep < 0) return;
+    // Ids only, never `content`: the whole point of pruning is that these
+    // documents are large, so loading them to decide what to delete would cost
+    // exactly the memory being reclaimed.
+    const stale = await this.model
+      .find({ pageId, label })
+      .sort({ createdAt: -1 })
+      .skip(keep)
+      .select({ _id: 1 })
+      .lean<{ _id: string }[]>()
+      .exec();
+    if (!stale.length) return;
+    await this.model.deleteMany({ _id: { $in: stale.map((v) => v._id) } }).exec();
+  }
 }

@@ -41,6 +41,7 @@ import {
   UpdateDocPageUseCase,
 } from '@application/docs/use-cases/doc-page.use-cases';
 import { SaveDocPageVersionUseCase } from '@application/docs/use-cases/doc-page-version.use-cases';
+import { ICollabSync } from '@application/docs/collab-sync.port';
 import {
   CreateDocDto,
   CreateDocPageDto,
@@ -95,6 +96,7 @@ import {
   McpLinkIssuesDto,
   McpListBacklogItemsDto,
   McpListCommentsDto,
+  McpListDocsDto,
   McpListLinksDto,
   McpSearchIssuesDto,
   McpSetStatusDto,
@@ -113,6 +115,7 @@ import {
   McpDeletedIssueResponseDto,
   McpDocBriefDto,
   McpDocDetailResponseDto,
+  McpDocListResponseDto,
   McpDocPageResponseDto,
   McpDocResponseDto,
   McpIssueDetailResponseDto,
@@ -182,6 +185,12 @@ const LIST_COMMENTS_CAP = 100;
 /** Upper bound on backlog items `list_backlog_items` returns, so a huge roadmap
  *  can't flood the assistant in one call. */
 const LIST_BACKLOG_CAP = 100;
+
+/** How many docs `list_docs` returns when the caller names no limit, and the
+ *  most it will return however large a limit is asked for. Same shape as
+ *  `search_issues`: docs are browsed to pick one, not read in bulk. */
+const LIST_DOCS_DEFAULT = 20;
+const LIST_DOCS_CAP = 50;
 
 /** A stored RelationType read as words for a human — `blocked_by` → "blocked by". */
 const relationLabel = (rt: string): string => rt.replace(/_/g, ' ');
@@ -1134,6 +1143,10 @@ export class McpCreateDocUseCase
     const docId = doc.id.toString();
     const pageId = page.id.toString();
 
+    // Composing brand-new content, so the title echo goes: an assistant asked
+    // for a doc called X reliably opens with "# X", and the page already prints
+    // its title above the body. (update_doc does NOT strip — replacing an
+    // existing body must return it unchanged, echoed heading and all.)
     const content = stripEchoedTitle(docBodyToHtml(dto.content), doc.title);
     if (content) {
       const written = await this.updatePage.execute({
@@ -1177,6 +1190,16 @@ export class McpCreateDocUseCase
 const MCP_VERSION_LABEL = 'Before update_doc (MCP)';
 
 /**
+ * How many `update_doc` snapshots one page keeps. An assistant iterating on a
+ * page writes many times in a sitting, and each snapshot is a full copy of the
+ * body — forty passes over a 300 KB page is twelve megabytes of history nobody
+ * will ever scroll to. Ten is deep enough to walk back a session's worth of
+ * edits. Pruning matches on {@link MCP_VERSION_LABEL}, so versions a person
+ * saved by hand are never counted and never removed.
+ */
+const MCP_VERSION_RETENTION = 10;
+
+/**
  * Every doc in the workspace, as a one-line row each. This is the only way an
  * assistant finds a doc it wasn't handed the ref for — `list_workspace` doesn't
  * mention docs at all. No page bodies: this answers "which doc", not "what does
@@ -1184,15 +1207,27 @@ const MCP_VERSION_LABEL = 'Before update_doc (MCP)';
  */
 @Injectable()
 export class McpListDocsUseCase
-  implements IUsecaseExecute<{ actor: McpActor }, Result<McpDocBriefDto[]>>
+  implements
+    IUsecaseExecute<{ actor: McpActor; dto?: McpListDocsDto }, Result<McpDocListResponseDto>>
 {
   constructor(private readonly getDocs: GetDocsUseCase) {}
 
-  async execute({ actor }: { actor: McpActor }): Promise<Result<McpDocBriefDto[]>> {
+  async execute({
+    actor,
+    dto,
+  }: {
+    actor: McpActor;
+    dto?: McpListDocsDto;
+  }): Promise<Result<McpDocListResponseDto>> {
     const found = await this.getDocs.execute({ tenantId: actor.tenantId });
     if (found.isFailure) return Result.fail(found.error as string);
-    return Result.ok(
-      found.getValue().map(({ doc, pageCount }) => ({
+    const all = found.getValue();
+    // Docs come back newest-first, so the head of the list is the useful end of
+    // it. `total` travels with them: a truncated reply has to be able to say so.
+    const limit = Math.min(Math.max(dto?.limit ?? LIST_DOCS_DEFAULT, 1), LIST_DOCS_CAP);
+    return Result.ok({
+      total: all.length,
+      docs: all.slice(0, limit).map(({ doc, pageCount }) => ({
         ref: doc.ref,
         id: doc.id.toString(),
         title: doc.title,
@@ -1201,7 +1236,7 @@ export class McpListDocsUseCase
         updatedAt: doc.updatedAt,
         // `doc.publicToken` is *not* mapped — see McpDocBriefDto.
       })),
-    );
+    });
   }
 }
 
@@ -1303,6 +1338,7 @@ export class McpUpdateDocUseCase
     private readonly updatePage: UpdateDocPageUseCase,
     private readonly createPage: CreateDocPageUseCase,
     private readonly saveVersion: SaveDocPageVersionUseCase,
+    @Inject(ICollabSync) private readonly collab: ICollabSync,
     @Inject(IUserRepository) private readonly users: IUserRepository,
     @Inject(IMcpEventRepository) private readonly events: IMcpEventRepository,
   ) {}
@@ -1334,6 +1370,8 @@ export class McpUpdateDocUseCase
     // rather than pretending the whole call succeeded or all of it rolled back.
     const changed: string[] = [];
     let linkPageId = pages[0]?.id.toString() ?? '';
+    /** Something the caller must know about a write that nonetheless committed. */
+    let warning = '';
 
     // 1) Doc-level metadata.
     if (wantsTitleOrTags) {
@@ -1359,39 +1397,79 @@ export class McpUpdateDocUseCase
       }
       const pageId = target.id.toString();
 
-      // Freeze the page as it stands BEFORE the body is replaced — the snapshot
-      // has to capture the pre-overwrite text, which is what SaveDocPageVersion
-      // reads off the live page. A write here is one shot with no undo, so the
-      // version list is the only way back.
-      //
-      // A failed snapshot aborts the write. Proceeding would silently drop the
-      // recoverability guarantee at the exact moment it was needed.
-      const snapshot = await this.saveVersion.execute({
-        docId,
-        pageId,
-        tenantId: actor.tenantId,
-        author,
-        dto: { label: MCP_VERSION_LABEL } as SaveDocPageVersionDto,
-      });
-      if (snapshot.isFailure) {
-        return this.partial(
-          changed,
-          `Could not save a version of the page before overwriting it, so the edit was not ` +
-            `applied: ${snapshot.error as string}`,
-        );
-      }
+      // The body an assistant echoes back is very often the body it just read.
+      // `stripEchoedTitle` is deliberately NOT applied here: this REPLACES an
+      // existing body, and a page whose text opens on a heading of its own name
+      // (the first page of a doc always shares the doc's title) would have that
+      // heading shaved off on every write-back. Composing new content still
+      // strips — see create_doc and appendPage below.
+      const content = docBodyToHtml(dto.content);
 
-      const content = stripEchoedTitle(docBodyToHtml(dto.content), target.title);
-      const written = await this.updatePage.execute({
-        docId,
-        pageId,
-        tenantId: actor.tenantId,
-        author,
-        dto: { content } as UpdateDocPageDto,
-      });
-      if (written.isFailure) return this.partial(changed, written.error as string);
       linkPageId = pageId;
-      changed.push('edited a page');
+
+      // A write that changes nothing needs no version. Versions used to be
+      // sparse human markers; an assistant iterating on a page would otherwise
+      // leave a full copy of it behind per pass, including the passes that
+      // altered not one character.
+      if (content === target.content) {
+        changed.push('page already matched — nothing written');
+      } else {
+        // Freeze the page as it stands BEFORE the body is replaced — the
+        // snapshot has to capture the pre-overwrite text, which is what
+        // SaveDocPageVersion reads off the live page. A write here is one shot
+        // with no undo, so the version list is the only way back.
+        //
+        // A failed snapshot aborts the write. Proceeding would silently drop the
+        // recoverability guarantee at the exact moment it was needed.
+        //
+        // `retain` prunes the MCP-made snapshots only, by label, so a person's
+        // own "Save version" is never one of the ones thrown away.
+        const snapshot = await this.saveVersion.execute({
+          docId,
+          pageId,
+          tenantId: actor.tenantId,
+          author,
+          retain: MCP_VERSION_RETENTION,
+          dto: { label: MCP_VERSION_LABEL } as SaveDocPageVersionDto,
+        });
+        if (snapshot.isFailure) {
+          return this.partial(
+            changed,
+            `Could not save a version of the page before overwriting it, so the edit was not ` +
+              `applied: ${snapshot.error as string}`,
+          );
+        }
+
+        const written = await this.updatePage.execute({
+          docId,
+          pageId,
+          tenantId: actor.tenantId,
+          author,
+          dto: { content } as UpdateDocPageDto,
+        });
+        if (written.isFailure) return this.partial(changed, written.error as string);
+        changed.push('edited a page');
+
+        // Mongo now holds the new body, but the page may be open in somebody's
+        // editor, where the Y.Doc is the live copy and the mirror writes it back
+        // over the column. Push the stored body into the room so the edit
+        // survives — and if that cannot be done, say so rather than report a
+        // success the next keystroke will undo.
+        const sync = await this.collab.resetPage({
+          tenantId: actor.tenantId,
+          pageId,
+          userId: actor.userId,
+          userName: author.name,
+        });
+        if (sync.status === 'failed') {
+          warning =
+            `The page was saved, but the live editing session could not be refreshed ` +
+            `(${sync.error ?? 'unknown error'}). If anyone has this page open in the app, ` +
+            `their editor still holds the previous text and may write it back over this ` +
+            `change — ask them to reload the page before they type, or re-check the page ` +
+            `afterwards.`;
+        }
+      }
     }
 
     // 3) Append a brand-new page.
@@ -1402,6 +1480,9 @@ export class McpUpdateDocUseCase
         author,
         dto: {
           title: dto.appendPage.title,
+          // A new page is composed content too, so its echoed title goes — the
+          // same rule as create_doc, and the opposite of the `content` branch
+          // above, which replaces a body somebody already wrote.
           content: stripEchoedTitle(
             docBodyToHtml(dto.appendPage.content),
             dto.appendPage.title,
@@ -1436,7 +1517,7 @@ export class McpUpdateDocUseCase
     });
     if (event.isSuccess) await this.events.append(event.getValue());
 
-    return Result.ok({ id: docId, title, tags, link, changed: changed.join(', ') });
+    return Result.ok({ id: docId, title, tags, link, changed: changed.join(', '), warning });
   }
 
   /** A later step failed after an earlier one committed — say which succeeded so
