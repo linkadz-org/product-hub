@@ -1,5 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiDelete, apiGet, apiPatch, apiPost } from '@/lib/api';
+import { useTeams } from '@/features/teams/api';
 import {
   CYCLE_FILTER_CURRENT,
   CYCLE_FILTER_NONE,
@@ -89,6 +90,47 @@ export function useFocusedCycle(
     return [...(cycles ?? [])].reverse().find((c) => c.status === CycleStatus.UPCOMING);
   }
   return cycles?.find((c) => c.id === param);
+}
+
+/**
+ * `cycleId` → its cycle — for the cards and rows of a board, where a `useCycles`
+ * per row isn't legal. The same lookup-as-a-function shape as
+ * `useTeamLabelsLookup`, and the boards resolve each row against its own
+ * `cycleId` exactly like they already do for labels.
+ *
+ * `teamIds` is the teams whose rows are actually on screen, not "all of them":
+ * reading a team's cycles advances its lazy scheduler server-side, so this is
+ * deliberately not a list to pad. On a team board those cycles are already in
+ * cache (the banner and filter fetched them), so the chips cost no request;
+ * "assigned to me" spans teams and pays for exactly the ones it shows.
+ *
+ * `enabled=false` skips every fetch — for a public page with no `/teams` access,
+ * the same escape hatch the team lookups have.
+ */
+export function useCycleLookup(
+  teamIds: (string | undefined)[],
+  enabled = true,
+): (cycleId: string | undefined) => CycleDto | undefined {
+  const { data: teams } = useTeams(enabled);
+  const wanted = new Set(teamIds.filter((id): id is string => !!id));
+  // Only cycle-running teams: asking a team that has cycles off returns nothing
+  // useful and still costs a request.
+  const ids = (teams ?? [])
+    .filter((team) => team.cyclesEnabled && wanted.has(team.id))
+    .map((team) => team.id);
+
+  const queries = useQueries({
+    queries: ids.map((teamId) => ({
+      // Same key `useCycles` writes, so this shares its cache entry rather than
+      // opening a second one that could disagree with the banner.
+      queryKey: ['cycles', teamId],
+      queryFn: () => apiGet<CycleDto[]>(`/teams/${teamId}/cycles`),
+    })),
+  });
+
+  const byId = new Map<string, CycleDto>();
+  for (const q of queries) for (const c of q.data ?? []) byId.set(c.id, c);
+  return (cycleId) => (cycleId ? byId.get(cycleId) : undefined);
 }
 
 /**

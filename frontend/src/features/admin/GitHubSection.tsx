@@ -46,6 +46,7 @@ export function GitHubSection() {
   const [created, setCreated] = useState<ConnectedGitHubDto | null>(null);
   const [base, setBase] = useState(() => localStorage.getItem(BASE_KEY) || defaultBase());
   const [confirmOff, setConfirmOff] = useState(false);
+  const [confirmRegen, setConfirmRegen] = useState(false);
 
   const connected = !!data?.connected;
   const url = data?.token ? webhookUrl(base, data.token) : '';
@@ -56,6 +57,7 @@ export function GitHubSection() {
   }
 
   function onConnect() {
+    setConfirmRegen(false);
     connect.mutate(undefined, { onSuccess: setCreated });
   }
 
@@ -97,7 +99,16 @@ export function GitHubSection() {
                   <span className="size-1.5 rounded-full bg-current" aria-hidden />
                   {t('settings.githubConnected')}
                 </span>
-                <Button variant="ghost" size="sm" onClick={onConnect} loading={connect.isPending}>
+                {/* Confirmed, unlike the first Connect: this one *replaces* a URL
+                    and secret that repos are delivering to right now, and the
+                    breakage is silent — GitHub 401s into its own delivery log
+                    while the app just stops receiving. */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setConfirmRegen(true)}
+                  loading={connect.isPending}
+                >
                   {t('settings.githubRegenerate')}
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => setConfirmOff(true)}>
@@ -219,6 +230,45 @@ export function GitHubSection() {
             {t('settings.githubSecretOnce')}
           </p>
         </div>
+      </Dialog>
+
+      {/* Names the repos that are about to go quiet, when we know them — a list of
+          three is what turns "update the webhook after" into a job with a size.
+          A workspace that has received nothing yet has none to name, and the
+          warning stands on its own text. */}
+      <Dialog
+        open={confirmRegen}
+        onClose={() => setConfirmRegen(false)}
+        title={t('settings.githubRegenerate')}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setConfirmRegen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button variant="destructive" onClick={onConnect} loading={connect.isPending}>
+              {t('settings.githubRegenerate')}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-muted-foreground">{t('settings.githubRegenerateConfirm')}</p>
+        {(data?.connectedRepos.length ?? 0) > 0 && (
+          <div className="mt-3">
+            <p className="text-xs font-medium text-muted-foreground">
+              {t('settings.githubRegenerateRepos')}
+            </p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {data!.connectedRepos.map((repo) => (
+                <span
+                  key={repo}
+                  className="rounded-md bg-muted px-2 py-1 font-mono text-[11px] text-muted-foreground"
+                >
+                  {repo}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
       </Dialog>
 
       <Dialog

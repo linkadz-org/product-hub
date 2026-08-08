@@ -11,6 +11,8 @@ import { cn } from '@/lib/utils';
 import { t } from '@/i18n';
 import { ROADMAP_ITEM_STATUS_LABEL } from '@/types/enums';
 import type { RoadmapColumn, RoadmapItem } from '@/types/dto';
+import { SprintChip } from './RoadmapSprintControls';
+import type { RoadmapSprint } from '../useRoadmapSprints';
 
 /**
  * RICE prioritization as a table — every item ranked by RICE score (desc), with
@@ -19,10 +21,14 @@ import type { RoadmapColumn, RoadmapItem } from '@/types/dto';
 export function RoadmapRiceTable({
   items,
   columns,
+  sprintsForItem,
   onOpen,
 }: {
   items: RoadmapItem[];
   columns: RoadmapColumn[];
+  /** Optional so the public read-only roadmap, which has no task access, keeps
+   *  the table it had — the column simply isn't drawn. */
+  sprintsForItem?: (itemId: string) => RoadmapSprint[];
   onOpen?: (item: RoadmapItem) => void;
 }) {
   const sorted = [...items].sort((a, b) => b.rice - a.rice);
@@ -44,6 +50,7 @@ export function RoadmapRiceTable({
             <TableHead className="w-10 text-right">#</TableHead>
             <TableHead>{t('roadmaps.itemTitle')}</TableHead>
             <TableHead>{t('roadmaps.phase')}</TableHead>
+            {sprintsForItem && <TableHead>{t('sprints.filterLabel')}</TableHead>}
             <TableHead>{t('roadmaps.status')}</TableHead>
             <TableHead>{t('roadmaps.okr')}</TableHead>
             <TableHead className="text-right">{t('roadmaps.reach')}</TableHead>
@@ -73,6 +80,16 @@ export function RoadmapRiceTable({
                     {col?.label ?? item.phase}
                   </span>
                 </TableCell>
+                {sprintsForItem && (
+                  <TableCell>
+                    {/* Derived from the item's linked tasks — an em dash when
+                        nothing has been committed yet, matching the OKR cell. */}
+                    <SprintChip sprints={sprintsForItem(item.id)} />
+                    {sprintsForItem(item.id).length === 0 && (
+                      <span className="text-sm text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                )}
                 <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
                   {ROADMAP_ITEM_STATUS_LABEL[item.status]}
                 </TableCell>

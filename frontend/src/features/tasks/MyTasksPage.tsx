@@ -28,13 +28,14 @@ import {
   CycleBoardBanner,
   CycleChip,
   CycleFilterSelect,
+  IssueCycleChip,
 } from '@/features/cycles/CycleControls';
-import { useCycles, useFocusedCycle, useResolvedCycleId } from '@/features/cycles/api';
+import { useCycleLookup, useCycles, useFocusedCycle, useResolvedCycleId } from '@/features/cycles/api';
 import { CycleInsightsButton } from '@/features/cycles/CycleInsights';
 import { useIssueSelection, type IssueSelection } from '@/features/issues/useIssueSelection';
 import { BulkActionBar, buildCycleOptions } from '@/features/issues/BulkActionBar';
 import { TaskStatus, TeamIssueType, type TaskLabelConfig, type TeamStatusConfig } from '@/types/enums';
-import type { TaskDto, TeamDto } from '@/types/dto';
+import type { CycleDto, TaskDto, TeamDto } from '@/types/dto';
 import { useDeleteTask, useSetTaskStatus, useTasks } from './api';
 
 /** The engineer's personal queue — every task assigned to them, as a kanban
@@ -148,6 +149,10 @@ export function MyTasksPage({ teamId, teamName, titleIcon, shareTeam }: MyTasksP
   // `hasSubtasks` — stays stable whether they're shown or hidden.
   const hasSubtasks = tasks.some((tk) => tk.parentId);
   const visibleTasks = showSubtasks ? tasks : tasks.filter((tk) => !tk.parentId);
+  // Each card names its own cycle — at the default all-cycles scope that's the
+  // only place it's stated. Resolved per-row like the labels above, and scoped to
+  // the teams actually on this board (this one spans teams when standalone).
+  const cycleFor = useCycleLookup(tasks.map((tk) => tk.teamId));
   const setStatus = useSetTaskStatus();
   const remove = useDeleteTask();
 
@@ -289,7 +294,12 @@ export function MyTasksPage({ teamId, teamName, titleIcon, shareTeam }: MyTasksP
           getId={(tk) => tk.id}
           getColumnKey={(tk) => tk.status}
           renderCard={(task, overlay) => (
-            <TaskCard task={task} labels={labelsFor(task.teamId)} overlay={overlay} />
+            <TaskCard
+              task={task}
+              labels={labelsFor(task.teamId)}
+              cycle={cycleFor(task.cycleId)}
+              overlay={overlay}
+            />
           )}
           onMove={onMove}
           disabled={!canWrite}
@@ -325,6 +335,7 @@ export function MyTasksPage({ teamId, teamName, titleIcon, shareTeam }: MyTasksP
             tasks={visibleTasks}
             columns={columns}
             labelsFor={labelsFor}
+            cycleFor={cycleFor}
             selection={bulkEnabled ? selection : undefined}
           />
         </div>
@@ -352,10 +363,14 @@ export function MyTasksPage({ teamId, teamName, titleIcon, shareTeam }: MyTasksP
 export function TaskCard({
   task,
   labels,
+  cycle,
   overlay = false,
 }: {
   task: TaskDto;
   labels?: TaskLabelConfig[];
+  /** The cycle this task is committed to, resolved by the board (`useCycleLookup`)
+   *  — a hook per card isn't legal and the rows can span teams. */
+  cycle?: CycleDto;
   overlay?: boolean;
 }) {
   const done = task.status === TaskStatus.DONE;
@@ -364,7 +379,14 @@ export function TaskCard({
       overlay={overlay}
       title={task.title}
       titleClassName={done ? 'text-muted-foreground line-through' : undefined}
-      labels={<LabelChips keys={task.labelKeys} labels={labels} />}
+      labels={
+        // Cycle first, like the roadmap card: "when" is what you scan a board for.
+        // Wraps — a card is narrow and a half-clipped chip reads as broken.
+        <div className="flex min-w-0 flex-wrap items-center gap-1">
+          <IssueCycleChip cycle={cycle} />
+          <LabelChips keys={task.labelKeys} labels={labels} />
+        </div>
+      }
       metaLeading={
         <AssigneeBadge assignees={task.assignees} unassignedLabel={t('tasks.unassigned')} />
       }
@@ -386,12 +408,16 @@ export function TaskList({
   tasks,
   columns,
   labelsFor,
+  cycleFor,
   onOpen,
   selection,
 }: {
   tasks: TaskDto[];
   columns: TeamStatusConfig[];
   labelsFor: (teamId: string | undefined) => TaskLabelConfig[];
+  /** Row → its cycle (`useCycleLookup`). Optional so the public board, which has
+   *  no `/teams` access, simply renders rows without a cycle chip. */
+  cycleFor?: (cycleId: string | undefined) => CycleDto | undefined;
   onOpen?: (task: TaskDto) => void;
   /** When present, each row gets a checkbox and each column a select-all. */
   selection?: IssueSelection;
@@ -428,6 +454,7 @@ export function TaskList({
                   key={task.id}
                   task={task}
                   labels={labelsFor(task.teamId)}
+                  cycle={cycleFor?.(task.cycleId)}
                   onOpen={onOpen}
                   selection={selection}
                 />
@@ -445,11 +472,13 @@ export function TaskList({
 function TaskRow({
   task,
   labels,
+  cycle,
   onOpen,
   selection,
 }: {
   task: TaskDto;
   labels: TaskLabelConfig[];
+  cycle?: CycleDto;
   onOpen?: (task: TaskDto) => void;
   selection?: IssueSelection;
 }) {
@@ -463,6 +492,9 @@ function TaskRow({
       >
         {task.title}
       </span>
+      {/* Hidden on mobile, like the labels beside it — a row has room for the
+          title and the assignee first. */}
+      <IssueCycleChip cycle={cycle} className="hidden shrink-0 sm:flex" />
       <LabelChips keys={task.labelKeys} labels={labels} max={3} className="hidden shrink-0 sm:flex" />
       {task.roadmapItemLabel && (
         <Badge variant="muted" className="max-w-[30%] shrink-0 truncate" title={task.roadmapItemLabel}>

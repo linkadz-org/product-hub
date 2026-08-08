@@ -13,7 +13,15 @@ export interface BacklogLink {
   projectId: string;
 }
 
-const UNLINKED: BacklogLink = {
+/**
+ * The link, blanked — what "this issue delivers no backlog item" is written as.
+ * Exported because unlinking happens from both ends: the issue's own Properties
+ * (`BacklogItemPropField`, via `linkFor('')`) and the backlog item's linked-issues
+ * panel (`TaskPanel`). All four go together on the way out for the same reason
+ * they do on the way in — a leftover `roadmapId` or stale label is a link the
+ * boards still draw.
+ */
+export const BACKLOG_UNLINKED: BacklogLink = {
   roadmapId: '',
   roadmapItemId: '',
   roadmapItemLabel: '',
@@ -76,7 +84,7 @@ export function useBacklogLink(enabled = true): {
 
     return {
       options,
-      linkFor: (id: string) => links.get(id) ?? UNLINKED,
+      linkFor: (id: string) => links.get(id) ?? BACKLOG_UNLINKED,
       itemFor: (id: string) => items.get(id),
     };
   }, [roadmaps]);

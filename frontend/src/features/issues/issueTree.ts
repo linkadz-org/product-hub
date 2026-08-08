@@ -115,6 +115,24 @@ export function rootsOf<T extends TreeIssue>(items: T[]): T[] {
 }
 
 /**
+ * Every item's direct children, keyed by parent id — the map a recursive tree
+ * render walks. Paired with {@link rootsOf} for the top level: `rootsOf(items)`
+ * for depth 0, then `groupByParent(items).get(id)` for what hangs under any row
+ * from there.
+ */
+export function groupByParent<T extends TreeIssue>(items: T[]): Map<string, T[]> {
+  const present = new Set(items.map((i) => i.id));
+  const out = new Map<string, T[]>();
+  for (const issue of items) {
+    if (!issue.parentId || !present.has(issue.parentId)) continue;
+    const siblings = out.get(issue.parentId);
+    if (siblings) siblings.push(issue);
+    else out.set(issue.parentId, [issue]);
+  }
+  return out;
+}
+
+/**
  * `id` plus everything under it, within `items`. Used to answer both "what comes
  * along if I pick this one" and "what can this one *not* be re-parented under" —
  * they're the same set, because making an issue a child of its own descendant is

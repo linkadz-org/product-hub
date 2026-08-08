@@ -14,11 +14,14 @@ import {
   type GanttRow,
 } from '@/components/GanttChart';
 import { LabelChips } from '@/features/labels/LabelChips';
+import { CycleIcon } from '@/features/cycles/CycleIcon';
 import { TeamChip, type TeamChipTeam } from '@/features/teams/TeamChip';
 import { useTasks, useUpdateTask } from '@/features/tasks/api';
 import { useTeamLabelsLookup, useTeamLookup, useTeamStatusesLookup } from '@/features/teams/api';
+import { doneKeyOf } from '@/features/my-team/workload';
 import { useAuth } from '@/lib/auth';
 import {
+  CycleStatus,
   ROADMAP_ITEM_STATUS_COLOR,
   ROADMAP_ITEM_STATUS_LABEL,
   TeamIssueType,
@@ -26,6 +29,12 @@ import {
 } from '@/types/enums';
 import type { RoadmapColumn, RoadmapItem, TaskDto } from '@/types/dto';
 import { useReplaceRoadmapItems } from '../api';
+import {
+  sprintChipLabel,
+  useRoadmapSprints,
+  type RoadmapSprint,
+  type SprintScope,
+} from '../useRoadmapSprints';
 import { IssuePeekDrawer, type IssuePeek } from '@/features/issues/IssuePeekDrawer';
 import { RoadmapItemPeekDrawer, type RoadmapItemPeek } from './RoadmapItemPeekDrawer';
 
@@ -60,10 +69,31 @@ function byDate(a: TaskDto, b: TaskDto) {
 }
 
 interface RoadmapGanttProps {
-  /** All roadmap items — filtered to the "Now" column here. */
+  /** All roadmap items — filtered to the "Now" column here unless a sprint scope
+   *  has already narrowed them (see {@link RoadmapGanttProps.scope}). */
   items: RoadmapItem[];
   columns: RoadmapColumn[];
   onOpenItem: (id: string) => void;
+  /**
+   * The roadmap's sprints, drawn as **named bands on the axis** — the answer to
+   * "which sprint is this bar in?" without reading a single date. Omit (public
+   * view) and the axis is the plain date ruler it has always been.
+   */
+  sprints?: RoadmapSprint[];
+  /** The scope in effect. Its sprint is the highlighted band, and a scoped
+   *  timeline charts **every** column rather than just "Now": the filter has
+   *  already picked the committed work, and half of it routinely sits in Next. */
+  scope?: SprintScope;
+  /** Stack rows under a section header per sprint instead of one flat list — the
+   *  "what did that sprint build?" reading of the same data. */
+  groupBySprint?: boolean;
+  /** An item's sprints (derived from its tasks) — for its chip and its group. */
+  sprintsForItem?: (itemId: string) => RoadmapSprint[];
+  /** A task's sprint — for its chip, and for splitting an item that spans two. */
+  sprintForTask?: (task: TaskDto) => RoadmapSprint | undefined;
+  /** Is this task finished on its own team's board? Only used for a sprint
+   *  group's "N items · 6/9 tasks done" header. */
+  taskDone?: (task: TaskDto) => boolean;
   /**
    * Tasks linked to each item, keyed by `roadmapItemId`. Omit (public views) to
    * render item bars only — no child markers, no authenticated task fetch.
@@ -121,6 +151,12 @@ export function RoadmapGantt({
   items,
   columns,
   onOpenItem,
+  sprints,
+  scope,
+  groupBySprint,
+  sprintsForItem,
+  sprintForTask,
+  taskDone,
   tasksByItem,
   taskStatus,
   taskLabels,
@@ -134,11 +170,17 @@ export function RoadmapGantt({
   // The "Now" column — by key, falling back to the leftmost (most-immediate) one.
   const nowCol = columns.find((c) => c.key === 'now') ?? columns[0];
   const barColor = nowCol?.color ?? 'hsl(var(--primary))';
-  const nowItems = nowCol ? items.filter((i) => i.phase === nowCol.key) : [];
+  // Once the timeline reaches past "Now", an item's bar takes **its own** column's
+  // colour — a Later item drawn in the Now colour would misreport its commitment.
+  const colorOf = (phase: string) => columns.find((c) => c.key === phase)?.color ?? barColor;
+  const narrowed = !!groupBySprint || (!!scope && scope.kind !== 'all');
+  const shown = narrowed ? items : nowCol ? items.filter((i) => i.phase === nowCol.key) : [];
+  const tasksOf = (item: RoadmapItem) => (tasksByItem?.get(item.id) ?? []).slice().sort(byDate);
 
-  const rows: GanttRow[] = [];
-  for (const item of nowItems) {
-    const tasks = (tasksByItem?.get(item.id) ?? []).slice().sort(byDate);
+  /** One item and its tasks, as rows. `keyPrefix` keeps ids unique when grouping
+   *  puts the same item under two sprints. */
+  function itemRows(item: RoadmapItem, tasks: TaskDto[], keyPrefix: string): GanttRow[] {
+    const out: GanttRow[] = [];
     let start = firstEpoch(item.startDate, item.startedAt, item.createdAt);
     if (!isEpoch(start)) start = Date.now();
     // The item's own end wins when it has one — a window somebody set by hand (or
@@ -148,8 +190,9 @@ export function RoadmapGantt({
     if (!isEpoch(end)) end = ends.length ? Math.max(...ends) : start + 14 * GANTT_DAY;
     if (end < start) end = start + GANTT_DAY; // guard odd data (e.g. an end before the start)
 
+    const itemSprints = sprintsForItem?.(item.id) ?? [];
     const itemRow: GanttRow = {
-      id: item.id,
+      id: `${keyPrefix}${item.id}`,
       label: item.title || t('roadmaps.untitled'),
       sublabel: `${item.progress}% · ${
         tasks.length
@@ -161,6 +204,15 @@ export function RoadmapGantt({
       // RICE and the linked OKR stay — they're *why* this item is in "Now".
       meta: (
         <>
+          {/* Its sprints, from its tasks. Redundant with the bands when the item
+              sits in one sprint — and exactly what you need when it spans two,
+              where the bar crosses a boundary and the span is the whole story.
+              Suppressed inside a group, whose header already says which sprint. */}
+          {!groupBySprint && itemSprints.length > 0 && (
+            <GanttChip title={itemSprints.map((s) => s.label).join(' · ')}>
+              {sprintChipLabel(itemSprints)}
+            </GanttChip>
+          )}
           <GanttChip color={ROADMAP_ITEM_STATUS_COLOR[item.status]}>
             {ROADMAP_ITEM_STATUS_LABEL[item.status]}
           </GanttChip>
@@ -185,7 +237,7 @@ export function RoadmapGantt({
         </>
       ),
       onClick: () => onOpenItem(item.id),
-      bar: { start, end, color: barColor, progress: item.progress },
+      bar: { start, end, color: colorOf(item.phase), progress: item.progress },
     };
     // Dragging an item's bar commits the window it's showing — including a derived
     // one, which is the point: the derived bar is the proposal, the drag accepts it.
@@ -193,14 +245,15 @@ export function RoadmapGantt({
       itemRow.onBarChange = (n) =>
         onItemDatesChange(item, { startDate: isoDay(n.start), endDate: isoDay(n.end) });
     }
-    rows.push(itemRow);
+    out.push(itemRow);
 
     for (const tk of tasks) {
       const st = taskStatus?.(tk) ?? { color: 'hsl(var(--muted-foreground))', label: tk.status };
       const s = taskStart(tk);
       const e = taskEnd(tk);
+      const tkSprint = sprintForTask?.(tk);
       const row: GanttRow = {
-        id: `${item.id}:${tk.id}`,
+        id: `${keyPrefix}${item.id}:${tk.id}`,
         depth: 1,
         dotColor: st.color,
         label: tk.title,
@@ -216,6 +269,10 @@ export function RoadmapGantt({
                 never implied by the page around it. */}
             <TeamChip team={taskTeam?.(tk)} />
             <GanttChip color={st.color}>{st.label}</GanttChip>
+            {/* The commitment itself: a task *is* in one sprint (unlike its item,
+                which only inherits them). Inside a group that's a given, so the
+                chip only appears in the flat reading. */}
+            {!groupBySprint && tkSprint && <GanttChip title={tkSprint.label}>{tkSprint.name}</GanttChip>}
             <LabelChips keys={tk.labelKeys} labels={taskLabels?.(tk)} max={2} />
             {tk.assignees.length > 0 && (
               <AssigneeBadge
@@ -250,9 +307,108 @@ export function RoadmapGantt({
       } else {
         row.emptyText = t('roadmaps.ganttNoDates');
       }
-      rows.push(row);
+      out.push(row);
     }
+    return out;
   }
+
+  /** A sprint's section header: what it is, when it ran, and what it holds. */
+  function groupHeader(name: string, range: string, groupItems: RoadmapItem[], groupTasks: TaskDto[]) {
+    const done = taskDone ? groupTasks.filter(taskDone).length : 0;
+    return (
+      <>
+        <CycleIcon className="size-4 shrink-0 text-muted-foreground" />
+        <span className="whitespace-nowrap text-sm font-semibold text-foreground">{name}</span>
+        {range && <span className="whitespace-nowrap text-xs text-muted-foreground">{range}</span>}
+        <span className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">
+          {taskDone
+            ? t('sprints.groupSummary')
+                .replace('{items}', String(groupItems.length))
+                .replace('{done}', String(done))
+                .replace('{tasks}', String(groupTasks.length))
+            : `${groupItems.length} · ${groupTasks.length}`}
+        </span>
+      </>
+    );
+  }
+
+  const rows: GanttRow[] = [];
+  if (groupBySprint) {
+    // Newest sprint first — the one you're in leads, and scrolling down walks back
+    // through what shipped. Each sprint shows only the tasks **committed to it**,
+    // so an item spanning two sprints appears under both, each time with just that
+    // sprint's slice of the work. That split is the whole answer to "what did that
+    // sprint build?" — one row per item would blur the two together.
+    for (const sprint of sprints ?? []) {
+      const groupItems = shown.filter((i) =>
+        (sprintsForItem?.(i.id) ?? []).some((s) => s.key === sprint.key),
+      );
+      if (groupItems.length === 0) continue;
+      const slices = groupItems.map((i) => ({
+        item: i,
+        tasks: tasksOf(i).filter((tk) => sprintForTask?.(tk)?.key === sprint.key),
+      }));
+      rows.push({
+        id: `group:${sprint.key}`,
+        label: sprint.name,
+        group: groupHeader(
+          sprint.name,
+          `${formatDate(new Date(toEpoch(sprint.startDate)))} – ${formatDate(new Date(toEpoch(sprint.endDate)))}`,
+          groupItems,
+          slices.flatMap((s) => s.tasks),
+        ),
+      });
+      for (const { item, tasks } of slices) rows.push(...itemRows(item, tasks, `${sprint.key}:`));
+    }
+    // Trailing, because it's the leftovers — items whose work nobody has put in a
+    // sprint yet. Named rather than merged into the last one, so a planning gap is
+    // a thing you see instead of a thing you deduce.
+    const loose = shown.filter((i) => (sprintsForItem?.(i.id) ?? []).length === 0);
+    if (loose.length > 0) {
+      const slices = loose.map((i) => ({ item: i, tasks: tasksOf(i) }));
+      rows.push({
+        id: 'group:none',
+        label: t('sprints.noSprintGroup'),
+        group: groupHeader(t('sprints.noSprintGroup'), '', loose, slices.flatMap((s) => s.tasks)),
+      });
+      for (const { item, tasks } of slices) rows.push(...itemRows(item, tasks, 'none:'));
+    }
+  } else {
+    for (const item of shown) rows.push(...itemRows(item, tasksOf(item), ''));
+  }
+
+  // Bands cover only the stretch the rows actually occupy (plus the scoped sprint,
+  // which must always be visible). The chart widens its window to fit a band, so
+  // handing it the roadmap's whole cycle history would zoom the axis out to months
+  // of empty space either side of the work.
+  const focusKey = scope?.kind === 'sprint' ? scope.sprint.key : undefined;
+  const stamps: number[] = [];
+  for (const r of rows) {
+    if (r.bar) stamps.push(r.bar.start, r.bar.end);
+    if (r.marker && isEpoch(r.marker.at)) stamps.push(r.marker.at);
+  }
+  const lo = stamps.length ? Math.min(...stamps) : Date.now();
+  const hi = stamps.length ? Math.max(...stamps) : Date.now();
+  const bands = (sprints ?? [])
+    .filter(
+      (s) =>
+        s.key === focusKey || (toEpoch(s.endDate) >= lo && toEpoch(s.startDate) <= hi),
+    )
+    .map((s) => ({
+      key: s.key,
+      start: toEpoch(s.startDate),
+      // A cycle's end date is inclusive of that day; the axis is continuous, so
+      // the band has to run to the end of it or it stops 24 hours short.
+      end: toEpoch(s.endDate) + GANTT_DAY,
+      label: s.name,
+      title: s.label,
+      tone:
+        s.key === focusKey
+          ? ('focus' as const)
+          : s.status === CycleStatus.ACTIVE
+            ? ('active' as const)
+            : ('default' as const),
+    }));
 
   const hasTaskBars = rows.some((r) => (r.depth ?? 0) > 0 && r.bar);
   const hasMarkers = rows.some((r) => r.marker);
@@ -260,11 +416,18 @@ export function RoadmapGantt({
   return (
     <GanttChart
       rows={rows}
+      bands={bands}
       isLoading={isLoading}
       labelHeader={t('roadmaps.item')}
       empty={{ title: t('roadmaps.ganttEmpty'), hint: t('roadmaps.ganttEmptyHint') }}
       legend={
         <>
+          {bands.length > 0 && !groupBySprint && (
+            <span className="flex items-center gap-1.5">
+              <span className="h-2.5 w-6 rounded-sm bg-muted-foreground/25" aria-hidden />
+              {t('sprints.axisHint')}
+            </span>
+          )}
           <span className="flex items-center gap-1.5">
             {/* Two layers, like the bar itself: a translucent track with a fill —
                 so the swatch reads apart from a task's solid bar below it. */}
@@ -302,9 +465,20 @@ export function RoadmapGantt({
 
 interface RoadmapGanttViewProps {
   roadmapId: string;
-  /** All roadmap items — filtered to the "Now" column by `RoadmapGantt`. */
+  /** The items in scope — narrowed to the "Now" column by `RoadmapGantt` unless a
+   *  sprint scope has already picked them. */
   items: RoadmapItem[];
+  /**
+   * The roadmap's **whole** items array. Dragging a bar rewrites that array in
+   * one PUT, so the write has to start from every item — building it from the
+   * sprint-filtered `items` would silently delete everything out of scope.
+   */
+  allItems: RoadmapItem[];
   columns: RoadmapColumn[];
+  /** The roadmap's sprints and the scope in effect, from the page's `?sprint=`. */
+  sprints: RoadmapSprint[];
+  scope: SprintScope;
+  groupBySprint: boolean;
 }
 
 /**
@@ -318,13 +492,25 @@ interface RoadmapGanttViewProps {
  * item and coming back loses your place on the axis, and the whole point of a
  * timeline is the rows around the one you're looking at.
  */
-export function RoadmapGanttView({ roadmapId, items, columns }: RoadmapGanttViewProps) {
+export function RoadmapGanttView({
+  roadmapId,
+  items,
+  allItems,
+  columns,
+  sprints,
+  scope,
+  groupBySprint,
+}: RoadmapGanttViewProps) {
   const { canWrite } = useAuth();
   const statusesFor = useTeamStatusesLookup();
   const labelsFor = useTeamLabelsLookup();
   const teamFor = useTeamLookup();
   // One query for the whole roadmap; grouped under each item below.
   const { data, isLoading } = useTasks({ roadmapId: [roadmapId] });
+  // The same hook the page uses, so this reads from the shared cache rather than
+  // refetching — it's here only for the per-task lookup, which the page has no
+  // use for and would otherwise have to thread through as two more props.
+  const { sprintsForItem, sprintForTask } = useRoadmapSprints(roadmapId);
   const update = useUpdateTask();
   const replaceItems = useReplaceRoadmapItems();
   // What a row click opens — one drawer per kind, only ever one of them at a time.
@@ -384,7 +570,8 @@ export function RoadmapGanttView({ roadmapId, items, columns }: RoadmapGanttView
   const rescheduleItem = (item: RoadmapItem, next: DateWindow) =>
     replaceItems.mutate({
       id: roadmapId,
-      items: items.map((i) => (i.id === item.id ? { ...i, ...next } : i)),
+      // Over `allItems`, never the charted subset — see the prop's note.
+      items: allItems.map((i) => (i.id === item.id ? { ...i, ...next } : i)),
     });
 
   return (
@@ -392,6 +579,14 @@ export function RoadmapGanttView({ roadmapId, items, columns }: RoadmapGanttView
       <RoadmapGantt
         items={items}
         columns={columns}
+        sprints={sprints}
+        scope={scope}
+        groupBySprint={groupBySprint}
+        sprintsForItem={sprintsForItem}
+        sprintForTask={sprintForTask}
+        // Same "done" the boards and the sprint banner use, so a group header
+        // can't disagree with the strip above it about what shipped.
+        taskDone={(tk) => tk.status === doneKeyOf(statusesFor(tk.teamId, TeamIssueType.TASK))}
         onOpenItem={(id) => {
           const it = items.find((i) => i.id === id);
           setItemPeek({

@@ -56,7 +56,10 @@ import {
   RoadmapItemStatus,
 } from '@/types/enums';
 import type { Objective, RoadmapItem } from '@/types/dto';
+import { CycleIcon } from '@/features/cycles/CycleIcon';
 import { useReplaceRoadmapItems, useRoadmap } from '../api';
+import { useRoadmapSprints } from '../useRoadmapSprints';
+import { sprintMoveRows, useSprintMove } from '../useSprintMove';
 import { BACKLOG_TEMPLATES } from '../backlogTemplates';
 
 /** RICE inputs, in order, with the field key + help copy. */
@@ -357,6 +360,8 @@ export function RoadmapItemDetail({
           )}
         </PropField>
 
+        <SprintField roadmapId={roadmap.id} itemId={item.id} canWrite={canWrite} />
+
         <PropField label={t('roadmaps.progress')} icon={<Activity />} align="stack">
           <div className="flex items-center gap-3">
             <input
@@ -629,5 +634,75 @@ export function RoadmapItemDetail({
       {main}
       <PropSidebar>{properties}</PropSidebar>
     </DetailGrid>
+  );
+}
+
+/**
+ * Which sprint(s) this backlog item's work sits in — and the control that moves
+ * it. An item stores no cycle of its own; this is the union of its *tasks'* (see
+ * `useRoadmapSprints`), so picking a sprint here re-commits those tasks, each to
+ * its own team's cycle in that window (`useSprintMove`). The value shown is
+ * therefore derived, but it is genuinely editable — writing through to the tasks
+ * is what "move this item to Cycle 5" means.
+ *
+ * A `Menu` rather than a `Select` because the rows aren't a flat value list:
+ * next/previous lead, separators group them off from the concrete windows, and
+ * unreachable targets stay visible but disabled.
+ *
+ * Its own component so the hook only runs once the roadmap has loaded and the id
+ * is real — reading the shared cache the board and timeline already filled, so
+ * opening an item costs no extra request.
+ */
+function SprintField({
+  roadmapId,
+  itemId,
+  canWrite,
+}: {
+  roadmapId: string;
+  itemId: string;
+  canWrite: boolean;
+}) {
+  const { sprints, sprintsForItem, sprintForTask, tasksByItem } = useRoadmapSprints(roadmapId);
+  const moveToSprint = useSprintMove(sprintForTask);
+  const itemSprints = sprintsForItem(itemId);
+  const tasks = tasksByItem.get(itemId) ?? [];
+  // Nothing linked means nothing to re-commit, so there's no honest menu to open
+  // — the row falls back to read-only and says what to do instead.
+  const editable = canWrite && tasks.length > 0;
+
+  const value = (
+    <PropValue icon={<CycleIcon />} muted={itemSprints.length === 0} className="w-full min-w-0">
+      {itemSprints.length > 0
+        ? itemSprints.map((s) => s.label).join(' · ')
+        : t('sprints.none')}
+    </PropValue>
+  );
+
+  return (
+    <PropField bare label={t('sprints.filterLabel')}>
+      {editable ? (
+        <Menu
+          align="left"
+          // Hover/open paint the trigger, not the value inside it: `data-state`
+          // lives on Radix's trigger, so styling the inner row for it never fires.
+          triggerClassName="w-full justify-start rounded-md text-left transition-colors hover:bg-accent data-[state=open]:bg-accent"
+          trigger={value}
+          items={sprintMoveRows({
+            itemSprints,
+            sprints,
+            tasks,
+            onPick: (target) => moveToSprint.requestMove(tasks, target),
+          })}
+        />
+      ) : (
+        value
+      )}
+      {canWrite && tasks.length === 0 && (
+        <p className="mt-1 px-3 text-xs text-muted-foreground">{t('sprints.moveNoTasks')}</p>
+      )}
+      {/* Portals to `<body>`, so it sits above this detail's own dialog rather
+          than inside the sidebar column. */}
+      {moveToSprint.dialog}
+    </PropField>
   );
 }

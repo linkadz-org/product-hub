@@ -629,6 +629,58 @@ export const en = {
   'roadmaps.legendLowHigh': 'low → high',
   'roadmaps.legendBubble': 'Bubble size = Reach',
 
+  // Sprints on a roadmap. Deliberately "sprint", not "cycle": a *cycle* is one
+  // team's calendar, while a roadmap spans several teams, so these words name the
+  // shared window their cycles run in (see `useRoadmapSprints`). A backlog item's
+  // sprint is derived from its tasks — nothing here is ever assigned directly.
+  'sprints.filterLabel': 'Sprint',
+  'sprints.current': 'Current sprint',
+  'sprints.all': 'All sprints',
+  'sprints.none': 'Not in a sprint',
+  /** The window is several teams' cycles at once — shown only when > 1. */
+  'sprints.teams': '{n} teams',
+  'sprints.backlogItems': 'backlog items',
+  'sprints.tasksDone': 'tasks done',
+  // Timeline
+  'sprints.groupBySprint': 'Group by sprint',
+  'sprints.axisBands': 'Sprints on the axis',
+  'sprints.axisHint': 'Shaded columns are sprints',
+  'sprints.noSprintGroup': 'No sprint',
+  'sprints.groupSummary': '{items} items · {done}/{tasks} tasks done',
+  /** Strict scoping means a sprint view can legitimately be empty — say why, and
+   *  point at the two ways out rather than leaving a blank board. */
+  'sprints.emptyScoped': 'Nothing committed to this sprint',
+  'sprints.emptyScopedHint':
+    'No backlog item here has a task in this sprint yet. Try another sprint, or open “Not in a sprint” to see what’s still unplanned.',
+  'sprints.emptyNone': 'Everything is in a sprint',
+  'sprints.emptyNoneHint': 'Every backlog item on this roadmap has work committed to a sprint.',
+  /** Moving an item between sprints. An item has no cycle of its own, so these all
+   *  describe what happened to its *tasks* — vague copy here would hide the fan-out. */
+  'sprints.moved': 'Moved to {name}',
+  'sprints.movedOut': 'Taken out of its sprint',
+  'sprints.moveTasks': '{n} tasks',
+  /** Not an error: the target window has no cycle for that task's team, so it
+   *  stayed where it was. Silence here would leave a stale chip unexplained. */
+  'sprints.moveStuck': '{n} stayed — their team has no cycle in that window',
+  'sprints.moveFailed': 'Couldn’t move the item',
+  'sprints.moveNoTasks': 'Link a task first — a backlog item is scheduled through its tasks',
+  /** The confirmation shown when a move would take *finished* tasks along. Name the
+   *  cycle losing them, not the one gaining them: the surprise is on the way out. */
+  'sprints.moveDoneTitle': 'This also moves work that’s already done',
+  'sprints.moveDoneBody':
+    '{n} finished tasks would be pulled out of {from}, changing what that cycle reports as completed — its velocity and burndown.',
+  'sprints.moveDoneClosed':
+    'That cycle has already closed, so it reported those numbers when it ended.',
+  /** Why "Move unfinished only" is dead. Precisely: not "everything is finished",
+   *  but "nothing unfinished would *change cycle*" — an unfinished task already in
+   *  the target isn't a write, so it never reaches this dialog either. */
+  'sprints.moveDoneAllDone':
+    'Nothing unfinished would move — every task that would change cycle here is already finished.',
+  'sprints.moveUnfinishedOnly': 'Move unfinished only',
+  'sprints.moveAllAnyway': 'Move all',
+  /** Left behind on purpose, so the count reads as chosen rather than dropped. */
+  'sprints.moveKeptDone': '{n} finished stayed in their cycle',
+
   // Tasks — engineering execution on a backlog item
   'tasks.title': 'Tasks',
   'tasks.empty': 'No tasks yet — add the first piece of work.',
@@ -657,6 +709,8 @@ export const en = {
   'tasks.assignedYou': 'Assigned to you',
   'tasks.doneOf': '{done} of {total} done',
   'subtasks.title': 'Sub-tasks',
+  'subtasks.expand': 'Expand sub-tasks',
+  'subtasks.collapse': 'Collapse sub-tasks',
   'subtasks.linkTitle': 'Link an existing task as a sub-task',
   /** The same picker on a bug, where it's scoped to bugs — the wording has to
    *  match what you'll actually be offered. */
@@ -670,6 +724,10 @@ export const en = {
   'subtasks.parentNone': 'No parent',
   /** Its parent isn't one of the rows here — better than drawing it as top-level. */
   'subtasks.parentElsewhere': 'Another issue',
+  /** The row's ✕. Both say "keeps the …" because this button used to delete the
+   *  issue outright, and the whole point of the change is that it no longer does. */
+  'subtasks.unlinkParent': 'Detach from parent (keeps the task)',
+  'subtasks.unlinkBacklog': 'Remove from this backlog item (keeps the task)',
   /** Bugs found against this work: listed, but outside the progress bar. */
   'subtasks.bugs': 'Bugs',
   /** Properties row: this issue has no parent yet and you may give it one. */
@@ -974,6 +1032,9 @@ export const en = {
   'settings.githubRegenerate': 'Regenerate',
   'settings.githubRegenerateHint':
     'Regenerating replaces both the URL and the secret — update the webhook in GitHub straight after, or deliveries stop.',
+  'settings.githubRegenerateConfirm':
+    'The URL and secret in use right now stop working the moment you do this. Every repository pointing here goes quiet — with a 401, not an error anyone will see — until you paste the new pair into its webhook. The new secret is shown once.',
+  'settings.githubRegenerateRepos': 'Delivering here today:',
   'settings.githubDisconnect': 'Disconnect',
   'settings.githubDisconnectConfirm':
     'The webhook URL stops answering immediately. Commits already linked stay on their items; new ones will not arrive until you connect again.',

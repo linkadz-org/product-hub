@@ -33,7 +33,7 @@ import {
   TeamIssueType,
 } from '@/types/enums';
 import type { TaskLabelConfig } from '@/types/enums';
-import type { BugDto, TeamDto } from '@/types/dto';
+import type { BugDto, CycleDto, TeamDto } from '@/types/dto';
 import { useBugs, useDeleteBug, useSetBugStatus } from './api';
 import { useTeamStatuses, useTeamLabelsLookup } from '@/features/teams/api';
 import { TeamShareMenu } from '@/features/teams/TeamShareMenu';
@@ -42,8 +42,9 @@ import {
   CycleBoardBanner,
   CycleChip,
   CycleFilterSelect,
+  IssueCycleChip,
 } from '@/features/cycles/CycleControls';
-import { useCycles, useFocusedCycle, useResolvedCycleId } from '@/features/cycles/api';
+import { useCycleLookup, useCycles, useFocusedCycle, useResolvedCycleId } from '@/features/cycles/api';
 import { CycleInsightsButton } from '@/features/cycles/CycleInsights';
 import { useIssueSelection, type IssueSelection } from '@/features/issues/useIssueSelection';
 import { BulkActionBar, buildCycleOptions } from '@/features/issues/BulkActionBar';
@@ -62,10 +63,14 @@ const SEVERITY_DOT: Record<BugSeverity, string> = {
 export function BugCard({
   bug,
   labels,
+  cycle,
   overlay = false,
 }: {
   bug: BugDto;
   labels?: TaskLabelConfig[];
+  /** The cycle this bug is committed to, resolved by the board (`useCycleLookup`)
+   *  — a hook per card isn't legal and the rows can span teams. */
+  cycle?: CycleDto;
   overlay?: boolean;
 }) {
   return (
@@ -74,7 +79,14 @@ export function BugCard({
       titleDotColor={BUG_SEVERITY_COLOR[bug.severity]}
       titleDotLabel={BUG_SEVERITY_LABEL[bug.severity]}
       title={bug.title}
-      labels={<LabelChips keys={bug.labelKeys} labels={labels} />}
+      labels={
+        // Cycle first, like the roadmap card: "when" is what you scan a board for.
+        // Wraps — a card is narrow and a half-clipped chip reads as broken.
+        <div className="flex min-w-0 flex-wrap items-center gap-1">
+          <IssueCycleChip cycle={cycle} />
+          <LabelChips keys={bug.labelKeys} labels={labels} />
+        </div>
+      }
       metaLeading={
         <AssigneeBadge assignees={bug.assignees} unassignedLabel={t('bugs.unassigned')} />
       }
@@ -257,6 +269,10 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
   ];
 
   const bugs = data?.items ?? [];
+  // Each card names its own cycle — at the default all-cycles scope that's the
+  // only place it's stated. Resolved per-row like the labels, and scoped to the
+  // teams actually on this board (the standalone /bugs route spans teams).
+  const cycleFor = useCycleLookup(bugs.map((b) => b.teamId));
 
   /** Bugs don't persist ordering, so the drop slot (`overId`) is ignored — only
    * the destination column matters. */
@@ -351,7 +367,12 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
           getId={(b) => b.id}
           getColumnKey={(b) => b.status}
           renderCard={(bug, overlay) => (
-            <BugCard bug={bug} labels={labelsFor(bug.teamId)} overlay={overlay} />
+            <BugCard
+              bug={bug}
+              labels={labelsFor(bug.teamId)}
+              cycle={cycleFor(bug.cycleId)}
+              overlay={overlay}
+            />
           )}
           onMove={onMove}
           disabled={!canWrite}
@@ -387,6 +408,7 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
             bugs={bugs}
             columns={columns}
             labelsFor={labelsFor}
+            cycleFor={cycleFor}
             onOpen={(b) => navigate(`/issues/${b.shortId || b.id}`)}
             selection={bulkEnabled ? selection : undefined}
           />
@@ -416,12 +438,16 @@ export function BugList({
   bugs,
   columns,
   labelsFor,
+  cycleFor,
   onOpen,
   selection,
 }: {
   bugs: BugDto[];
   columns: { key: string; label: string; color: string }[];
   labelsFor: (teamId: string | undefined) => TaskLabelConfig[];
+  /** Row → its cycle (`useCycleLookup`). Optional so the public board, which has
+   *  no `/teams` access, simply renders rows without a cycle chip. */
+  cycleFor?: (cycleId: string | undefined) => CycleDto | undefined;
   onOpen: (bug: BugDto) => void;
   /** When present, each row gets a checkbox and each column a select-all. */
   selection?: IssueSelection;
@@ -480,6 +506,12 @@ export function BugList({
                       title={BUG_SEVERITY_LABEL[bug.severity]}
                     />
                     <span className="min-w-0 flex-1 truncate text-sm">{bug.title}</span>
+                    {/* Hidden on mobile, like the labels beside it — a row has
+                        room for the title and the assignee first. */}
+                    <IssueCycleChip
+                      cycle={cycleFor?.(bug.cycleId)}
+                      className="hidden shrink-0 sm:flex"
+                    />
                     <LabelChips
                       keys={bug.labelKeys}
                       labels={labelsFor(bug.teamId)}
