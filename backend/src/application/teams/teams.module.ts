@@ -10,6 +10,7 @@ import {
   UpdateTeamCustomFieldsUseCase,
   SetTeamSharingUseCase,
   GetPublicTeamUseCase,
+  ResolveTeamPrefixLockUseCase,
 } from './use-cases/team.use-cases';
 
 const useCases = [
@@ -22,6 +23,7 @@ const useCases = [
   EnsureDefaultTeamsUseCase,
   SetTeamSharingUseCase,
   GetPublicTeamUseCase,
+  ResolveTeamPrefixLockUseCase,
 ];
 
 @Module({

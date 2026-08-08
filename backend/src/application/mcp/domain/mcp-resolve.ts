@@ -69,7 +69,7 @@ export function resolveStatus(
 }
 
 /**
- * Turn an issue *ref* (`TSK-7`, `BUG-12`) or a uuid into the issue itself.
+ * Turn an issue *ref* (`ENG-14`, `QC-8`) or a uuid into the issue itself.
  *
  * The write use-cases (`UpdateIssueUseCase`/`SetIssueStatusUseCase`/
  * `DeleteIssueUseCase`) look an issue up by `findById` — uuid ONLY — so a ref

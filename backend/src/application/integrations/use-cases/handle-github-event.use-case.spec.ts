@@ -315,6 +315,45 @@ describe('HandleGitHubEventUseCase', () => {
       expect(upserts).toHaveLength(0);
     });
 
+    /**
+     * Case-insensitive matching over open-ended prefixes means any hyphenated
+     * word is a candidate ref, and one push carries as many crops of them as it
+     * has commits — each one a database lookup. Past the cap a delivery stops
+     * looking, so a huge prose-heavy push costs a bounded number of queries.
+     */
+    it('stops looking up candidate refs once a delivery has spent its budget', async () => {
+      const { usecase, upserts } = build();
+      // 60 commits, each contributing one distinct junk ref, with the real one
+      // last — well past the 40-lookup cap by the time it is reached.
+      const noise = Array.from({ length: 59 }, (_, i) =>
+        commit(`WORD${i}-THING tidy up`, `${i}`.padStart(40, '0')),
+      );
+      const result = await deliver(
+        usecase,
+        'push',
+        push([...noise, commit(`${TASK_REF} fix login`, 'f'.repeat(40))]),
+      );
+
+      expect(result.isSuccess).toBe(true);
+      // Nothing linked: every junk ref resolves to nothing, and the one real ref
+      // was never looked up because it arrived after the cap.
+      expect(upserts).toHaveLength(0);
+    });
+
+    it('still links a real ref that arrives inside the lookup budget', async () => {
+      const { usecase, upserts } = build();
+      const noise = Array.from({ length: 10 }, (_, i) =>
+        commit(`WORD${i}-THING tidy up`, `${i}`.padStart(40, '0')),
+      );
+      await deliver(
+        usecase,
+        'push',
+        push([...noise, commit(`${TASK_REF} fix login`, 'f'.repeat(40))]),
+      );
+      expect(upserts).toHaveLength(1);
+      expect(upserts[0].subjectId).toBe(TASK_ID);
+    });
+
     it('ignores a branch deletion, which replays commits already linked', async () => {
       const { usecase, upserts } = build();
       const payload = { ...push([commit(`${TASK_REF} fix login`)]), deleted: true };

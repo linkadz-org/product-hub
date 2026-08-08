@@ -733,6 +733,13 @@ export interface TeamDto {
   key: string;
   name: string;
   issueType: TeamIssueType;
+  /** Uppercase ref prefix its issues are numbered with (`ENG` → `ENG-1`).
+   *  `''` on a legacy team that was never assigned one. */
+  refPrefix: string;
+  /** True once the team has issued its first ticket — the prefix is then frozen
+   *  (the numbers are already printed in commits and comments), so the settings
+   *  input is disabled rather than left to fail on submit. */
+  refPrefixLocked: boolean;
   /** Nav symbol; falls back to the issue type's icon. */
   icon: string;
   /** Accent for the symbol; null means it inherits its surroundings. */

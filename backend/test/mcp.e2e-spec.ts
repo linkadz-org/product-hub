@@ -14,7 +14,7 @@ import { IUserRepository } from '@application/users/repositories/user.repository
 import { ITeamRepository } from '@application/teams/repositories/team.repository';
 import { UserEntity } from '@application/users/domain/entities/user.entity';
 import { TeamEntity } from '@application/teams/domain/entities/team.entity';
-import { TeamIssueType } from '@application/teams/domain/enums/team.enums';
+import { DEFAULT_TEAMS, TeamIssueType } from '@application/teams/domain/enums/team.enums';
 import { DEFAULT_TASK_STATUSES } from '@application/tasks/domain/enums/task.enums';
 import { GenerateApiKeyUseCase } from '@application/api-keys/use-cases/api-key.use-cases';
 import { ApiKeyScope } from '@application/api-keys/domain/api-key.enums';
@@ -42,6 +42,9 @@ describe('MCP (e2e)', () => {
   let childRef = '';
 
   const TENANT = 'e2e-tenant';
+
+  /** The prefix the seeded default task team mints under — read, not hardcoded. */
+  const ENG_PREFIX = DEFAULT_TEAMS.find((t) => t.issueType === TeamIssueType.TASK)!.refPrefix;
 
   /** One HTTP call with a key. Returns status + parsed body (json or text). */
   async function call(
@@ -102,11 +105,18 @@ describe('MCP (e2e)', () => {
     }).getValue();
     await users.save(owner);
 
+    // Seeded as the real default task team: `key` and `refPrefix` are taken from
+    // DEFAULT_TEAMS rather than hand-written, because `create_issue` finds the
+    // landing team *by that key* and mints from *that prefix*. A hand-written key
+    // ('ENG') matches nothing, so every MCP task would land team-less and fall back
+    // to the kind sequence — the fixture would be testing a path no workspace runs.
+    const engineering = DEFAULT_TEAMS.find((t) => t.issueType === TeamIssueType.TASK)!;
     const team = TeamEntity.create({
       tenantId: TENANT,
-      key: 'ENG',
-      name: 'Engineering',
+      key: engineering.key,
+      name: engineering.name,
       issueType: TeamIssueType.TASK,
+      refPrefix: engineering.refPrefix,
       statuses: DEFAULT_TASK_STATUSES,
     }).getValue();
     await teams.save(team);
@@ -150,7 +160,9 @@ describe('MCP (e2e)', () => {
       description: 'created via MCP e2e',
     });
     expect([200, 201]).toContain(r.status);
-    expect(r.body.shortId).toMatch(/^TSK-/);
+    // A non-personal task lands in the default task team and mints from *that
+    // team's* prefix — `ENG-n`, not the kind-wide `TSK-n` of the old scheme.
+    expect(r.body.shortId).toMatch(new RegExp(`^${ENG_PREFIX}-\\d+$`));
     parentRef = r.body.shortId;
   });
 
@@ -208,7 +220,9 @@ describe('MCP (e2e)', () => {
     });
     expect([200, 201]).toContain(r.status);
     childRef = r.body.shortId;
-    expect(childRef).toMatch(/^TSK-/);
+    expect(childRef).toMatch(new RegExp(`^${ENG_PREFIX}-\\d+$`));
+    // Same team, same sequence — a subtask is numbered after its parent.
+    expect(Number(childRef.split('-')[1])).toBeGreaterThan(Number(parentRef.split('-')[1]));
   });
 
   it('shows the subtask under the parent (subtaskCount + search parent)', async () => {

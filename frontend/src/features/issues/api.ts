@@ -38,7 +38,18 @@ export interface IssueQuery {
   reportId?: string;
   /** Free-text search over title / description / id / shortId. */
   search?: string;
+  /** Sort field. Omit to keep the board ordering (drag position, then newest first) —
+   *  the kanban view must always omit it. */
+  sort?: IssueSortField;
+  /** Sort direction; defaults to `desc` server-side. */
+  dir?: IssueSortDir;
 }
+
+/** The API's `sort` values — shared so the task and bug queries (which hit the very
+ *  same `/issues` endpoint) and the `SortMenu` all name one set. */
+export type IssueSortField = 'id' | 'created' | 'updated';
+/** The API's `dir` values; the server defaults to `desc`. */
+export type IssueSortDir = 'asc' | 'desc';
 
 /**
  * Create an issue. `kind` picks task vs bug; the kind-specific fields are simply

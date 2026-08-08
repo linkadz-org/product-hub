@@ -60,9 +60,14 @@ export const DEFAULT_TEAM_COLOR = null;
  * owns the bug list, Engineering owns the task list. (They can be renamed;
  * `key` is the stable identity.)
  */
-export const DEFAULT_TEAMS: { key: string; name: string; issueType: TeamIssueType }[] = [
-  { key: 'qc', name: 'QC', issueType: TeamIssueType.BUG },
-  { key: 'engineering', name: 'Engineering', issueType: TeamIssueType.TASK },
+export const DEFAULT_TEAMS: {
+  key: string;
+  name: string;
+  issueType: TeamIssueType;
+  refPrefix: string;
+}[] = [
+  { key: 'qc', name: 'QC', issueType: TeamIssueType.BUG, refPrefix: 'QC' },
+  { key: 'engineering', name: 'Engineering', issueType: TeamIssueType.TASK, refPrefix: 'ENG' },
 ];
 
 export const DEFAULT_TEAM_KEYS = DEFAULT_TEAMS.map((t) => t.key);

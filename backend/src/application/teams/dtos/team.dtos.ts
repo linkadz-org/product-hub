@@ -155,6 +155,15 @@ export class UpdateTeamDto {
   @ValidateIf((_, v) => v !== null)
   @IsIn(TEAM_COLORS)
   color?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Ticket prefix for this team (2–6 chars, e.g. ENG → ENG-1). Editable only until the team mints its first ref.',
+    example: 'ENG',
+  })
+  @IsOptional()
+  @IsString()
+  refPrefix?: string;
 }
 
 export class ShareTeamDto {
@@ -173,6 +182,14 @@ export class TeamResponseDto {
 
   @ApiProperty({ example: 'qc' })
   key: string;
+
+  @ApiProperty({ example: 'ENG', description: "Ticket prefix — '' if never assigned" })
+  refPrefix: string;
+
+  @ApiProperty({
+    description: 'True once the team has issued a ticket; the prefix can no longer change',
+  })
+  refPrefixLocked: boolean;
 
   @ApiProperty({ example: 'QC' })
   name: string;

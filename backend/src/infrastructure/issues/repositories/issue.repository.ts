@@ -13,7 +13,11 @@ import {
 } from '@application/issues/repositories/issue.repository';
 import { IssueEntity } from '@application/issues/domain/entities/issue.entity';
 import { BugSeverity, IssueKind } from '@application/issues/domain/enums/issue.enums';
-import { QueryIssueDto } from '@application/issues/dtos/query-issue.dto';
+import {
+  IssueSortDir,
+  IssueSortField,
+  QueryIssueDto,
+} from '@application/issues/dtos/query-issue.dto';
 import {
   BugStatDimension,
   RawBucket,
@@ -21,6 +25,87 @@ import {
   RawTrendRow,
 } from '@application/mcp/domain/mcp-bug-stats';
 import { IssueDoc } from '../entities/issue.schema';
+
+/**
+ * The Mongo sort for a list request.
+ *
+ * With no `sort` this is exactly the historical `{order: 1, createdAt: -1}` — the
+ * board and every caller written before sorting existed depend on it byte for
+ * byte.
+ *
+ * With an explicit sort, `order` is **dropped**. It is the drag position *within a
+ * status column* (`IssueProps.order`), it leads the sort, and issues carry
+ * distinct values — leaving it in would make a sort control that visibly does
+ * nothing.
+ *
+ * The ID sort is `refPrefix` then `refSeq`, both indexed. Issues created before
+ * sequential refs have neither field; Mongo sorts a missing field as null, which
+ * orders before every string, so those rows form one block (at the top ascending,
+ * at the bottom descending) with `createdAt` ordering them inside it. Nothing is
+ * ever written to them to achieve this.
+ *
+ * Every explicit sort ends in `_id`, which is the only field guaranteed unique,
+ * so the order is *total*. Without it the legacy block is ordered by `createdAt`
+ * alone, and the historical `migrate-issues` script bulk-created rows that share a
+ * `createdAt` to the millisecond — ties Mongo may break differently between two
+ * pages of the same list, which shows one row twice and skips another. The same
+ * exposure exists for the `created`/`updated` sorts, so they get the tiebreak too.
+ */
+export function issueSortStage(
+  sort?: IssueSortField,
+  dir?: IssueSortDir,
+): Record<string, 1 | -1> {
+  // The no-sort branch stays byte-for-byte historical — no `_id` tiebreak here,
+  // because every caller written before sorting existed depends on this shape.
+  if (!sort) return { order: 1, createdAt: -1 };
+  const d: 1 | -1 = dir === 'asc' ? 1 : -1;
+  if (sort === 'created') return { createdAt: d, _id: d };
+  if (sort === 'updated') return { updatedAt: d, _id: d };
+  return { refPrefix: d, refSeq: d, createdAt: d, _id: d };
+}
+
+/**
+ * A search box entry that *is* a ticket ref (`ENG-14`, `eng-14`), upper-cased to
+ * the casing refs are stored in — or null when the text is anything else.
+ *
+ * Typing a known ref is the single most common reason anyone searches, and the
+ * substring regex buries it: with sequential refs, `ENG-1` also matches `ENG-10`,
+ * `ENG-19`, `ENG-100`… all of which sort ahead of it under the board's default
+ * order. This is the signal used to float the one exact row to the top.
+ *
+ * Deliberately narrow. Only a `PREFIX-digits` shape qualifies, so ordinary text
+ * searches take the untouched code path and cannot be affected at all.
+ */
+export const ISSUE_REF_SEARCH_RE = /^[A-Za-z][A-Za-z0-9]{0,9}-\d+$/;
+
+export function exactRefSearch(search?: string): string | null {
+  if (!search) return null;
+  const text = search.trim();
+  return ISSUE_REF_SEARCH_RE.test(text) ? text.toUpperCase() : null;
+}
+
+/**
+ * Field the exact-match rank is computed into. Prefixed so it can never collide
+ * with a real document key, and projected away before the docs are mapped.
+ */
+export const EXACT_RANK_FIELD = '__exactRefRank';
+
+/**
+ * Whether this list request should float an exact `shortId` match to the top.
+ *
+ * Only when the text is ref-shaped **and the user did not choose a sort**. An
+ * explicit sort wins: someone who clicked "ID ascending" or "recently updated"
+ * asked for a specific order, and silently pinning a row above it makes the
+ * control look broken and the column headers lie. With no sort chosen there is no
+ * user intent to override — the default `{order, createdAt}` is the board's own
+ * arrangement, and "the thing you typed the id of" is a better first row than it.
+ */
+export function shouldRankExactRefFirst(
+  exactRef: string | null,
+  sort?: IssueSortField,
+): boolean {
+  return !!exactRef && !sort;
+}
 
 @Injectable()
 export class IssueRepository
@@ -40,6 +125,10 @@ export class IssueRepository
         ownerId: doc.ownerId,
         parentId: doc.parentId,
         shortId: doc.shortId,
+        // Absent on a legacy row and left that way — never defaulted, so the
+        // entity reads back `undefined` and toDocument re-emits nothing.
+        refPrefix: doc.refPrefix,
+        refSeq: doc.refSeq,
         title: doc.title,
         description: doc.description,
         status: doc.status,
@@ -93,6 +182,10 @@ export class IssueRepository
       ownerId: issue.ownerId,
       parentId: issue.parentId,
       shortId: issue.shortId,
+      // `undefined` for a legacy issue — Mongoose omits undefined keys, so a save
+      // never creates these fields on a row that didn't have them.
+      refPrefix: issue.refPrefix,
+      refSeq: issue.refSeq,
       title: issue.title,
       description: issue.description,
       status: issue.status,
@@ -135,8 +228,19 @@ export class IssueRepository
 
   async findByRef(tenantId: string, ref: string): Promise<IssueEntity | null> {
     // shortId first (the URL-facing id), then uuid for pre-shortId links.
+    //
+    // The shortId lookup is upper-cased because refs are minted and stored upper
+    // case but are now typed by hand: `ENG-14` is short enough to retype from a
+    // chat message or a whiteboard, unlike the random `BUG-ESP4F4T` refs that
+    // came before it. The commit-message parser already accepts any casing, so
+    // resolving `eng-14` in a URL keeps the two entry points consistent — without
+    // it, the same ref links from a commit but 404s in the address bar. The uuid
+    // fallback stays exact: uuids are lower case and never retyped.
     const doc =
-      (await this.model.findOne({ tenantId, shortId: ref }).lean<IssueDoc>().exec()) ??
+      (await this.model
+        .findOne({ tenantId, shortId: ref.toUpperCase() })
+        .lean<IssueDoc>()
+        .exec()) ??
       (await this.model.findOne({ tenantId, _id: ref }).lean<IssueDoc>().exec());
     return doc ? this.toDomain(doc) : null;
   }
@@ -236,14 +340,42 @@ export class IssueRepository
       }
     }
 
+    // Searching a full ref must put that exact ticket first — see
+    // `shouldRankExactRefFirst`. The rank is a computed field, which `find()`
+    // cannot sort on, so this one case runs as an aggregation. Everything else
+    // (including every non-search list) keeps the original `find()` untouched:
+    // the matched set is identical either way, only the order differs.
+    const exactRef = exactRefSearch(query.search);
+    const sortStage = issueSortStage(query.sort, query.dir);
+
     const [docs, total] = await Promise.all([
-      this.model
-        .find(filter)
-        .sort({ order: 1, createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .lean<IssueDoc[]>()
-        .exec(),
+      shouldRankExactRefFirst(exactRef, query.sort)
+        ? this.model
+            .aggregate<IssueDoc>([
+              { $match: filter as FilterQuery<IssueDoc> },
+              // 0 for the exact ref, 1 for everything else — ascending, so the
+              // one row the user typed the id of leads and the rest keep the
+              // order they already had.
+              {
+                $addFields: {
+                  [EXACT_RANK_FIELD]: {
+                    $cond: [{ $eq: ['$shortId', exactRef] }, 0, 1],
+                  },
+                },
+              },
+              { $sort: { [EXACT_RANK_FIELD]: 1, ...sortStage } },
+              { $skip: (page - 1) * limit },
+              { $limit: limit },
+              { $project: { [EXACT_RANK_FIELD]: 0 } },
+            ])
+            .exec()
+        : this.model
+            .find(filter)
+            .sort(sortStage)
+            .skip((page - 1) * limit)
+            .limit(limit)
+            .lean<IssueDoc[]>()
+            .exec(),
       this.model.countDocuments(filter).exec(),
     ]);
 

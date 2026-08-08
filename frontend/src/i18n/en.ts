@@ -743,6 +743,18 @@ export const en = {
   'issues.cappedHint': 'shown — narrow it with search or filters.',
   'issues.kindTasks': 'Tasks',
   'issues.kindBugs': 'Bugs',
+  // Sort control (list view) — field on top, direction below. `sort.title` also
+  // composes into the trigger (`Sort: ID`), so it carries no trailing colon.
+  'sort.title': 'Sort',
+  // The resting state: no `sort`/`dir` is sent and the list is in whatever order
+  // the server returns it. Named rather than left blank, so an unsorted list is
+  // never mistaken for one sorted by the first field in the menu.
+  'sort.fieldDefault': 'Default order',
+  'sort.fieldId': 'ID',
+  'sort.fieldCreated': 'Created',
+  'sort.fieldUpdated': 'Updated',
+  'sort.ascending': 'Ascending',
+  'sort.descending': 'Descending',
   // Bulk actions — the List-view multi-select toolbar. Count words compose with a
   // number in code (`3 selected`, `2 updated`), so they carry no placeholder.
   'bulk.selected': 'selected',
@@ -1011,7 +1023,7 @@ export const en = {
 
   'settings.github': 'GitHub',
   'settings.githubHint':
-    'Show the work behind an item. Write a ref like TSK-6HCUHKX in a commit message, a branch name or a pull request title, and it appears on that task, bug or backlog item.',
+    'Show the work behind an item. Write a ref like ENG-14 in a commit message, a branch name or a pull request title, and it appears on that task, bug or backlog item.',
   'settings.githubStep1': 'Connect this workspace',
   'settings.githubStep1Hint':
     'Creates the address GitHub sends to, and the secret it signs with. The secret is shown once.',
@@ -1045,8 +1057,11 @@ export const en = {
   'settings.githubStep3': 'Name an item in your work',
   'settings.githubStep3Hint':
     'Copy the ref from the item — it is next to the title — and use it anywhere in the message.',
+  // The example is the one place the product tells a developer what to type, so
+  // it has to show the shape refs actually have now: a team's own prefix.
+  'settings.githubCommitExample': 'git commit -m "ENG-14 fix the login redirect"',
   'settings.githubRefsHint':
-    'Branch names and pull request titles count too, so naming it once at git checkout -b is enough. Tasks (TSK-), bugs (BUG-) and backlog items (RM-) all work.',
+    'Branch names and pull request titles count too, so naming it once at git checkout -b is enough. Every ticket works — a team’s own prefix (ENG-14, QC-8), and backlog items (RM-6). Each team’s prefix is set in Settings → Teams.',
   'settings.githubActivity': 'Deliveries',
   'settings.githubActivityHint': 'Proof the link is live — what GitHub last sent, and from where.',
   'settings.githubReceiving': 'Receiving',
@@ -1276,6 +1291,17 @@ export const en = {
   'teams.icon': 'Team symbol',
   'teams.changeIcon': 'Change symbol',
   'teams.name': 'Team name',
+  'teams.prefix': 'Ticket prefix',
+  'teams.prefixHint': 'New tickets will be numbered {prefix}-1, {prefix}-2…',
+  'teams.prefixEmptyHint': 'Set a prefix to number this team’s tickets.',
+  'teams.prefixLocked': 'Locked — this team has already issued tickets',
+  'teams.prefixInvalid': '2–6 characters, letters and numbers, starting with a letter.',
+  // Server-side prefix rejections, matched by the `code` the API sends beside its
+  // message (see PREFIX_ERROR_KEYS in TeamsSection).
+  'teams.prefixTaken': 'Another team already uses that prefix.',
+  'teams.prefixReserved': 'That prefix is reserved by the workspace.',
+  'teams.prefixFrozen':
+    'This team has already issued tickets, so its prefix can no longer be changed.',
   'teams.issueType': 'Issues',
   'teams.archive': 'Archive',
   'teams.unarchive': 'Unarchive',

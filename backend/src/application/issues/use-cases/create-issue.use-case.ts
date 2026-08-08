@@ -1,7 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { IUsecaseExecute } from '@core/interfaces';
 import { Result } from '@shared/logic/result';
-import { uniqueRef } from '@module-shared/utils/short-id.util';
+import { MintedRef, sequentialRef } from '@module-shared/utils/sequential-ref.util';
+import { CounterService } from '@module-shared/services/counter.service';
 import { ITeamRepository } from '@application/teams/repositories/team.repository';
 import { DEFAULT_TEAMS, TeamIssueType } from '@application/teams/domain/enums/team.enums';
 import { IUserRepository } from '@application/users/repositories/user.repository';
@@ -12,7 +13,7 @@ import { CycleStatus } from '@application/cycles/domain/enums/cycle.enums';
 import { todayISO } from '@application/cycles/domain/cycle-dates';
 import { CreateIssueDto } from '../dtos/create-issue.dto';
 import { IssueEntity } from '../domain/entities/issue.entity';
-import { IssueKind } from '../domain/enums/issue.enums';
+import { ISSUE_REF_PREFIX, IssueKind } from '../domain/enums/issue.enums';
 import { IIssueRepository } from '../repositories/issue.repository';
 import { resolveIssueAssignees } from './resolve-assignees';
 
@@ -33,6 +34,7 @@ export class CreateIssueUseCase
     @Inject(ITeamRepository) private readonly teams: ITeamRepository,
     @Inject(ICycleRepository) private readonly cycles: ICycleRepository,
     @Inject(INotifier) private readonly notifier: INotifier,
+    private readonly counters: CounterService,
   ) {}
 
   async execute({
@@ -65,6 +67,15 @@ export class CreateIssueUseCase
 
     const teamId = dto.personal ? '' : dto.teamId || team?.id.toString() || '';
 
+    // `team` is the kind's *default* team; the issue may land in a different one
+    // (dto.teamId). Both the cycle rhythm and the ticket ref read the **landing**
+    // team, so resolve it once here rather than twice further down.
+    const landingTeam = !teamId
+      ? null
+      : team && team.id.toString() === teamId
+        ? team
+        : await this.teams.findById(tenantId, teamId);
+
     // Born into a cycle. Two ways in:
     //  1. An explicit cycleId (a board filtered to one creates into it) — validated
     //     like the update path: the issue's own team's cycle, still open, never on a
@@ -83,16 +94,49 @@ export class CreateIssueUseCase
         return Result.fail('Completed cycles cannot take new issues');
       }
     } else if (!dto.personal && teamId) {
-      // `team` is the kind's default team; the issue may land in a different one
-      // (dto.teamId), so read the landing team's own rhythm.
-      const landingTeam =
-        team && team.id.toString() === teamId ? team : await this.teams.findById(tenantId, teamId);
       if (landingTeam?.cyclesEnabled) {
         const active = (await this.cycles.findByTeam(tenantId, teamId)).find(
           (c) => c.statusOn(todayISO()) === CycleStatus.ACTIVE,
         );
         if (active) cycleId = active.id.toString();
       }
+    }
+
+    // Ticket refs are the landing team's sequence — `ENG-14`. A team from an
+    // older build has no prefix yet (the backfill may not have run), and a
+    // personal task has no team at all; both fall back to the kind's own
+    // sequence, so the ref is still sequential and sortable, just not
+    // team-scoped.
+    //
+    // The prefix is re-read here rather than taken from the `landingTeam` above,
+    // because that row was fetched two round-trips ago (assignees, cycles) and an
+    // admin can move the team's prefix in between. The freeze that normally
+    // prevents a prefix move only refuses once the counter has advanced — and this
+    // create has not drawn yet, so the counter still reads 0 and the move is
+    // allowed. Minting from the stale value would draw `T:ENG` → 1 and stamp
+    // `ENG-1` on a team now called `PLT`: the counter for `ENG` is permanently
+    // ahead of a prefix no team holds, so a future team derived as `ENG` reports
+    // itself frozen before issuing a single ticket and starts at `ENG-2`.
+    //
+    // Residual window: the prefix can still move between this read and the draw
+    // below. That is a single `await` rather than three, and closing it fully would
+    // need the counter draw and the freeze check in one transaction — much more
+    // machinery than the failure justifies. The cost of the remaining window is
+    // also the *smaller* half of the original: the re-read sees any move that
+    // completed before the draw started, so the only losing interleaving left is
+    // one that commits inside the draw itself.
+    const mintFrom = teamId ? (await this.teams.findById(tenantId, teamId)) ?? landingTeam : null;
+    const refPrefix = mintFrom?.refPrefix || ISSUE_REF_PREFIX[kind];
+    // `sequentialRef` throws if it cannot find a free number; this use-case's
+    // contract is a Result, and an uncaught throw here would surface as a 500
+    // instead of a message the caller can act on.
+    let minted: MintedRef;
+    try {
+      minted = await sequentialRef(this.counters, tenantId, refPrefix, (ref) =>
+        this.issues.findByRef(tenantId, ref).then((i) => i !== null),
+      );
+    } catch (error) {
+      return Result.fail((error as Error).message);
     }
 
     const created = IssueEntity.create({
@@ -102,9 +146,9 @@ export class CreateIssueUseCase
       cycleId,
       ownerId: dto.personal ? createdBy : '',
       parentId: dto.parentId,
-      shortId: await uniqueRef(isBug ? 'BUG' : 'TSK', (ref) =>
-        this.issues.findByRef(tenantId, ref).then((i) => i !== null),
-      ),
+      shortId: minted.ref,
+      refPrefix: minted.prefix,
+      refSeq: minted.seq,
       title: dto.title,
       description: dto.description,
       status: dto.status,

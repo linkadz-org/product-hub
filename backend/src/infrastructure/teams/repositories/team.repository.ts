@@ -16,6 +16,7 @@ export class TeamRepository implements ITeamRepository {
       {
         tenantId: doc.tenantId,
         key: doc.key,
+        refPrefix: doc.refPrefix,
         name: doc.name,
         issueType: doc.issueType as TeamIssueType,
         icon: doc.icon,
@@ -48,6 +49,7 @@ export class TeamRepository implements ITeamRepository {
       _id: team.id.toString(),
       tenantId: team.tenantId,
       key: team.key,
+      refPrefix: team.refPrefix || undefined,
       name: team.name,
       issueType: team.issueType,
       icon: team.icon,

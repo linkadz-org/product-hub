@@ -75,6 +75,28 @@ type LinkTarget = ExistingLink;
  */
 const MAX_BRANCH_SUBJECTS = 50;
 
+/**
+ * How many *distinct* candidate refs one delivery may look up before the rest are
+ * dropped.
+ *
+ * Matching is case-insensitive over an open-ended prefix set, so an ordinary
+ * hyphenated word is ref-shaped: `feature/TSK-1-fix-login` yields `FIX-LOGIN`
+ * alongside the real ref, and every commit in a push contributes its own crop.
+ * The parser dedupes within one text and the per-delivery cache collapses repeats
+ * across commits, but a 200-commit force-push of prose-heavy messages still has
+ * no ceiling on distinct lookups — one round-trip each.
+ *
+ * 40 is well past what a genuine push spends: real refs repeat (the cache absorbs
+ * them), so reaching 40 distinct ones means the payload is mostly noise. Same
+ * spirit as MAX_BRANCH_SUBJECTS above — past the cap the input is evidently not
+ * one unit of work.
+ */
+const MAX_REF_LOOKUPS = 40;
+
+/** Cache key marking "the cap warning has been logged for this delivery". Not a
+ *  possible ref — refs are uppercase alphanumerics and a hyphen. */
+const CAP_LOGGED = '\0ref-cap-logged';
+
 /** Refs from a primary source, then a fallback, without duplicates. */
 function refHits(
   primary: { texts: (string | undefined)[]; matchedBy: CodeLinkMatchedBy },
@@ -401,6 +423,25 @@ export class HandleGitHubEventUseCase
   ): Promise<SubjectLocation | null> {
     const cached = cache.get(hit.ref);
     if (cached !== undefined) return cached;
+
+    // The cache is one per delivery, so its size *is* the number of distinct refs
+    // this event has already spent a lookup on. Past the cap, stop looking: a ref
+    // beyond it is far likelier to be a hyphenated word than a ticket. Logged at
+    // warn — a genuine push that trips this is a real (if rare) missed link, and
+    // silently dropping it is exactly the kind of thing nobody would ever find.
+    if (cache.size >= MAX_REF_LOOKUPS) {
+      // Once per delivery, not once per dropped ref — a 200-commit push would
+      // otherwise write the same warning 200 times. The marker is parked in the
+      // cache itself (no ref can ever equal it, so it collides with nothing).
+      if (!cache.has(CAP_LOGGED)) {
+        cache.set(CAP_LOGGED, null);
+        this.logger.warn(
+          `GitHub webhook: ${MAX_REF_LOOKUPS} candidate refs already looked up for this delivery — ` +
+            `ignoring ${hit.ref} and any further ones`,
+        );
+      }
+      return null;
+    }
 
     let at: SubjectLocation | null = null;
     if (hit.subjectType === CodeLinkSubject.ROADMAP_ITEM) {

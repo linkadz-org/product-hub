@@ -27,6 +27,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
     let statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
     let message: string | string[] = 'Internal server error';
     let error = 'InternalServerError';
+    // A stable, machine-readable name for the rejection, when the thrower gave
+    // one (`new BadRequestException({ message, code })`). The message is written
+    // for a human and written in English; a client that has to render it in
+    // another language needs something it can key a translation off instead.
+    // Only ever added, never required — a body without one is unchanged.
+    let code: string | undefined;
 
     if (exception instanceof DomainException) {
       statusCode = exception.statusCode;
@@ -38,9 +44,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
       if (typeof res === 'string') {
         message = res;
       } else if (res && typeof res === 'object') {
-        const body = res as { message?: string | string[]; error?: string };
+        const body = res as { message?: string | string[]; error?: string; code?: string };
         message = body.message ?? exception.message;
         error = body.error ?? exception.name;
+        code = typeof body.code === 'string' ? body.code : undefined;
       }
     } else if (exception instanceof Error) {
       message = exception.message;
@@ -58,6 +65,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       statusCode,
       message,
       error,
+      ...(code ? { code } : {}),
       timestamp: new Date().toISOString(),
       path: request?.url,
     });

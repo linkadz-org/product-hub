@@ -162,7 +162,7 @@ export function GitHubSection() {
 
           <Step n={3} title={t('settings.githubStep3')} hint={t('settings.githubStep3Hint')}>
             <pre className="overflow-x-auto rounded-lg border bg-muted p-3 font-mono text-xs leading-relaxed">
-              <code>{'git commit -m "TSK-6HCUHKX fix the login redirect"'}</code>
+              <code>{t('settings.githubCommitExample')}</code>
             </pre>
             <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
               {t('settings.githubRefsHint')}

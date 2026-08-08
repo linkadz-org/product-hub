@@ -54,9 +54,18 @@ export function isCompletedStatus(kind: IssueKind, status: string): boolean {
 }
 
 /**
- * The prefix each kind's human ref carries — `TSK-6HCUHKX`, `BUG-3`. Minting
- * reads it, and so does anything parsing a ref back out of free text (a commit
- * message, a branch name), so the two can't drift apart.
+ * The **fallback** prefix for an issue that has no team prefix to mint from.
+ *
+ * A ref no longer says what kind of issue it is: it carries the owning *team's*
+ * prefix (`ENG-14`, `QC-8`), and a team's tasks and bugs share one sequence. These
+ * two values are only reached in the two cases where there is no team prefix:
+ *
+ *  - a **personal task**, which lives in no team at all;
+ *  - a team from a build that predates ref prefixes, whose backfill has not run
+ *    yet — code ships before the backfill does.
+ *
+ * They are also the prefixes every historical ref was minted under, which is why
+ * they stay reserved and why the ref parser still recognises them.
  */
 export const ISSUE_REF_PREFIX: Record<IssueKind, string> = {
   [IssueKind.TASK]: 'TSK',

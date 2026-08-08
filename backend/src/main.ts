@@ -8,7 +8,10 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
+import { getConnectionToken } from '@nestjs/mongoose';
+import type { Connection } from 'mongoose';
 import { AppModule } from './app.module';
+import { reportIndexBuildFailures } from './infrastructure/database/mongoose/mongoose.module';
 
 async function bootstrap() {
   // `bodyParser: false` skips Express's default JSON parser (a 100kb limit that
@@ -103,6 +106,13 @@ async function bootstrap() {
   SwaggerModule.setup('swagger', app, document, {
     swaggerOptions: { persistAuthorization: true },
   });
+
+  // Every model is registered by now, so this is the first moment their index
+  // builds can be awaited. Reported, never fatal — see `reportIndexBuildFailures`
+  // for why, and the deploy runbook for the check that goes with it. Awaited
+  // before `listen` so the verdict is in the log above the "running on" line
+  // rather than interleaved with the first requests.
+  await reportIndexBuildFailures(app.get<Connection>(getConnectionToken()));
 
   await app.listen(port);
   Logger.log(

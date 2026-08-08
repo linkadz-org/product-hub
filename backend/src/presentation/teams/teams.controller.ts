@@ -20,8 +20,8 @@ import {
   UpdateTeamCustomFieldsUseCase,
   UpdateTeamUseCase,
   SetTeamSharingUseCase,
-  TEAM_DEFAULT_LOCKED,
   TEAM_NOT_FOUND,
+  ResolveTeamPrefixLockUseCase,
 } from '@application/teams/use-cases/team.use-cases';
 import {
   CreateTeamDto,
@@ -33,6 +33,7 @@ import {
   UpdateTeamStatusesDto,
 } from '@application/teams/dtos/team.dtos';
 import { TeamMapper } from '@application/teams/mappers/team.mapper';
+import { teamErrorBody } from '@application/teams/domain/team-error-codes';
 
 @ApiTags('Teams')
 @ApiBearerAuth('JWT-auth')
@@ -46,13 +47,16 @@ export class TeamsController {
     private readonly updateLabels: UpdateTeamLabelsUseCase,
     private readonly updateCustomFields: UpdateTeamCustomFieldsUseCase,
     private readonly setSharing: SetTeamSharingUseCase,
+    private readonly prefixLock: ResolveTeamPrefixLockUseCase,
   ) {}
 
   @Get()
   @ApiOperation({ summary: 'List teams (any authenticated user — drives the nav)' })
   async list(@AuthUser() auth: JwtPayload): Promise<TeamResponseDto[]> {
-    const result = await this.getTeams.execute({ tenantId: auth.tenantId });
-    return TeamMapper.toResponseDtoArray(result.getValue());
+    const teams = (await this.getTeams.execute({ tenantId: auth.tenantId })).getValue();
+    // One batched Promise.all, not a counter read per team inside the map.
+    const locked = await this.prefixLock.many(auth.tenantId, teams);
+    return TeamMapper.toResponseDtoArray(teams, locked);
   }
 
   @Post()
@@ -63,8 +67,9 @@ export class TeamsController {
     @Body() dto: CreateTeamDto,
   ): Promise<TeamResponseDto> {
     const result = await this.createTeam.execute({ tenantId: auth.tenantId, dto });
-    if (result.isFailure) throw new BadRequestException(result.error as string);
-    return TeamMapper.toResponseDto(result.getValue());
+    if (result.isFailure) throw new BadRequestException(teamErrorBody(result.error as string));
+    const team = result.getValue();
+    return TeamMapper.toResponseDto(team, await this.prefixLock.one(auth.tenantId, team));
   }
 
   @Patch(':id')
@@ -78,10 +83,19 @@ export class TeamsController {
     const result = await this.updateTeam.execute({ tenantId: auth.tenantId, id, dto });
     if (result.isFailure) {
       const msg = result.error as string;
-      if (msg === TEAM_DEFAULT_LOCKED) throw new BadRequestException(msg);
-      throw new EntityNotFoundException(msg);
+      // Only a missing team is a 404. Everything else — a bad rename, an archive
+      // of a default team, a frozen or duplicate prefix — is a rejected write, so
+      // it must be a 400 the settings form can show against the offending field.
+      // This matches every sibling handler below; it used to be the inverse.
+      //
+      // `teamErrorBody` adds a machine-readable `code` to the four prefix
+      // rejections, so a non-English UI can translate them instead of printing
+      // the English message it used to be handed.
+      if (msg === TEAM_NOT_FOUND) throw new EntityNotFoundException(msg);
+      throw new BadRequestException(teamErrorBody(msg));
     }
-    return TeamMapper.toResponseDto(result.getValue());
+    const team = result.getValue();
+    return TeamMapper.toResponseDto(team, await this.prefixLock.one(auth.tenantId, team));
   }
 
   @Put(':id/statuses')
@@ -98,9 +112,10 @@ export class TeamsController {
     if (result.isFailure) {
       const msg = result.error as string;
       if (msg === TEAM_NOT_FOUND) throw new EntityNotFoundException(msg);
-      throw new BadRequestException(msg);
+      throw new BadRequestException(teamErrorBody(msg));
     }
-    return TeamMapper.toResponseDto(result.getValue());
+    const team = result.getValue();
+    return TeamMapper.toResponseDto(team, await this.prefixLock.one(auth.tenantId, team));
   }
 
   @Put(':id/labels')
@@ -115,9 +130,10 @@ export class TeamsController {
     if (result.isFailure) {
       const msg = result.error as string;
       if (msg === TEAM_NOT_FOUND) throw new EntityNotFoundException(msg);
-      throw new BadRequestException(msg);
+      throw new BadRequestException(teamErrorBody(msg));
     }
-    return TeamMapper.toResponseDto(result.getValue());
+    const team = result.getValue();
+    return TeamMapper.toResponseDto(team, await this.prefixLock.one(auth.tenantId, team));
   }
 
   @Put(':id/custom-fields')
@@ -132,9 +148,10 @@ export class TeamsController {
     if (result.isFailure) {
       const msg = result.error as string;
       if (msg === TEAM_NOT_FOUND) throw new EntityNotFoundException(msg);
-      throw new BadRequestException(msg);
+      throw new BadRequestException(teamErrorBody(msg));
     }
-    return TeamMapper.toResponseDto(result.getValue());
+    const team = result.getValue();
+    return TeamMapper.toResponseDto(team, await this.prefixLock.one(auth.tenantId, team));
   }
 
   @Post(':id/share')
@@ -151,6 +168,7 @@ export class TeamsController {
       enabled: dto.enabled,
     });
     if (result.isFailure) throw new EntityNotFoundException(result.error as string);
-    return TeamMapper.toResponseDto(result.getValue());
+    const team = result.getValue();
+    return TeamMapper.toResponseDto(team, await this.prefixLock.one(auth.tenantId, team));
   }
 }

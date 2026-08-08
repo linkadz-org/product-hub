@@ -1,4 +1,19 @@
 /**
+ * ⛔️ SUPERSEDED — DO NOT RUN AGAINST A WORKSPACE ON SEQUENTIAL REFS ⛔️
+ *
+ * This script predates sequential refs. It mints RANDOM refs (`RM-6HCUHKX`) with
+ * `randomRef`, bypassing `CounterService` entirely — while live code now mints
+ * `RM-1`, `RM-2` from that counter. Running it today would inject legacy-shaped
+ * refs into a workspace numbering its backlog items sequentially, with nothing
+ * advancing the counter, so nothing would notice the collision risk it creates.
+ *
+ * It is kept only as the record of a one-time migration that has already run.
+ * If a workspace still has ref-less roadmap items, fill them from the counter —
+ * do not run this. Left as-is deliberately: rewriting a script whose whole
+ * purpose is already served would be inventing a new, untested write path.
+ *
+ * ---
+ *
  * One-time BACKFILL: mint a short ref (`RM-6HCUHKX`) for roadmap items created
  * before refs existed, so their URL reads
  * `/roadmaps/<roadmap>/items/RM-6HCUHKX` instead of a raw uuid. New items already
