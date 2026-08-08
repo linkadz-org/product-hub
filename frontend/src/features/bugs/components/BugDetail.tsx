@@ -164,6 +164,10 @@ export function BugDetail({ bugId, onDeleted, menuTarget = 'header', dense = fal
           <SubtaskSection
             query={{ parentId: bug.id }}
             createLink={{ parentId: bug.id, teamId: bug.teamId }}
+            // As on a task: the parent is the only link holding the row here, and
+            // the child bug survives on its own.
+            unlink={{ parentId: '' }}
+            unlinkLabel={t('subtasks.unlinkParent')}
             composerTeams={
               // Its own team only — a child filed from here belongs where the
               // parent does, which for a bug team means it's created as a bug.

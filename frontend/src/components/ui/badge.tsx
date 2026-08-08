@@ -1,4 +1,4 @@
-import { type HTMLAttributes } from 'react';
+import { forwardRef, type HTMLAttributes } from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
@@ -29,8 +29,14 @@ export interface BadgeProps
   extends HTMLAttributes<HTMLSpanElement>,
     VariantProps<typeof badgeVariants> {}
 
-function Badge({ className, variant, ...props }: BadgeProps) {
-  return <span className={cn(badgeVariants({ variant }), className)} {...props} />;
-}
+/** Forwards its ref so a badge can be a Radix `asChild` trigger. Without this a
+ *  `<TooltipTrigger asChild><Badge/></TooltipTrigger>` silently never opens: the
+ *  Slot's props land (Badge spreads them) but the anchor ref is dropped, so the
+ *  tooltip has nothing to position against. Both cycle chips — `SprintChip` and
+ *  `CarryOverBadge` — are exactly that shape. */
+const Badge = forwardRef<HTMLSpanElement, BadgeProps>(({ className, variant, ...props }, ref) => (
+  <span ref={ref} className={cn(badgeVariants({ variant }), className)} {...props} />
+));
+Badge.displayName = 'Badge';
 
 export { Badge, badgeVariants };

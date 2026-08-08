@@ -174,6 +174,10 @@ export function TaskDetail({ taskId, onDeleted, menuTarget = 'header', dense = f
             <SubtaskSection
               query={{ parentId: task.id }}
               createLink={{ parentId: task.id, teamId: task.teamId }}
+              // Here the link *is* the parent, so shedding it is all there is to
+              // do — the sub-task lives on as a top-level task in the same team.
+              unlink={{ parentId: '' }}
+              unlinkLabel={t('subtasks.unlinkParent')}
               composerTeams={
                 // A sub-task belongs to its parent's team, which is always a task
                 // team — no picker, so no bug option here.

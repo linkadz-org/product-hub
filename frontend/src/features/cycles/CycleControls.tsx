@@ -297,6 +297,52 @@ function GhostChip({ issue, cycles }: { issue: IssueDto; cycles: CycleDto[] }) {
 }
 
 /**
+ * One issue's cycle, as a card/row chip, with the window it stands for on hover.
+ *
+ * The board's banner and filter say which cycle you *scoped* to; this says which
+ * cycle a card *is in* — and at the default All-cycles scope that was the one
+ * thing a task or bug card never told you, while every roadmap card did (see
+ * `SprintChip`, which this deliberately mirrors: same size, same variant rule,
+ * same hover). Nothing renders without a cycle, so an uncommitted issue shows no
+ * chip rather than an empty one and the absence itself reads as "not planned".
+ */
+export function IssueCycleChip({
+  cycle,
+  className,
+}: {
+  cycle: CycleDto | undefined;
+  className?: string;
+}) {
+  if (!cycle) return null;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Badge
+          variant={cycle.status === CycleStatus.ACTIVE ? 'secondary' : 'muted'}
+          className={cn('min-w-0 max-w-full gap-1 py-0 font-normal', className)}
+        >
+          <CycleIcon className="size-3.5 shrink-0 [&>svg]:size-3" />
+          <span className="truncate">{cycleName(cycle)}</span>
+        </Badge>
+      </TooltipTrigger>
+      {/* The chip only has room for a name, so the dates it stands for live here. */}
+      <TooltipContent className="max-w-xs">
+        <span className="whitespace-nowrap">
+          <span className="font-medium">{cycleName(cycle)}</span>
+          <span className="opacity-80">
+            {' · '}
+            {shortDay(cycle.startDate)} – {shortDay(cycle.endDate)}
+          </span>
+          {cycle.status === CycleStatus.ACTIVE && (
+            <span className="opacity-80">{` · ${t('cycles.current')}`}</span>
+          )}
+        </span>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+/**
  * "↻ Carried over ×2" — marks an issue the scheduler auto-rolled into the next
  * cycle because it was still unfinished when its cycle ended. The `×N` shows the
  * slip count only past the first (a lone "Carried over" already means "once").

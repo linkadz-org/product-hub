@@ -626,6 +626,42 @@ export const ko: Record<I18nKey, string> = {
   'roadmaps.legendLowHigh': '낮음 → 높음',
   'roadmaps.legendBubble': '버블 크기 = 리치',
 
+  // Sprints on a roadmap — see the note in en.ts. "스프린트" rather than "사이클":
+  // a cycle belongs to one team, this is the shared window across teams.
+  'sprints.filterLabel': '스프린트',
+  'sprints.current': '현재 스프린트',
+  'sprints.all': '모든 스프린트',
+  'sprints.none': '스프린트 미지정',
+  'sprints.teams': '{n}개 팀',
+  'sprints.backlogItems': '백로그 항목',
+  'sprints.tasksDone': '태스크 완료',
+  // Timeline
+  'sprints.groupBySprint': '스프린트별 그룹',
+  'sprints.axisBands': '축에 스프린트 표시',
+  'sprints.axisHint': '음영 구간이 스프린트입니다',
+  'sprints.noSprintGroup': '스프린트 없음',
+  'sprints.groupSummary': '항목 {items}개 · 태스크 {done}/{tasks} 완료',
+  'sprints.emptyScoped': '이 스프린트에 배정된 작업이 없습니다',
+  'sprints.emptyScopedHint':
+    '이 스프린트에 태스크가 있는 백로그 항목이 아직 없습니다. 다른 스프린트를 선택하거나 “스프린트 미지정”에서 아직 계획되지 않은 항목을 확인하세요.',
+  'sprints.emptyNone': '모든 항목이 스프린트에 있습니다',
+  'sprints.emptyNoneHint': '이 로드맵의 모든 백로그 항목이 스프린트에 배정되어 있습니다.',
+  'sprints.moved': '{name}(으)로 이동했습니다',
+  'sprints.movedOut': '스프린트에서 제외했습니다',
+  'sprints.moveTasks': '태스크 {n}개',
+  'sprints.moveStuck': '{n}개는 그대로 — 해당 팀은 그 기간에 사이클이 없습니다',
+  'sprints.moveFailed': '항목을 이동할 수 없습니다',
+  'sprints.moveNoTasks': '먼저 태스크를 연결하세요 — 백로그 항목은 태스크를 통해 계획됩니다',
+  'sprints.moveDoneTitle': '이미 완료된 작업도 함께 이동합니다',
+  'sprints.moveDoneBody':
+    '완료된 태스크 {n}개가 {from}에서 빠져나가며, 해당 사이클의 완료 실적 — 속도와 번다운 — 도 함께 바뀝니다.',
+  'sprints.moveDoneClosed': '해당 사이클은 이미 종료되어 그 수치를 확정해 보고했습니다.',
+  'sprints.moveDoneAllDone':
+    '이동할 미완료 작업이 없습니다 — 사이클이 바뀌는 태스크는 모두 완료 상태입니다.',
+  'sprints.moveUnfinishedOnly': '미완료만 이동',
+  'sprints.moveAllAnyway': '모두 이동',
+  'sprints.moveKeptDone': '완료된 {n}개는 기존 사이클에 남았습니다',
+
   // Tasks — engineering execution on a backlog item
   'tasks.title': '태스크',
   'tasks.empty': '아직 태스크가 없습니다 — 첫 작업을 추가하세요.',
@@ -651,6 +687,8 @@ export const ko: Record<I18nKey, string> = {
   'tasks.assignedYou': '나에게 배정됨',
   'tasks.doneOf': '{total}개 중 {done}개 완료',
   'subtasks.title': '하위 태스크',
+  'subtasks.expand': '하위 태스크 펼치기',
+  'subtasks.collapse': '하위 태스크 접기',
   'subtasks.linkTitle': '기존 태스크를 하위 태스크로 연결',
   'subtasks.linkBugTitle': '기존 버그를 하위 이슈로 연결',
   'subtasks.empty': '아직 하위 태스크가 없습니다 — 작업을 더 작게 나눠보세요.',
@@ -660,6 +698,8 @@ export const ko: Record<I18nKey, string> = {
   'subtasks.parent': '상위',
   'subtasks.parentNone': '상위 없음',
   'subtasks.parentElsewhere': '다른 이슈',
+  'subtasks.unlinkParent': '상위 항목에서 분리 (작업은 유지)',
+  'subtasks.unlinkBacklog': '이 백로그 항목에서 제거 (작업은 유지)',
   'subtasks.bugs': '버그',
   'issues.parentSet': '상위 지정',
   'issues.parentPick': '상위 이슈 선택',

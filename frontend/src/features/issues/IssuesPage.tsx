@@ -32,7 +32,9 @@ import {
   type TaskLabelConfig,
   type TeamStatusConfig,
 } from '@/types/enums';
-import type { BugDto, IssueDto, TaskDto } from '@/types/dto';
+import type { BugDto, CycleDto, IssueDto, TaskDto } from '@/types/dto';
+import { IssueCycleChip } from '@/features/cycles/CycleControls';
+import { useCycleLookup } from '@/features/cycles/api';
 import { TaskCard } from '@/features/tasks/MyTasksPage';
 import { BugCard } from '@/features/bugs/BugsBoardPage';
 import { useDeleteIssue, useIssues, useSetIssueStatus } from './api';
@@ -173,6 +175,9 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
     roadmapItemId: isBug ? undefined : filters.roadmapItemId,
   });
   const items = data?.items ?? [];
+  // Each card/row names its own cycle — at the default all-cycles scope that's the
+  // only place it's stated. Resolved per-row like the labels above.
+  const cycleFor = useCycleLookup(items.map((it) => it.teamId));
   // A board titled "All issues" must not hide a row it has no column for, so any
   // status present on a fetched issue but missing from the default team's set is
   // appended (see `extendColumns`).
@@ -336,9 +341,19 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
           // reject a structural assign — the runtime shape is identical, hence the cast.
           renderCard={(it, overlay) =>
             isBug ? (
-              <BugCard bug={it as unknown as BugDto} labels={labelsFor(it.teamId)} overlay={overlay} />
+              <BugCard
+                bug={it as unknown as BugDto}
+                labels={labelsFor(it.teamId)}
+                cycle={cycleFor(it.cycleId)}
+                overlay={overlay}
+              />
             ) : (
-              <TaskCard task={it as unknown as TaskDto} labels={labelsFor(it.teamId)} overlay={overlay} />
+              <TaskCard
+                task={it as unknown as TaskDto}
+                labels={labelsFor(it.teamId)}
+                cycle={cycleFor(it.cycleId)}
+                overlay={overlay}
+              />
             )
           }
           onMove={onMove}
@@ -368,6 +383,7 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
             items={items}
             columns={columns}
             labelsFor={labelsFor}
+            cycleFor={cycleFor}
             isBug={isBug}
             onOpen={openIssue}
           />
@@ -387,12 +403,14 @@ function IssueList({
   items,
   columns,
   labelsFor,
+  cycleFor,
   isBug,
   onOpen,
 }: {
   items: IssueDto[];
   columns: TeamStatusConfig[];
   labelsFor: (teamId: string | undefined) => TaskLabelConfig[];
+  cycleFor: (cycleId: string | undefined) => CycleDto | undefined;
   isBug: boolean;
   onOpen: (item: IssueDto) => void;
 }) {
@@ -426,6 +444,12 @@ function IssueList({
                     <Icon name="tasks" size={14} className="shrink-0 text-muted-foreground" />
                   )}
                   <span className="min-w-0 flex-1 truncate text-sm">{it.title}</span>
+                  {/* Hidden on mobile, like the labels beside it — a row has room
+                      for the title and the assignee first. */}
+                  <IssueCycleChip
+                    cycle={cycleFor(it.cycleId)}
+                    className="hidden shrink-0 sm:flex"
+                  />
                   <LabelChips
                     keys={it.labelKeys}
                     labels={labelsFor(it.teamId)}

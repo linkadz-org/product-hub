@@ -58,8 +58,12 @@ const pointsOf = (t: IssueDto) => (t.estimate > 0 ? t.estimate : 0);
  * The column that means "complete". A task board has an explicit `done` column;
  * a bug board doesn't, so its terminal column (last in order, e.g. `closed`)
  * counts as done — otherwise a bug team's progress would be stuck at 0%.
+ *
+ * Exported because "done" must mean one thing across the app: the roadmap's
+ * sprint summary counts finished work with this too, so a board and the sprint
+ * banner above it can't disagree about what shipped.
  */
-function doneKeyOf(columns: TeamStatusConfig[]): string {
+export function doneKeyOf(columns: TeamStatusConfig[]): string {
   if (columns.some((c) => c.key === TaskStatus.DONE)) return TaskStatus.DONE;
   return columns[columns.length - 1]?.key ?? TaskStatus.DONE;
 }

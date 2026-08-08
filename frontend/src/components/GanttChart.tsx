@@ -119,9 +119,37 @@ export interface GanttMarker {
   tooltip?: string;
 }
 
+/**
+ * A named stretch of the axis drawn *behind* every row — a sprint, a quarter, a
+ * release window. Bands turn the free-running date axis into a **ruler you can
+ * name**: instead of reading a bar's dates and working out which sprint they fall
+ * in, the bar's position says it. The label rides in its own strip above the date
+ * ticks; the tint runs the full height of the chart.
+ */
+export interface GanttBand {
+  key: string;
+  start: number;
+  end: number;
+  label: string;
+  /** Hover text — the full "Cycle 12 · Aug 3 – Aug 16 · 6/9 done". */
+  title?: string;
+  /**
+   * `focus` — the band the view is scoped to (brand tint, the strongest);
+   * `active` — the one running today; `default` — everything else, which
+   * alternates a faint tint so consecutive bands stay countable.
+   */
+  tone?: 'default' | 'active' | 'focus';
+}
+
 export interface GanttRow {
   id: string;
   label: string;
+  /**
+   * Turns this row into a **full-width section header** instead of a timeline row
+   * — the label pins to the left edge, there is no bar, and `cols` doesn't apply.
+   * Used to group rows under a sprint; the rest of `GanttRow` is ignored.
+   */
+  group?: ReactNode;
   /** Secondary line under the label (e.g. "60% · 3 tasks"). */
   sublabel?: string;
   /**
@@ -162,6 +190,9 @@ export interface GanttChartProps {
   rows: GanttRow[];
   /** Header for the fixed left label rail (e.g. "Item" / "Issue"). */
   labelHeader: string;
+  /** Named stretches of the axis drawn behind the rows — see {@link GanttBand}.
+   *  Their endpoints widen the window, so a band is always shown whole. */
+  bands?: GanttBand[];
   /** Optional legend row above the chart explaining bars/markers. */
   legend?: ReactNode;
   isLoading?: boolean;
@@ -183,7 +214,7 @@ export interface GanttChartProps {
  * A row that supplies `onBarChange` is also **editable**: its bar drags to a new
  * window and its edges resize, snapped to whole days.
  */
-export function GanttChart({ rows, labelHeader, legend, isLoading, empty }: GanttChartProps) {
+export function GanttChart({ rows, labelHeader, bands = [], legend, isLoading, empty }: GanttChartProps) {
   const [railW, setRailW] = useState(readRail);
   const railDrag = useRef<{ x0: number; w0: number } | null>(null);
   const [resizing, setResizing] = useState(false);
@@ -238,11 +269,16 @@ export function GanttChart({ rows, labelHeader, legend, isLoading, empty }: Gant
     );
   }
 
-  // Padded window covering every endpoint plus today, so the "today" line always lands.
+  // Padded window covering every endpoint plus today, so the "today" line always
+  // lands. Bands count too: a sprint drawn half off the edge would misreport where
+  // it ends, and the caller passes only the bands worth showing.
   const stamps = [Date.now()];
   for (const r of rows) {
     if (r.bar) stamps.push(r.bar.start, r.bar.end);
     if (r.marker && isEpoch(r.marker.at)) stamps.push(r.marker.at);
+  }
+  for (const b of bands) {
+    if (isEpoch(b.start) && isEpoch(b.end)) stamps.push(b.start, b.end);
   }
   let minMs = Math.min(...stamps);
   let maxMs = Math.max(...stamps);
@@ -254,6 +290,17 @@ export function GanttChart({ rows, labelHeader, legend, isLoading, empty }: Gant
   const pct = (v: number) => Math.min(100, Math.max(0, ((v - minMs) / (maxMs - minMs)) * 100));
   const ticks = buildTicks(minMs, maxMs);
   const todayX = pct(Date.now());
+  // Left → right, so the alternating tint of the `default` tone counts bands in
+  // reading order regardless of how the caller sorted them.
+  const lanes = bands
+    .filter((b) => isEpoch(b.start) && isEpoch(b.end) && b.end >= minMs && b.start <= maxMs)
+    .sort((a, b) => a.start - b.start)
+    .map((b, i) => ({
+      band: b,
+      left: pct(b.start),
+      width: Math.max(0, pct(b.end) - pct(b.start)),
+      odd: i % 2 === 1,
+    }));
 
   return (
     <div className="flex flex-col gap-3">
@@ -283,28 +330,74 @@ export function GanttChart({ rows, labelHeader, legend, isLoading, empty }: Gant
                 />
               </div>
             </div>
-            <div className="relative h-8 bg-muted/40">
-              {ticks.map((tk, i) => (
-                <div
-                  key={i}
-                  className="absolute top-0 flex h-full items-center whitespace-nowrap px-1 text-[11px] tabular-nums text-muted-foreground"
-                  style={{ left: `${tk.x}%` }}
-                >
-                  {tk.label}
+            <div className="bg-muted/40">
+              {/* Band names ride above the dates — the axis reads "Cycle 12", then
+                  "Aug 3, Aug 10", so a bar's sprint is legible from its position. */}
+              {lanes.length > 0 && (
+                <div className="relative h-5 border-b border-border/60">
+                  {lanes.map(({ band, left, width }) => (
+                    <div
+                      key={band.key}
+                      className="absolute inset-y-0 flex items-center overflow-hidden border-l border-border/60 px-1.5"
+                      style={{ left: `${left}%`, width: `${width}%` }}
+                      title={band.title ?? band.label}
+                    >
+                      <span
+                        className={cn(
+                          'truncate text-[10px] font-semibold leading-none',
+                          band.tone === 'focus'
+                            ? 'text-primary'
+                            : band.tone === 'active'
+                              ? 'text-foreground'
+                              : 'text-muted-foreground',
+                        )}
+                      >
+                        {band.label}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-              <div
-                className="absolute top-0 -translate-x-1/2 rounded-b bg-foreground/80 px-1 text-[10px] font-medium text-background"
-                style={{ left: `${todayX}%` }}
-              >
-                {t('boards.today')}
+              )}
+              <div className="relative h-8">
+                {ticks.map((tk, i) => (
+                  <div
+                    key={i}
+                    className="absolute top-0 flex h-full items-center whitespace-nowrap px-1 text-[11px] tabular-nums text-muted-foreground"
+                    style={{ left: `${tk.x}%` }}
+                  >
+                    {tk.label}
+                  </div>
+                ))}
+                <div
+                  className="absolute top-0 -translate-x-1/2 rounded-b bg-foreground/80 px-1 text-[10px] font-medium text-background"
+                  style={{ left: `${todayX}%` }}
+                >
+                  {t('boards.today')}
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Body: gridlines + today line sit behind the rows. */}
+          {/* Body: band tints, gridlines and the today line sit behind the rows. */}
           <div className="relative">
             <div className="pointer-events-none absolute inset-y-0 right-0 z-0" style={{ left: railW }}>
+              {/* Painted first so gridlines stay on top of them. `default` bands
+                  alternate a faint tint — enough to count sprints across, not
+                  enough to compete with the bars. */}
+              {lanes.map(({ band, left, width, odd }) => (
+                <div
+                  key={band.key}
+                  className={cn(
+                    'absolute inset-y-0 border-l border-border/60',
+                    band.tone === 'focus'
+                      ? 'bg-primary/[0.07]'
+                      : band.tone === 'active'
+                        ? 'bg-foreground/[0.04]'
+                        : odd && 'bg-muted/30',
+                  )}
+                  style={{ left: `${left}%`, width: `${width}%` }}
+                />
+              ))}
               {ticks.map((tk, i) => (
                 <div key={i} className="absolute inset-y-0 w-px bg-border/70" style={{ left: `${tk.x}%` }} />
               ))}
@@ -335,6 +428,19 @@ function GanttRowView({
   pct: (v: number) => number;
   spanMs: number;
 }) {
+  // A section header spans both columns and carries no timeline of its own.
+  // Pinned left like the rail: a group you can't read after scrolling the axis
+  // sideways would defeat the point of grouping.
+  if (row.group) {
+    return (
+      <div className="border-b bg-muted/60 last:border-0">
+        <div className="sticky left-0 flex w-fit max-w-full items-center gap-2 px-3 py-1.5">
+          {row.group}
+        </div>
+      </div>
+    );
+  }
+
   const child = (row.depth ?? 0) > 0;
   const interactive = !!(row.href || row.onClick);
 

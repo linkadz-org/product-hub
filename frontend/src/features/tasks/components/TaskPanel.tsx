@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { t } from '@/i18n';
 import { TeamIssueType } from '@/types/enums';
 import { useTeams } from '@/features/teams/api';
+import { BACKLOG_UNLINKED } from '@/features/roadmaps/useBacklogLink';
 import { SubtaskSection } from './SubtaskSection';
 import { PickTaskDialog } from './PickTaskDialog';
 
@@ -55,6 +57,11 @@ export function TaskPanel({ roadmapId, projectId, itemId, itemLabel }: TaskPanel
         className="mt-5"
         query={{ roadmapItemId: itemId }}
         createLink={{ roadmapId, roadmapItemId: itemId, roadmapItemLabel: itemLabel, projectId }}
+        // The exact inverse of `createLink` — the very constant the task's own
+        // Properties unlink with, so removing from either end leaves the same
+        // state. The issue stays in its team; it just no longer delivers this item.
+        unlink={BACKLOG_UNLINKED}
+        unlinkLabel={t('subtasks.unlinkBacklog')}
         composerTeams={composerTeams}
         defaultTeamId={defaultTeamId}
         crossTeam

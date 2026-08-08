@@ -15,7 +15,14 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core';
 import { ChevronLeft, ChevronRight, Clock, Pencil, Plus, Trash2 } from 'lucide-react';
-import { ProgressBar, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui';
+import {
+  ContextMenu,
+  ProgressBar,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  type MenuItem,
+} from '@/components/ui';
 import { t } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { daysSince, formatDate } from '@/lib/format';
@@ -47,6 +54,21 @@ export interface KanbanBoardProps<T> {
   onCardClick?: (item: T) => void;
   /** Hover toolbar pinned to a card's top-right (e.g. edit/delete). */
   renderCardToolbar?: (item: T) => ReactNode;
+  /**
+   * Right-click menu for a card. A board supplies only the **rows**; the shell
+   * owns the wiring and the menu chrome, so a card's context menu looks and
+   * behaves the same on every board (contrast `renderCardToolbar`, which hands
+   * back a node — that one predates this and is why boards can style their own
+   * toolbar). Return `[]` for a card with nothing to offer and no menu opens.
+   *
+   * Called on right-click, not during render, so it's free to price its rows
+   * against the item — the board re-renders on every drag-over.
+   *
+   * It's an accelerator, not a home: anything reachable only by right-click is
+   * invisible to someone who never tries it, so mirror these actions somewhere
+   * visible too.
+   */
+  cardMenuItems?: (item: T) => MenuItem[];
   /**
    * When set, each column gets a "+ Add" affordance — a button revealed on
    * column hover in the header, and a full-width button under the list — both
@@ -388,6 +410,7 @@ export function KanbanBoard<T>({
   disabled = false,
   onCardClick,
   renderCardToolbar,
+  cardMenuItems,
   onColumnAdd,
   addLabel,
 }: KanbanBoardProps<T>) {
@@ -555,17 +578,27 @@ export function KanbanBoard<T>({
                 <div className="flex flex-col gap-2 sm:min-h-0 sm:overflow-y-auto">
                   {list.map((item) => {
                     const id = getId(item);
+                    const card = (
+                      <DraggableCard
+                        id={id}
+                        disabled={disabled}
+                        onClick={onCardClick ? () => onCardClick(item) : undefined}
+                        toolbar={renderCardToolbar?.(item)}
+                      >
+                        {renderCard(item)}
+                      </DraggableCard>
+                    );
                     return (
                       <Fragment key={id}>
                         {overId === id && activeItem && getId(activeItem) !== id && placeholder}
-                        <DraggableCard
-                          id={id}
-                          disabled={disabled}
-                          onClick={onCardClick ? () => onCardClick(item) : undefined}
-                          toolbar={renderCardToolbar?.(item)}
-                        >
-                          {renderCard(item)}
-                        </DraggableCard>
+                        {/* `ContextMenu` defaults to `display: contents`, so wrapping
+                            here costs the column layout nothing — and the rows are
+                            built on right-click, not on every drag-over re-render. */}
+                        {cardMenuItems ? (
+                          <ContextMenu items={() => cardMenuItems(item)}>{card}</ContextMenu>
+                        ) : (
+                          card
+                        )}
                       </Fragment>
                     );
                   })}
