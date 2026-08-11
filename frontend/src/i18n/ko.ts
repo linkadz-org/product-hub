@@ -1637,4 +1637,8 @@ export const ko: Record<I18nKey, string> = {
   'code.pullRequests': '풀 리퀘스트',
   'code.commits': '커밋',
   'code.noKindSelected': '표시할 유형을 선택하세요.',
+
+  // ⌘K 커맨드 팔레트 — 새로 만들기 항목.
+  'palette.createTask': '새 태스크',
+  'palette.createBug': '새 버그',
 };

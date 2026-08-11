@@ -1675,6 +1675,10 @@ export const en = {
   'code.pullRequests': 'Pull requests',
   'code.commits': 'Commits',
   'code.noKindSelected': 'Pick pull requests or commits to list.',
+
+  // ⌘K command palette — create-action rows.
+  'palette.createTask': 'New task',
+  'palette.createBug': 'New bug',
 } as const;
 
 export type I18nKey = keyof typeof en;
