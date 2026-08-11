@@ -9,6 +9,9 @@ import {
 } from '@application/reports/repositories/report.repository';
 import { ReportEntity } from '@application/reports/domain/entities/report.entity';
 import { FeatureStatus } from '@application/reports/domain/enums/feature-status.enum';
+import { SectionType } from '@application/reports/domain/enums/section-type.enum';
+import { TestingSection } from '@application/reports/domain/types/section.types';
+import { buildSearchText } from '@module-shared/utils/search-text.util';
 import { ReportDoc } from '../entities/report.schema';
 
 @Injectable()
@@ -65,6 +68,10 @@ export class ReportRepository
       order: report.order,
       createdAt: report.createdAt,
       updatedAt: report.updatedAt,
+      searchText: buildSearchText(report.title, report.subtitle, report.module),
+      casesSearchText: report.sections
+        .filter((s): s is TestingSection => s.type === SectionType.TESTING)
+        .flatMap((s) => s.cases.map((c) => buildSearchText(c.shortId, c.area))),
     };
   }
 

@@ -5,6 +5,7 @@ import { UniqueEntityID } from '@core/domain';
 import { BaseRepository } from '@core/infrastructure/database/mongoose/base';
 import { resolveAssignees } from '@module-shared/utils/query-array.util';
 import { dateRangeFilter } from '@module-shared/utils/date-range.util';
+import { buildSearchText } from '@module-shared/utils/search-text.util';
 import { CycleRollup } from '@application/cycles/domain/enums/cycle.enums';
 import { BurndownIssueRow } from '@application/cycles/domain/cycle-burndown';
 import {
@@ -218,6 +219,7 @@ export class IssueRepository
       createdAt: issue.createdAt,
       updatedAt: issue.updatedAt,
       resolvedAt: issue.resolvedAt,
+      searchText: buildSearchText(issue.title, issue.shortId),
     };
   }
 

@@ -8,6 +8,7 @@ import {
   RoadmapItemLocation,
 } from '@application/roadmaps/repositories/roadmap.repository';
 import { RoadmapEntity } from '@application/roadmaps/domain/entities/roadmap.entity';
+import { buildSearchText } from '@module-shared/utils/search-text.util';
 import { RoadmapDoc } from '../entities/roadmap.schema';
 
 @Injectable()
@@ -52,6 +53,8 @@ export class RoadmapRepository
       publicToken: roadmap.publicToken,
       createdAt: roadmap.createdAt,
       updatedAt: roadmap.updatedAt,
+      searchText: buildSearchText(roadmap.title, roadmap.description),
+      itemsSearchText: roadmap.items.map((i) => buildSearchText(i.title, i.shortId)),
     };
   }
 

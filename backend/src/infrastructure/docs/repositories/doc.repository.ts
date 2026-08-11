@@ -5,6 +5,7 @@ import { UniqueEntityID } from '@core/domain';
 import { BaseRepository } from '@core/infrastructure/database/mongoose/base';
 import { IDocRepository } from '@application/docs/repositories/doc.repository';
 import { DocEntity } from '@application/docs/domain/entities/doc.entity';
+import { buildSearchText } from '@module-shared/utils/search-text.util';
 import { DocDoc } from '../entities/doc.schema';
 
 @Injectable()
@@ -55,6 +56,7 @@ export class DocRepository
       publicToken: doc.publicToken,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
+      searchText: buildSearchText(doc.title, (doc.tags ?? []).join(' ')),
     };
   }
 
