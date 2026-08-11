@@ -147,6 +147,13 @@ export class SavedViewEntity extends AggregateRoot<SavedViewProps> {
     this.touch();
   }
 
+  /** Position within the owner's own saved-view list (see `sortSavedViews`).
+   *  Meaningless across owners — never compare one user's `order` to another's. */
+  setOrder(order: number): void {
+    this.props.order = order;
+    this.touch();
+  }
+
   private touch(): void {
     this.props.updatedAt = new Date();
   }
