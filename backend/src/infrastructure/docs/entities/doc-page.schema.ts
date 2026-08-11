@@ -30,6 +30,12 @@ export interface DocPageDoc {
   updatedByName: string;
   createdAt: Date;
   updatedAt: Date;
+  /** `title`, đã chuẩn hoá. Xem search-text.util.ts. Repository tính field này
+   *  trong `toDocument()`. */
+  searchText: string;
+  /** `content` (đã strip HTML), đã chuẩn hoá, cắt ở `SEARCH_BODY_MAX`. Xem
+   *  search-text.util.ts. Repository tính field này trong `toDocument()`. */
+  searchBody: string;
 }
 
 export const DocPageSchema = new Schema<DocPageDoc>(
@@ -60,6 +66,8 @@ export const DocPageSchema = new Schema<DocPageDoc>(
     createdBy: { type: String, default: '' },
     updatedBy: { type: String, default: '' },
     updatedByName: { type: String, default: '' },
+    searchText: { type: String, default: '' },
+    searchBody: { type: String, default: '' },
   },
   { timestamps: true },
 );
@@ -67,3 +75,5 @@ export const DocPageSchema = new Schema<DocPageDoc>(
 // The "docs attached to this issue / roadmap item" lookup — without it that read
 // is a full scan of every page in the database.
 DocPageSchema.index({ tenantId: 1, 'links.refId': 1 });
+
+DocPageSchema.index({ tenantId: 1, searchText: 1 });

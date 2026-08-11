@@ -56,6 +56,9 @@ export interface IssueDoc {
   updatedAt: Date;
   /** When it entered a done status and stayed there; null while open. */
   resolvedAt: Date | null;
+  /** `title` + `shortId`, đã chuẩn hoá. Xem search-text.util.ts. Repository
+   *  tính field này trong `toDocument()`. */
+  searchText: string;
 }
 
 export const IssueSchema = new Schema<IssueDoc>(
@@ -133,6 +136,7 @@ export const IssueSchema = new Schema<IssueDoc>(
     // "Solved date" filter ranges over. Absent on a pre-`resolvedAt` row reads
     // as null; `backfill:issue-resolved-at` stamps those from their updatedAt.
     resolvedAt: { type: Date, default: null, index: true },
+    searchText: { type: String, default: '' },
   },
   { timestamps: true },
 );
@@ -163,3 +167,5 @@ IssueSchema.index({ tenantId: 1, 'assignees.id': 1 });
 // blocking in-memory SORT. Direction is uniform, so the same index serves both
 // asc and desc (Mongo walks it backwards).
 IssueSchema.index({ tenantId: 1, refPrefix: 1, refSeq: 1, createdAt: 1, _id: 1 });
+
+IssueSchema.index({ tenantId: 1, searchText: 1 });
