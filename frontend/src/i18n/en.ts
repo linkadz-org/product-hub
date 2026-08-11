@@ -743,6 +743,21 @@ export const en = {
   'issues.cappedHint': 'shown — narrow it with search or filters.',
   'issues.kindTasks': 'Tasks',
   'issues.kindBugs': 'Bugs',
+  // Saved views on the issue board — save the current filter/sort/search
+  // combination under a name (`?sv=<id>`), and reapply it later.
+  'savedViews.saveCurrent': 'Save view',
+  'savedViews.save': 'Save',
+  'savedViews.saveAsNew': 'Save as new',
+  'savedViews.modified': 'Modified',
+  'savedViews.name': 'View name',
+  'savedViews.share': 'Share with the workspace',
+  'savedViews.shareHint': 'Anyone in the workspace can open and use this view.',
+  // Shown when `?sv=` names a view that's gone (deleted) or not shared with
+  // this user — the board opens with its default filters instead of blank.
+  'savedViews.cannotOpen': "This view is no longer available — showing the default board.",
+  // Shown when applying a saved view drops a filter pointing at something
+  // deleted since it was saved (a project, a backlog item).
+  'savedViews.someFiltersDropped': 'Some filters in this view point to items that no longer exist and were skipped.',
   // Sort control (list view) — field on top, direction below. `sort.title` also
   // composes into the trigger (`Sort: ID`), so it carries no trailing colon.
   'sort.title': 'Sort',

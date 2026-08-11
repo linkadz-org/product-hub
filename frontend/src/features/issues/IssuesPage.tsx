@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import { CalendarRange, LayoutGrid, List } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { AssigneeBadge } from '@/components/AssigneeBadge';
@@ -38,6 +39,8 @@ import { IssueCycleChip } from '@/features/cycles/CycleControls';
 import { useCycleLookup } from '@/features/cycles/api';
 import { TaskCard } from '@/features/tasks/MyTasksPage';
 import { BugCard } from '@/features/bugs/BugsBoardPage';
+import { pruneFilters, sanitizeSavedViewQuery, useSavedViews } from '@/features/saved-views/api';
+import { SavedViewBar } from '@/features/saved-views/SavedViewBar';
 import { useDeleteIssue, useIssues, useSetIssueStatus } from './api';
 
 /** The two kinds the board can show, in switch order. */
@@ -215,6 +218,54 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
   const { data: projectsData } = useProjects({ limit: 100 });
   const { data: roadmaps } = useRoadmaps();
 
+  // `?sv=<id>` names a saved view to open. `filters`/`search`/`sort` live in
+  // React state (only `kind` and `view` ride in the URL), so applying a saved
+  // view means writing that state back — there is nothing to restore from the
+  // URL alone.
+  const svId = params.get('sv');
+  const { data: views } = useSavedViews();
+  const activeView = views?.find((v) => v.id === svId);
+
+  // Applies once per `sv` change — deliberately *not* keyed on `filters`,
+  // `sort` etc., or every edit the user makes afterwards would immediately be
+  // pulled back to the saved view.
+  useEffect(() => {
+    if (!svId) return;
+    if (!views) return; // still loading — wait for the list rather than 404 early.
+    if (!activeView) {
+      // Deleted, or not shared with this user: open the default board instead
+      // of a blank one, and say why.
+      toast.error(t('savedViews.cannotOpen'));
+      const next = new URLSearchParams(params);
+      next.delete('sv');
+      setParams(next, { replace: true });
+      return;
+    }
+    // The stored query is never trusted as-is — it may predate a filter-shape
+    // change or come from an older client (`CreateSavedViewDto.query` is only
+    // `@IsObject()`-validated server-side). `sanitizeSavedViewQuery` defends
+    // every field independently so a malformed one degrades to the board's
+    // own default rather than crashing or wedging the filter state.
+    const q = sanitizeSavedViewQuery(activeView);
+    // A deleted project or backlog item must not blank the whole board — drop
+    // just that stale id, keep the rest, and say so.
+    const { filters: pruned, dropped } = pruneFilters(q.filters, {
+      ...(projectsData ? { projectId: new Set(projectsData.items.map((p) => p.id)) } : {}),
+      ...(roadmaps
+        ? { roadmapItemId: new Set(roadmaps.flatMap((r) => (r.items ?? []).map((i) => i.id))) }
+        : {}),
+    });
+    // `setKind` clears `filters` as a side effect (see its definition above) —
+    // calling it before `setFilters` means our value is the one that lands.
+    setKind(q.kind);
+    setView(q.view);
+    setFilters(pruned);
+    setSort(q.sort);
+    setSearch(q.search);
+    if (dropped) toast.warning(t('savedViews.someFiltersDropped'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [svId, views]);
+
   const filterCategories: FilterCategory[] = [
     {
       id: 'status',
@@ -299,14 +350,29 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
       }
       sort={isList ? <SortMenu value={sort} onChange={setSort} /> : undefined}
       filtersEnd={
-        capped ? (
-          <p className="text-xs text-muted-foreground">
-            <span className="tabular-nums">
-              {items.length} / {data?.total}
-            </span>{' '}
-            {t('issues.cappedHint')}
-          </p>
-        ) : undefined
+        <div className="flex flex-wrap items-center gap-2">
+          <SavedViewBar
+            kind={kind}
+            view={view}
+            filters={filters}
+            sort={sort}
+            search={search}
+            activeView={activeView}
+            onSaved={(id) => {
+              const next = new URLSearchParams(params);
+              next.set('sv', id);
+              setParams(next, { replace: true });
+            }}
+          />
+          {capped && (
+            <p className="text-xs text-muted-foreground">
+              <span className="tabular-nums">
+                {items.length} / {data?.total}
+              </span>{' '}
+              {t('issues.cappedHint')}
+            </p>
+          )}
+        </div>
       }
       view={{
         value: view,

@@ -713,6 +713,21 @@ export const ko: Record<I18nKey, string> = {
   'issues.cappedHint': '표시됨 — 검색이나 필터로 범위를 좁히세요.',
   'issues.kindTasks': '태스크',
   'issues.kindBugs': '버그',
+  // Saved views on the issue board — save the current filter/sort/search
+  // combination under a name (`?sv=<id>`), and reapply it later.
+  'savedViews.saveCurrent': '뷰 저장',
+  'savedViews.save': '저장',
+  'savedViews.saveAsNew': '새 뷰로 저장',
+  'savedViews.modified': '수정됨',
+  'savedViews.name': '뷰 이름',
+  'savedViews.share': '워크스페이스와 공유',
+  'savedViews.shareHint': '워크스페이스의 누구나 이 뷰를 열고 사용할 수 있습니다.',
+  // Shown when `?sv=` names a view that's gone (deleted) or not shared with
+  // this user — the board opens with its default filters instead of blank.
+  'savedViews.cannotOpen': '이 뷰는 더 이상 사용할 수 없습니다 — 기본 보드를 표시합니다.',
+  // Shown when applying a saved view drops a filter pointing at something
+  // deleted since it was saved (a project, a backlog item).
+  'savedViews.someFiltersDropped': '이 뷰의 일부 필터가 더 이상 존재하지 않는 항목을 가리켜 건너뛰었습니다.',
   // Sort control (list view) — field on top, direction below. `sort.title` also
   // composes into the trigger (`정렬: ID`), so it carries no trailing colon.
   'sort.title': '정렬',

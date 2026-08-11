@@ -1123,3 +1123,27 @@ export interface SearchGroupDto {
   total: number;
   items: SearchHitDto[];
 }
+
+/** A saved issue-board view — a name over a captured filter/sort/search
+ *  combination. Flat per the API-response rule: the board snapshot
+ *  (`kind`/`view`/`filters`/`sort`/`search`) is returned inline rather than
+ *  nested under a `query` object, mirroring `SavedViewMapper.toDto` on the
+ *  backend. `filters`/`sort` are stored as-is from `FilterMenu`/`SortMenu` —
+ *  a date range is one resolved `"<start>..<end>"` entry, never a preset. */
+export interface SavedViewDto {
+  id: string;
+  ownerId: string;
+  name: string;
+  icon: string;
+  color: string | null;
+  scope: string;
+  shared: boolean;
+  kind: 'task' | 'bug';
+  view: 'board' | 'list' | 'timeline';
+  filters: Record<string, string[]>;
+  sort: { field: string; dir: 'asc' | 'desc' } | null;
+  search: string;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+}
