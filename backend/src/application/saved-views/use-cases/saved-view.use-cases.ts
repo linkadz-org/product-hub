@@ -206,7 +206,10 @@ export class ReorderSavedViewsUseCase
     );
 
     let order = 0;
-    for (const id of ids) {
+    // De-duplicate: a repeated id would otherwise consume two `order` slots
+    // and skew the sequence for everything after it. `Set` preserves the
+    // first-occurrence order, so the caller's intended sequence is kept.
+    for (const id of new Set(ids)) {
       const view = mine.get(id);
       if (!view) continue;
       view.setOrder(order);

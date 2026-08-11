@@ -347,4 +347,73 @@ describe('ReorderSavedViewsUseCase', () => {
     expect(othersShared.order).toBe(0);
     expect(result.getValue().map((v) => v.name)).toEqual(['B', 'A', 'Zulu']);
   });
+
+  it("ignores an id for another user's PRIVATE view — untouched, absent from the result", async () => {
+    const repo = new FakeSavedViewRepository();
+    const a = makeView({ ownerId: 'owner', name: 'A', order: 0 });
+    const othersPrivate = makeView({ ownerId: 'other', name: 'Private', shared: false, order: 3 });
+    repo.rows.push(a, othersPrivate);
+
+    const useCase = new ReorderSavedViewsUseCase(repo);
+    const result = await useCase.execute({
+      tenantId: 't1',
+      actor: owner,
+      ids: [othersPrivate.id.toString(), a.id.toString()],
+    });
+
+    expect(result.isSuccess).toBe(true);
+    // Untouched: neither its order nor its ownership changed.
+    expect(othersPrivate.order).toBe(3);
+    expect(othersPrivate.ownerId).toBe('other');
+    // Not even visible to this actor (private, not theirs), so it can't appear
+    // in the returned list at all.
+    expect(result.getValue().map((v) => v.name)).toEqual(['A']);
+  });
+
+  it('ignores an id for a view in a DIFFERENT tenant — untouched, absent from the result', async () => {
+    const repo = new FakeSavedViewRepository();
+    const a = makeView({ ownerId: 'owner', name: 'A', order: 0 });
+    const otherTenant = makeView({
+      tenantId: 't2',
+      ownerId: 'owner',
+      name: 'Other tenant',
+      order: 3,
+    });
+    repo.rows.push(a, otherTenant);
+
+    const useCase = new ReorderSavedViewsUseCase(repo);
+    const result = await useCase.execute({
+      tenantId: 't1',
+      actor: owner,
+      ids: [otherTenant.id.toString(), a.id.toString()],
+    });
+
+    expect(result.isSuccess).toBe(true);
+    // Untouched: `findVisible` never returns a cross-tenant row, so this id
+    // never enters `mine` regardless of ownerId matching.
+    expect(otherTenant.order).toBe(3);
+    expect(otherTenant.tenantId).toBe('t2');
+    expect(result.getValue().map((v) => v.name)).toEqual(['A']);
+  });
+
+  it('de-duplicates a repeated id instead of consuming two order slots', async () => {
+    const repo = new FakeSavedViewRepository();
+    const a = makeView({ ownerId: 'owner', name: 'A', order: 0 });
+    const b = makeView({ ownerId: 'owner', name: 'B', order: 1 });
+    repo.rows.push(a, b);
+
+    const useCase = new ReorderSavedViewsUseCase(repo);
+    // `a` requested twice — without de-duplication this would consume slots 0
+    // and 1, pushing `b` to order 2 instead of 1.
+    const result = await useCase.execute({
+      tenantId: 't1',
+      actor: owner,
+      ids: [a.id.toString(), a.id.toString(), b.id.toString()],
+    });
+
+    expect(result.isSuccess).toBe(true);
+    expect(a.order).toBe(0);
+    expect(b.order).toBe(1);
+    expect(result.getValue().map((v) => v.name)).toEqual(['A', 'B']);
+  });
 });
