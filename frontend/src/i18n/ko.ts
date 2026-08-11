@@ -1641,4 +1641,7 @@ export const ko: Record<I18nKey, string> = {
   // ⌘K 커맨드 팔레트 — 새로 만들기 항목.
   'palette.createTask': '새 태스크',
   'palette.createBug': '새 버그',
+  'palette.placeholder': '검색 또는 이동…',
+  'palette.empty': '결과 없음',
+  'palette.searchUnavailable': '지금은 검색을 사용할 수 없습니다 — 아래 항목으로 이동할 수 있습니다.',
 };

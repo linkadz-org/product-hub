@@ -1679,6 +1679,9 @@ export const en = {
   // ⌘K command palette — create-action rows.
   'palette.createTask': 'New task',
   'palette.createBug': 'New bug',
+  'palette.placeholder': 'Search or jump to…',
+  'palette.empty': 'No results',
+  'palette.searchUnavailable': "Search is unavailable right now — you can still navigate below.",
 } as const;
 
 export type I18nKey = keyof typeof en;
