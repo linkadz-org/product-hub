@@ -24,6 +24,7 @@ import { AppSettingsPresentationModule } from './app-settings/app-settings.modul
 import { StoragePresentationModule } from './storage/storage.module';
 import { PlatformPresentationModule } from './platform/platform.module';
 import { IntegrationsPresentationModule } from './integrations/integrations.module';
+import { SearchPresentationModule } from './search/search.module';
 
 /**
  * Mounts every feature's presentation module at a URL path prefix (routes end up
@@ -67,6 +68,8 @@ import { IntegrationsPresentationModule } from './integrations/integrations.modu
     // so no RouterModule prefix. GitHub is told the first of those verbatim, which
     // is why its path is spelled out rather than assembled from a prefix here.
     IntegrationsPresentationModule,
+    // Controller is @Controller('search') → /v1/search, so no RouterModule prefix.
+    SearchPresentationModule,
     RouterModule.register([
       { path: 'health', module: HealthModule },
       { path: 'auth', module: AuthPresentationModule },
