@@ -25,6 +25,7 @@ import { StoragePresentationModule } from './storage/storage.module';
 import { PlatformPresentationModule } from './platform/platform.module';
 import { IntegrationsPresentationModule } from './integrations/integrations.module';
 import { SearchPresentationModule } from './search/search.module';
+import { SavedViewsPresentationModule } from './saved-views/saved-views.module';
 
 /**
  * Mounts every feature's presentation module at a URL path prefix (routes end up
@@ -70,6 +71,8 @@ import { SearchPresentationModule } from './search/search.module';
     IntegrationsPresentationModule,
     // Controller is @Controller('search') → /v1/search, so no RouterModule prefix.
     SearchPresentationModule,
+    // Controller is @Controller('saved-views') → /v1/saved-views, so no RouterModule prefix.
+    SavedViewsPresentationModule,
     RouterModule.register([
       { path: 'health', module: HealthModule },
       { path: 'auth', module: AuthPresentationModule },
