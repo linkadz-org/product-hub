@@ -2,28 +2,34 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, FilterQuery } from 'mongoose';
 import { ISearchableRepository } from '@application/search/repositories/searchable.repository';
-import { SearchGroup, SearchQuery } from '@application/search/domain/search-result.type';
+import { SearchGroup, SearchHit, SearchQuery } from '@application/search/domain/search-result.type';
 import { SearchType } from '@application/search/domain/enums/search-type.enum';
 import { IssueDoc } from '../../issues/entities/issue.schema';
 import { exactRefSearch } from '../../issues/repositories/issue.repository';
-
-/** Trần cứng cho mỗi nhóm kết quả — không tin `SearchQuery.limit` vì kiểu của
- *  nó không ràng buộc giá trị này (xem Task 7). */
-export const SEARCH_GROUP_LIMIT_MAX = 20;
-
-/** Kẹp `limit` người dùng/caller truyền vào trong khoảng hợp lệ. */
-export function clampSearchLimit(limit: number): number {
-  if (!Number.isFinite(limit) || limit <= 0) return SEARCH_GROUP_LIMIT_MAX;
-  return Math.min(limit, SEARCH_GROUP_LIMIT_MAX);
-}
-
-/** Escape để chuỗi tự do từ ô tìm kiếm không làm vỡ regex (`(`, `[`, `*`…). */
-export function escapeRegex(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
+import { clampSearchLimit, escapeRegex, EXACT_MATCH_SCORE } from '../search-query.util';
 
 export function buildIssueSearchFilter(tenantId: string, q: string): FilterQuery<IssueDoc> {
   return { tenantId, searchText: new RegExp(escapeRegex(q), 'i') };
+}
+
+/**
+ * Chuyển một `IssueDoc` phẳng thành `SearchHit`. Tách riêng khỏi `search()` vì
+ * đây là logic nghiệp vụ duy nhất riêng của loại issue trong file này (mọi
+ * thứ khác đã chuyển sang `search-query.util.ts` dùng chung) — và vì
+ * `exactRef` boost là lý do Gap G1 bắt dùng lại `exactRefSearch`, nó cần được
+ * test độc lập với Mongo.
+ */
+export function mapIssueRowToHit(row: IssueDoc, exactRef: string | null): SearchHit {
+  return {
+    id: row._id,
+    ref: row.shortId ?? '',
+    title: row.title,
+    subtitle: row.status ?? '',
+    url: `/issues/${row.shortId || row._id}`,
+    icon: row.kind === 'bug' ? 'bug' : 'tasks',
+    score: exactRef && row.shortId === exactRef ? EXACT_MATCH_SCORE : 0,
+    updatedAt: row.updatedAt,
+  };
 }
 
 @Injectable()
@@ -47,16 +53,7 @@ export class IssueSearchRepository implements ISearchableRepository {
     return {
       type: this.type,
       total,
-      items: rows.map((r) => ({
-        id: r._id,
-        ref: r.shortId ?? '',
-        title: r.title,
-        subtitle: r.status ?? '',
-        url: `/issues/${r.shortId || r._id}`,
-        icon: r.kind === 'bug' ? 'bug' : 'tasks',
-        score: exactRef && r.shortId === exactRef ? 1000 : 0,
-        updatedAt: r.updatedAt,
-      })),
+      items: rows.map((r) => mapIssueRowToHit(r, exactRef)),
     };
   }
 }

@@ -1,8 +1,6 @@
-import {
-  buildIssueSearchFilter,
-  clampSearchLimit,
-  SEARCH_GROUP_LIMIT_MAX,
-} from './issue-search.repository';
+import { buildIssueSearchFilter, mapIssueRowToHit } from './issue-search.repository';
+import { EXACT_MATCH_SCORE } from '../search-query.util';
+import { IssueDoc } from '../../issues/entities/issue.schema';
 
 describe('buildIssueSearchFilter', () => {
   it('lọc theo tenant và regex trên searchText', () => {
@@ -22,18 +20,59 @@ describe('buildIssueSearchFilter', () => {
   });
 });
 
-describe('clampSearchLimit', () => {
-  it('kẹp giá trị vượt trần về SEARCH_GROUP_LIMIT_MAX', () => {
-    expect(clampSearchLimit(999)).toBe(SEARCH_GROUP_LIMIT_MAX);
+describe('mapIssueRowToHit', () => {
+  const baseRow = (overrides: Partial<IssueDoc> = {}): IssueDoc =>
+    ({
+      _id: 'issue-1',
+      shortId: 'ENG-14',
+      title: 'Fix login bug',
+      status: 'in-progress',
+      kind: 'bug',
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+      ...overrides,
+    }) as IssueDoc;
+
+  it('cho điểm cao (EXACT_MATCH_SCORE) khi shortId khớp chính xác exactRef', () => {
+    const hit = mapIssueRowToHit(baseRow({ shortId: 'ENG-14' }), 'ENG-14');
+    expect(hit.score).toBe(EXACT_MATCH_SCORE);
   });
 
-  it('giữ nguyên giá trị hợp lệ trong khoảng', () => {
-    expect(clampSearchLimit(5)).toBe(5);
+  it('cho điểm 0 khi shortId không khớp exactRef', () => {
+    const hit = mapIssueRowToHit(baseRow({ shortId: 'ENG-99' }), 'ENG-14');
+    expect(hit.score).toBe(0);
   });
 
-  it('mặc định về trần khi limit không hợp lệ (0, âm, NaN)', () => {
-    expect(clampSearchLimit(0)).toBe(SEARCH_GROUP_LIMIT_MAX);
-    expect(clampSearchLimit(-3)).toBe(SEARCH_GROUP_LIMIT_MAX);
-    expect(clampSearchLimit(Number.NaN)).toBe(SEARCH_GROUP_LIMIT_MAX);
+  it('cho điểm 0 khi không có exactRef (tìm kiếm văn bản thường)', () => {
+    const hit = mapIssueRowToHit(baseRow({ shortId: 'ENG-14' }), null);
+    expect(hit.score).toBe(0);
+  });
+
+  it('một hit khớp exactRef có điểm cao hơn hit không khớp', () => {
+    const matching = mapIssueRowToHit(baseRow({ shortId: 'ENG-14' }), 'ENG-14');
+    const nonMatching = mapIssueRowToHit(baseRow({ shortId: 'ENG-99' }), 'ENG-14');
+    expect(matching.score).toBeGreaterThan(nonMatching.score);
+  });
+
+  it('url và icon của bug khác với task', () => {
+    const bugHit = mapIssueRowToHit(baseRow({ kind: 'bug' as IssueDoc['kind'], shortId: 'ENG-1' }), null);
+    const taskHit = mapIssueRowToHit(baseRow({ kind: 'task' as IssueDoc['kind'], shortId: 'ENG-2' }), null);
+    expect(bugHit.icon).toBe('bug');
+    expect(taskHit.icon).toBe('tasks');
+    expect(bugHit.url).toBe('/issues/ENG-1');
+    expect(taskHit.url).toBe('/issues/ENG-2');
+  });
+
+  it('rơi về _id làm url khi thiếu shortId', () => {
+    const hit = mapIssueRowToHit(baseRow({ shortId: '', _id: 'issue-42' }), null);
+    expect(hit.url).toBe('/issues/issue-42');
+    expect(hit.ref).toBe('');
+  });
+
+  it('map title/subtitle/updatedAt trực tiếp từ row', () => {
+    const updatedAt = new Date('2026-03-05T10:00:00.000Z');
+    const hit = mapIssueRowToHit(baseRow({ title: 'Đăng nhập lỗi', status: 'done', updatedAt }), null);
+    expect(hit.title).toBe('Đăng nhập lỗi');
+    expect(hit.subtitle).toBe('done');
+    expect(hit.updatedAt).toBe(updatedAt);
   });
 });
