@@ -1,6 +1,6 @@
 import { useEffect, useState, type KeyboardEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Dialog, Input } from '@/components/ui';
+import { Dialog, Input, Spinner } from '@/components/ui';
 import { Icon } from '@/components/Icon';
 import { t } from '@/i18n';
 import { cn } from '@/lib/utils';
@@ -15,9 +15,21 @@ const DEBOUNCE_MS = 200;
  * immediately, and folds in remote search results once the query is 2+ chars.
  *
  * The open/close shortcut requires a modifier key (`metaKey`/`ctrlKey`), so a
- * bare `k` typed into any other field — a title input, a rich-text body — never
- * triggers it. No other control in this codebase binds Cmd/Ctrl+K, so there is
- * nothing here to fight for the combo.
+ * bare `k` typed into any other field never triggers it — but the shortcut
+ * itself fires from *anywhere*, including while focus sits inside another
+ * input, textarea, or the rich-text editor's contenteditable. That's
+ * deliberate, not an oversight: the moment someone reaches for ⌘K is usually
+ * while their cursor is already parked in some other field, and a palette
+ * that won't open from there is one people stop reaching for. There is no
+ * editable-context guard here on purpose.
+ *
+ * Today nothing else in this codebase claims Cmd/Ctrl+K (checked the rich-text
+ * editor's `inputRules`, `SlashMenu`, `inlineShortcuts`, and `MentionMenu`),
+ * so there's nothing to conflict with yet. That's a fact about the present
+ * codebase, not a guarantee — if the editor ever binds ⌘K itself (link
+ * insertion is the usual reason a rich-text editor wants that combo), the two
+ * handlers will fight over the same keystroke, and the editor's binding
+ * should win while focus is inside it.
  */
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
@@ -25,7 +37,7 @@ export function CommandPalette() {
   const [q, setQ] = useState('');
   const [active, setActive] = useState(0);
   const navigate = useNavigate();
-  const { items, searchFailed } = useCommandItems(q);
+  const { items, loading, searchFailed } = useCommandItems(q);
 
   // Debounce: fast typing shouldn't fire a request per keystroke.
   useEffect(() => {
@@ -86,15 +98,22 @@ export function CommandPalette() {
       // Below sm it becomes a fullscreen sheet — CLAUDE.md's responsiveness rule.
       className="max-w-xl max-sm:h-[calc(100dvh-1rem)] max-sm:max-w-none"
     >
-      <Input
-        autoFocus
-        value={raw}
-        onChange={(e) => setRaw(e.target.value)}
-        onKeyDown={onKeyDown}
-        placeholder={t('palette.placeholder')}
-        className="rounded-none border-0 border-b focus-visible:ring-0"
-        aria-label={t('palette.placeholder')}
-      />
+      <div className="relative">
+        <Input
+          autoFocus
+          value={raw}
+          onChange={(e) => setRaw(e.target.value)}
+          onKeyDown={onKeyDown}
+          placeholder={t('palette.placeholder')}
+          className={cn('rounded-none border-0 border-b focus-visible:ring-0', loading && 'pr-9')}
+          aria-label={t('palette.placeholder')}
+        />
+        {/* In-flight search only — never blocks the list or input, just says
+            "a result group may still be catching up". */}
+        {loading && (
+          <Spinner className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2" />
+        )}
+      </div>
       {/* Search dying must NOT break the palette: the local sources (go-to,
           create, recents) still render below, only the results group is lost. */}
       {searchFailed && (
