@@ -43,6 +43,38 @@ import { pruneFilters, sanitizeSavedViewQuery, useSavedViews } from '@/features/
 import { SavedViewBar } from '@/features/saved-views/SavedViewBar';
 import { useDeleteIssue, useIssues, useSetIssueStatus } from './api';
 
+/**
+ * Builds the URL params for setting `kind` and `view` together in one
+ * `setSearchParams` call.
+ *
+ * `setKind`/`setView` (below) each wrap `setSearchParams` by building a fresh
+ * `URLSearchParams` from whatever `params` snapshot is in their closure, then
+ * calling `setParams`. React-router's `setSearchParams` builds its next
+ * params purely from that argument — it does not merge with any other call
+ * made in the same tick. So calling `setKind(...)` then `setView(...)`
+ * back-to-back (as the saved-view apply effect used to) races: both read the
+ * *same* stale `params` snapshot, and the second call's `replace()` silently
+ * discards whatever the first one just wrote — the URL ends up reflecting
+ * only the second call. Concretely, applying a saved Bug-board view opened
+ * from the Task board would revert to `kind=task` because `setView` ran last
+ * and rebuilt the URL without the `kind` change `setKind` had just made.
+ *
+ * Exported and pure (no state, no `setParams` call) so this can be unit
+ * tested without mounting the page.
+ */
+export function buildKindViewParams(
+  current: URLSearchParams,
+  kind: IssueKind,
+  view: 'board' | 'list' | 'timeline',
+): URLSearchParams {
+  const next = new URLSearchParams(current);
+  if (kind === IssueKind.BUG) next.set('kind', 'bug');
+  else next.delete('kind');
+  if (view === 'board') next.delete('view');
+  else next.set('view', view);
+  return next;
+}
+
 /** The two kinds the board can show, in switch order. */
 const KIND_TABS = [
   { kind: IssueKind.TASK, icon: 'tasks', labelKey: 'issues.kindTasks' },
@@ -248,17 +280,35 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
     // own default rather than crashing or wedging the filter state.
     const q = sanitizeSavedViewQuery(activeView);
     // A deleted project or backlog item must not blank the whole board — drop
-    // just that stale id, keep the rest, and say so.
+    // just that stale id, keep the rest, and say so. Only these two
+    // categories are checked: `severity` is a closed enum that can't go
+    // stale, and a trustworthy valid set for `status` (team-specific,
+    // depends on the *target* kind we're about to switch to) or `assigneeId`
+    // (only loaded when `isAll && canManageDelivery`, and capped at 100)
+    // isn't cheaply available here. Known gap: a stale `status`/`assigneeId`
+    // filter is left in place — the board just shows no matches for it,
+    // and per `FilterMenu.tsx`, the user's only way to remove a single stale
+    // chip today is "Clear all" (no per-chip remove). `projectsData`/
+    // `roadmaps` are also not yet guaranteed loaded the first time this runs
+    // (they're independent queries fired alongside `views`) — when either is
+    // still `undefined`, that category is simply skipped this pass rather
+    // than treated as "nothing is valid", so a stale id can survive one
+    // apply if its data hasn't arrived yet. This is a real, not hypothetical,
+    // race window; deliberately not covered by `useEffect`'s deps below,
+    // since re-running on every load of `projectsData`/`roadmaps` would risk
+    // the same "pulled back after editing" loop `filters` is kept out for.
     const { filters: pruned, dropped } = pruneFilters(q.filters, {
       ...(projectsData ? { projectId: new Set(projectsData.items.map((p) => p.id)) } : {}),
       ...(roadmaps
         ? { roadmapItemId: new Set(roadmaps.flatMap((r) => (r.items ?? []).map((i) => i.id))) }
         : {}),
     });
-    // `setKind` clears `filters` as a side effect (see its definition above) —
-    // calling it before `setFilters` means our value is the one that lands.
-    setKind(q.kind);
-    setView(q.view);
+    // `kind` and `view` are set together in one `setParams` call — see
+    // `buildKindViewParams` above for why two separate calls (`setKind` then
+    // `setView`) race and silently drop the kind change.
+    if (q.kind !== kind || q.view !== view) {
+      setParams(buildKindViewParams(params, q.kind, q.view), { replace: true });
+    }
     setFilters(pruned);
     setSort(q.sort);
     setSearch(q.search);
