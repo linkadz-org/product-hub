@@ -31,7 +31,10 @@ export function shouldSearch(q: string): boolean {
 export function useGlobalSearch(q: string) {
   return useQuery({
     queryKey: searchKeys.query(q),
-    queryFn: () => apiGet<{ groups: SearchGroupDto[] }>('/search', { q }),
+    // Unwrap to the groups array itself, not the `{ groups }` envelope — `data`
+    // is `SearchGroupDto[] | undefined`, so it feeds straight into
+    // `searchSource(groups)` with no reshaping at the call site.
+    queryFn: async () => (await apiGet<{ groups: SearchGroupDto[] }>('/search', { q })).groups,
     enabled: shouldSearch(q),
     placeholderData: (prev) => prev,
     staleTime: 30_000,
