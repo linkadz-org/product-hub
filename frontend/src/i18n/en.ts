@@ -1682,6 +1682,12 @@ export const en = {
   'palette.placeholder': 'Search or jump to…',
   'palette.empty': 'No results',
   'palette.searchUnavailable': "Search is unavailable right now — you can still navigate below.",
+  'palette.groupIssues': 'Issues',
+  'palette.groupDocs': 'Docs',
+  'palette.groupRoadmap': 'Roadmap',
+  'palette.groupProjects': 'Projects',
+  'palette.groupReports': 'Reports',
+  'palette.groupTestCases': 'Test cases',
 } as const;
 
 export type I18nKey = keyof typeof en;

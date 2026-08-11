@@ -33,7 +33,7 @@ describe('searchSource', () => {
         id: 'issue:h1',
         group: 'result',
         title: 'Sửa lỗi đăng nhập',
-        subtitle: 'ENG-12 · Team Engineering · palette.groupIssues',
+        subtitle: 'ENG-12 · Team Engineering · Issues',
         icon: 'bug',
         run: { to: '/issues/h1' },
       },
@@ -50,12 +50,12 @@ describe('searchSource', () => {
       'testcase',
     ];
     const expectedLabel: Record<SearchGroupDto['type'], string> = {
-      issue: 'palette.groupIssues',
-      doc: 'palette.groupDocs',
-      'roadmap-item': 'palette.groupRoadmap',
-      project: 'palette.groupProjects',
-      report: 'palette.groupReports',
-      testcase: 'palette.groupTestCases',
+      issue: 'Issues',
+      doc: 'Docs',
+      'roadmap-item': 'Roadmap',
+      project: 'Projects',
+      report: 'Reports',
+      testcase: 'Test cases',
     };
     for (const type of types) {
       const groups: SearchGroupDto[] = [
@@ -70,7 +70,7 @@ describe('searchSource', () => {
     const groups: SearchGroupDto[] = [
       { type: 'doc', total: 1, items: [hit({ ref: '', subtitle: '' })] },
     ];
-    expect(searchSource(groups)[0].subtitle).toBe('palette.groupDocs');
+    expect(searchSource(groups)[0].subtitle).toBe('Docs');
   });
 
   it('gộp nhiều nhóm thành một mảng phẳng, giữ thứ tự nhóm rồi tới thứ tự item', () => {

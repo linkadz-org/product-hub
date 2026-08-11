@@ -1,9 +1,9 @@
 import type { IconName } from '@/components/Icon';
 import type { SearchGroupDto } from '@/types/dto';
-import { t } from '@/i18n';
+import { t, type I18nKey } from '@/i18n';
 import type { CommandItem } from '../types';
 
-const GROUP_LABEL: Record<SearchGroupDto['type'], string> = {
+const GROUP_LABEL: Record<SearchGroupDto['type'], I18nKey> = {
   issue: 'palette.groupIssues',
   doc: 'palette.groupDocs',
   'roadmap-item': 'palette.groupRoadmap',
@@ -36,11 +36,5 @@ export function searchSource(groups: SearchGroupDto[]): CommandItem[] {
 
 function groupLabel(type: SearchGroupDto['type']): string {
   const key = GROUP_LABEL[type];
-  // `as never` here silences the exact guarantee CLAUDE.md relies on — that a
-  // key missing from en.ts/ko.ts is a compile error. It's load-bearing only
-  // because the six `palette.group*` keys don't exist yet: Task 18 adds them.
-  // Until then `t()` falls back to rendering the literal key string (see
-  // `frontend/src/i18n/index.ts`) rather than failing typecheck. Delete this
-  // cast — and pass `key` straight to `t()` — once Task 18 lands those keys.
-  return key ? t(key as never) : '';
+  return key ? t(key) : '';
 }

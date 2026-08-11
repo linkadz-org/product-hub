@@ -1644,4 +1644,10 @@ export const ko: Record<I18nKey, string> = {
   'palette.placeholder': '검색 또는 이동…',
   'palette.empty': '결과 없음',
   'palette.searchUnavailable': '지금은 검색을 사용할 수 없습니다 — 아래 항목으로 이동할 수 있습니다.',
+  'palette.groupIssues': '이슈',
+  'palette.groupDocs': '문서',
+  'palette.groupRoadmap': '로드맵',
+  'palette.groupProjects': '프로젝트',
+  'palette.groupReports': '리포트',
+  'palette.groupTestCases': '테스트 케이스',
 };
