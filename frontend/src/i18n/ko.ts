@@ -23,6 +23,7 @@ export const ko: Record<I18nKey, string> = {
   'nav.tasks': '내 태스크',
   'nav.myTeam': '내 팀',
   'nav.favourites': '즐겨찾기',
+  'nav.savedViews': '뷰',
   'nav.assignedToMe': '나에게 배정됨',
   'nav.allIssues': '모든 이슈',
   'nav.today': '오늘 및 기한 초과',

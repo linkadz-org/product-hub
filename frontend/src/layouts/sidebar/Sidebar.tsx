@@ -7,6 +7,7 @@ import { findAreaId, NAV_AREAS } from '@/layouts/sidebar/menuConfig';
 import { t } from '@/i18n';
 import { useInbox } from '@/features/inbox/api';
 import { useFavourites } from '@/features/favourites/api';
+import { useSavedViews } from '@/features/saved-views/api';
 import { useTeams } from '@/features/teams/api';
 import { CreateTeamDialog } from '@/features/teams/CreateTeamDialog';
 import { ProfileMenu } from '@/layouts/sidebar/ProfileMenu';
@@ -20,6 +21,7 @@ import {
   NavParentItem,
   RailButton,
   ROW,
+  SavedViewNavItem,
   SidebarCreateMenu,
   TeamNavList,
   useNavGroups,
@@ -88,6 +90,7 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
   const { data: inbox } = useInbox();
   const unseen = inbox?.unseenCount ?? 0;
   const { data: favourites } = useFavourites();
+  const { data: savedViews } = useSavedViews();
   // Teams are dynamic (QC/Engineering are seeded); archived ones drop out.
   const { data: teams } = useTeams();
   const activeTeams = (teams ?? []).filter((x) => !x.archived);
@@ -288,6 +291,26 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
                     )}
                   </>
                 )}
+              </div>
+            );
+          }
+
+          // Saved views — a user's own and any shared with the workspace, in
+          // the order the API returns them. Hidden when there are none, same
+          // as Favourites: an empty block is worse than no block.
+          if (section.dynamic === 'savedViews') {
+            if (!savedViews || savedViews.length === 0) return null;
+            return (
+              <div key={section.key} className="flex flex-col gap-0.5">
+                <NavHeading
+                  label={t(section.headingKey!)}
+                  open={sectionOpen(section.key)}
+                  onToggle={() => toggleSection(section.key)}
+                />
+                {sectionOpen(section.key) &&
+                  savedViews.map((view) => (
+                    <SavedViewNavItem key={view.id} view={view} onNavigate={goFromPanel} />
+                  ))}
               </div>
             );
           }

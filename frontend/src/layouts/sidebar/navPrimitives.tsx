@@ -16,7 +16,7 @@ import { t } from '@/i18n';
 import { FAVOURITE_KIND_LABEL, FavouriteKind } from '@/types/enums';
 import { useRemoveFavourite } from '@/features/favourites/api';
 import { TeamIconPicker } from '@/features/teams/TeamIconPicker';
-import type { FavouriteDto, TeamDto } from '@/types/dto';
+import type { FavouriteDto, SavedViewDto, TeamDto } from '@/types/dto';
 
 /**
  * Every row the sidebar can render, and the state that remembers what's open.
@@ -981,5 +981,81 @@ export function FavouriteNavItem({
         <X className="size-3.5" aria-hidden />
       </button>
     </div>
+  );
+}
+
+/** A saved view's icon — its own, falling back to the board's double-tick glyph.
+ *  `SavedViewDto.icon` has no picker in the save dialog yet, so it's almost
+ *  always `''`; an unrecognised name is harmless (the glyph just renders
+ *  empty), so this doesn't validate against `IconName`. Exported (and kept
+ *  pure) so it's unit-testable without a render harness. */
+export function savedViewIcon(view: SavedViewDto): IconName {
+  return (view.icon || 'checks') as IconName;
+}
+
+/**
+ * Whether the live URL is standing on this exact saved view. Every view's row
+ * points at the same pathname (`/issues`), so — unlike a plain nav link — the
+ * `sv` query param is the only thing that tells two rows apart; a `NavLink`'s
+ * default pathname-only match would light every row at once. Pure and
+ * exported for the same reason as `savedViewIcon`.
+ */
+export function isSavedViewActive(pathname: string, search: string, viewId: string): boolean {
+  return pathname === '/issues' && new URLSearchParams(search).get('sv') === viewId;
+}
+
+/**
+ * One saved view in the sidebar — a shortcut to the Issues board pre-filtered
+ * by it (`/issues?sv=<id>`, applied by `IssuesPage`). Saved views are per-user
+ * but can be shared, and the list the API returns already reflects that (own +
+ * shared) — this row never filters by ownership, it only marks a shared one
+ * with a small people glyph so it reads as "not just mine".
+ *
+ * Active state is worked out by hand rather than left to `NavLink`: every row
+ * shares the same pathname (`/issues`), so only the `sv` query param tells two
+ * views apart — the same reasoning as `useRowActive` for a `search` row.
+ */
+export function SavedViewNavItem({
+  view,
+  collapsed,
+  onNavigate,
+}: {
+  view: SavedViewDto;
+  /** Classic menu's icon rail. */
+  collapsed?: boolean;
+  onNavigate: () => void;
+}) {
+  const { pathname, search } = useLocation();
+  const active = isSavedViewActive(pathname, search, view.id);
+
+  return (
+    <Link
+      to={{ pathname: '/issues', search: `?sv=${view.id}` }}
+      onClick={onNavigate}
+      title={collapsed ? view.name : undefined}
+      aria-current={active ? 'page' : undefined}
+      className={cn(
+        ROW,
+        active && 'bg-sidebar-accent text-sidebar-accent-foreground',
+        collapsed && 'md:justify-center md:gap-0',
+      )}
+    >
+      <span
+        className={cn(
+          'grid size-5 shrink-0 place-items-center transition-colors',
+          active
+            ? 'text-sidebar-accent-foreground'
+            : 'text-muted-foreground group-hover:text-sidebar-accent-foreground',
+        )}
+      >
+        <Icon name={savedViewIcon(view)} size={18} />
+      </span>
+      <span className={cn('flex min-w-0 flex-1 items-center gap-1', collapsed && 'md:hidden')}>
+        <span className="min-w-0 flex-1 truncate">{view.name}</span>
+        {view.shared && (
+          <Icon name="people" className="size-3 shrink-0 text-muted-foreground" />
+        )}
+      </span>
+    </Link>
   );
 }

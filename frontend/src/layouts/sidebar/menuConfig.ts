@@ -63,11 +63,11 @@ export interface NavSection {
   items: NavItem[];
   /**
    * A block the sidebar fills from the API rather than from this file.
-   * `favourites` *is* the whole block (its `items` are empty); `teams` is
-   * **appended after** `items`, so Delivery can lead with All issues and follow
-   * with the team spaces as one list.
+   * `favourites` and `savedViews` *are* the whole block (their `items` are
+   * empty); `teams` is **appended after** `items`, so Delivery can lead with
+   * All issues and follow with the team spaces as one list.
    */
-  dynamic?: 'favourites' | 'teams';
+  dynamic?: 'favourites' | 'teams' | 'savedViews';
   /**
    * Close this block off with a hairline. Reserved for the two blocks that are
    * *yours* rather than the app's structure — your pins, and your own work —
@@ -182,6 +182,16 @@ export const NAV_AREAS: NavArea[] = [
         headingKey: 'navgroup.teams',
         items: [{ path: '/issues', labelKey: 'nav.allIssues', icon: 'checks', end: true }],
         dynamic: 'teams',
+      },
+      {
+        // Saved views — a user's (or the workspace's, if shared) named board
+        // filters, each a shortcut to `/issues?sv=<id>` (see Task 22's apply
+        // path). Filled from the API and hidden when there are none, same as
+        // Favourites above.
+        key: 'workspace.views',
+        headingKey: 'nav.savedViews',
+        items: [],
+        dynamic: 'savedViews',
       },
       {
         // Quality — verify it. Test projects and their reports, plus the

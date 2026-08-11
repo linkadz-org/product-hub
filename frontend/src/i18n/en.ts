@@ -15,6 +15,7 @@ export const en = {
   'nav.tasks': 'My Tasks',
   'nav.myTeam': 'My Team',
   'nav.favourites': 'Favourites',
+  'nav.savedViews': 'Views',
   'nav.assignedToMe': 'Assigned to me',
   'nav.allIssues': 'All issues',
   'nav.today': 'Today & Overdue',
