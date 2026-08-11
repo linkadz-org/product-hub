@@ -1,11 +1,13 @@
 import { useMemo } from 'react';
 import { useAuth } from '@/lib/auth';
 import { useGlobalSearch } from '@/features/search/api';
+import { useSavedViews } from '@/features/saved-views/api';
 import type { SearchGroupDto } from '@/types/dto';
 import { navSource } from './sources/navSource';
 import { actionSource } from './sources/actionSource';
 import { recentSource } from './sources/recentSource';
 import { searchSource } from './sources/searchSource';
+import { savedViewSource } from './sources/savedViewSource';
 import type { CommandItem } from './types';
 
 /**
@@ -51,10 +53,14 @@ export function useCommandItems(q: string): {
 } {
   const { isAdmin, canEditDelivery } = useAuth();
   const { data: groups, isFetching, isError } = useGlobalSearch(q);
+  // Own + shared views, already scoped server-side. `data` is `undefined`
+  // while pending or on error — `?? []` degrades to "no views" instead of
+  // taking the palette down with it (Task 17's rule, applied to a fifth source).
+  const { data: views } = useSavedViews();
 
   const local = useMemo(
-    () => [...navSource(isAdmin), ...actionSource(!!canEditDelivery)],
-    [isAdmin, canEditDelivery],
+    () => [...savedViewSource(views ?? []), ...navSource(isAdmin), ...actionSource(!!canEditDelivery)],
+    [views, isAdmin, canEditDelivery],
   );
 
   const items = useMemo(
