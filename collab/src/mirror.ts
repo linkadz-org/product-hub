@@ -7,6 +7,8 @@ import { pages } from './mongo.js';
 import { logHookFailure } from './persistence.js';
 import { getRoom } from './rooms.js';
 import { log } from './log.js';
+import { normalizeSearchText, SEARCH_BODY_MAX } from './searchText.js';
+import { plainText } from './plainText.js';
 
 /**
  * Keeps `docpages.content` in step with the CRDT.
@@ -56,6 +58,10 @@ export function mirror(db: Db): Extension {
           {
             $set: {
               content: html,
+              // Giữ khớp với DocPageRepository.toDocument(). Đây là đường ghi
+              // duy nhất không đi qua Mongoose, nên nếu quên thì mọi nội dung gõ
+              // trong editor realtime sẽ không tìm kiếm được.
+              searchBody: normalizeSearchText(plainText(html).slice(0, SEARCH_BODY_MAX)),
               updatedAt: new Date(),
               // Whoever's edit triggered this store gets the byline, matching
               // what the REST PATCH would have recorded.
