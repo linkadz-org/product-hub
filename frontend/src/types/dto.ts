@@ -1101,3 +1101,25 @@ export interface GitHubConnectionDto {
 export interface ConnectedGitHubDto extends GitHubConnectionDto {
   secret: string;
 }
+
+/** One row of a `GET /v1/search` group. Flat per the API-response rule — the
+ *  backend already resolves `url`/`icon` per hit, so the palette never has to
+ *  know how to route a `SearchType` itself. */
+export interface SearchHitDto {
+  id: string;
+  ref: string;
+  title: string;
+  subtitle: string;
+  url: string;
+  icon: string;
+  score: number;
+  updatedAt: string;
+}
+
+/** One `GET /v1/search` result group — every hit of one `SearchType`, plus
+ *  `total` (which can exceed `items.length` once the server caps a group). */
+export interface SearchGroupDto {
+  type: 'issue' | 'doc' | 'roadmap-item' | 'project' | 'report' | 'testcase';
+  total: number;
+  items: SearchHitDto[];
+}
