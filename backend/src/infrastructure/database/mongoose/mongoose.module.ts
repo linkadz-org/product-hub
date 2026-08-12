@@ -73,3 +73,38 @@ export async function reportIndexBuildFailures(connection: Connection): Promise<
   }
   indexLogger.error(`${failures.length} of ${names.length} model(s) failed to build their indexes`);
 }
+
+const searchLogger = new Logger('SearchBackfill');
+
+/**
+ * Deploy-order hazard, made loud instead of just commented: the issue board's
+ * search and MCP's `search_issues` both read `searchText`, which only exists
+ * on an issue once `backend/scripts/backfill-search-text.ts` has run against
+ * it (every *new* issue gets it for free from `IssueRepository.toDocument()`,
+ * but nothing backfills old rows automatically). Deploy this feature before
+ * running that script and every pre-existing issue silently loses
+ * title/shortId matching — the `description`/`_id` fallback branches still
+ * match *something*, so it reads as flaky search rather than the systematic
+ * regression it actually is.
+ *
+ * One indexed `countDocuments` (`{tenantId:1, searchText:1}` on `issues`, see
+ * below) at boot, next to `reportIndexBuildFailures` — the app's other
+ * "boot, then verify before opening traffic" check, same non-fatal shape: a
+ * missing backfill degrades search, not the whole API, so this reports loudly
+ * rather than refusing to start.
+ */
+export async function reportSearchTextBackfillHazard(connection: Connection): Promise<void> {
+  const Issue = connection.models['Issue'];
+  if (!Issue) return; // Not every process registers the Issue model (e.g. collab).
+
+  const missing = await Issue.countDocuments({ searchText: '', title: { $ne: '' } }).exec();
+  if (missing === 0) {
+    searchLogger.log('searchText backfill: no gap found on issues');
+    return;
+  }
+  searchLogger.error(
+    `${missing} issue(s) have a title but no searchText — they will not match by ` +
+      'title/shortId in ⌘K or MCP search_issues until ' +
+      '`npm run backfill:search-text -- --apply` (backend/scripts/backfill-search-text.ts) is run.',
+  );
+}
