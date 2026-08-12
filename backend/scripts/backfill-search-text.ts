@@ -26,12 +26,8 @@
  * silently hit localhost).
  */
 import { MongoClient, type Document as MongoDocument } from 'mongodb';
-import {
-  buildSearchText,
-  normalizeSearchText,
-  SEARCH_BODY_MAX,
-} from '../src/shared/utils/search-text.util';
-import { plainText } from '../src/shared/utils/plain-text.util';
+import { buildSearchText } from '../src/shared/utils/search-text.util';
+import { computeSearchBody } from '../src/shared/utils/search-body.util';
 
 const APPLY = process.argv.includes('--apply');
 const ONLY = process.argv.find((a) => a.startsWith('--only='))?.split('=')[1];
@@ -90,7 +86,7 @@ export const TARGETS: Target[] = [
       // The collab server also writes `searchBody` directly via the raw Mongo
       // driver (see doc-page.repository.ts) — this must stay identical to that
       // formula or a duplicated/legacy tree's pages silently fall out of search.
-      searchBody: normalizeSearchText(plainText((d.content as string) ?? '').slice(0, SEARCH_BODY_MAX)),
+      searchBody: computeSearchBody((d.content as string) ?? ''),
     }),
   },
   {

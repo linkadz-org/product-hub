@@ -5,12 +5,8 @@ import { UniqueEntityID } from '@core/domain';
 import { BaseRepository } from '@core/infrastructure/database/mongoose/base';
 import { IDocPageRepository } from '@application/docs/repositories/doc-page.repository';
 import { DocPageEntity } from '@application/docs/domain/entities/doc-page.entity';
-import {
-  buildSearchText,
-  normalizeSearchText,
-  SEARCH_BODY_MAX,
-} from '@module-shared/utils/search-text.util';
-import { plainText } from '@module-shared/utils/plain-text.util';
+import { buildSearchText } from '@module-shared/utils/search-text.util';
+import { computeSearchBody } from '@module-shared/utils/search-body.util';
 import { DocPageDoc } from '../entities/doc-page.schema';
 
 @Injectable()
@@ -93,7 +89,7 @@ export class DocPageRepository
       // only fires on live co-editing. `saveMany`/`updateMany` here duplicate or
       // reorder pages without ever touching collab, so this write path must
       // compute `searchBody` too or a duplicated tree's pages go unsearchable.
-      searchBody: normalizeSearchText(plainText(page.content ?? '').slice(0, SEARCH_BODY_MAX)),
+      searchBody: computeSearchBody(page.content ?? ''),
     };
   }
 
