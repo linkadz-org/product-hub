@@ -1,3 +1,4 @@
+import { normalizeSearchText } from '@module-shared/utils/search-text.util';
 import { activeProjectFilter, mapProjectRowToHit } from './project-search.repository';
 import { ProjectDoc } from '../../projects/entities/project.schema';
 
@@ -8,8 +9,13 @@ describe('activeProjectFilter', () => {
     expect((f.searchText as RegExp).source).toContain('\\(');
   });
 
-  it('không phân biệt hoa thường', () => {
-    expect((activeProjectFilter('t1', 'abc').searchText as RegExp).flags).toContain('i');
+  it('KHÔNG có flag "i" — case-insensitivity đến từ normalizeSearchText ở cả hai đầu', () => {
+    expect((activeProjectFilter('t1', 'abc').searchText as RegExp).flags).not.toContain('i');
+  });
+
+  it('vẫn khớp không phân biệt hoa thường khi cả field lưu trữ lẫn q đều đi qua normalizeSearchText', () => {
+    const f = activeProjectFilter('t1', normalizeSearchText('AbC'));
+    expect((f.searchText as RegExp).test(normalizeSearchText('Xyz AbC Def'))).toBe(true);
   });
 
   it('deletedAt luôn null bất kể q là gì — không phải tham số người dùng đổi được', () => {

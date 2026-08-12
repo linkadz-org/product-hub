@@ -1,3 +1,4 @@
+import { normalizeSearchText } from '@module-shared/utils/search-text.util';
 import { buildIssueSearchFilter, mapIssueRowToHit } from './issue-search.repository';
 import { EXACT_MATCH_SCORE } from '../search-query.util';
 import { IssueDoc } from '../../issues/entities/issue.schema';
@@ -15,8 +16,13 @@ describe('buildIssueSearchFilter', () => {
     expect((f.searchText as RegExp).source).toContain('\\(');
   });
 
-  it('không phân biệt hoa thường', () => {
-    expect((buildIssueSearchFilter('t1', 'abc').searchText as RegExp).flags).toContain('i');
+  it('KHÔNG có flag "i" — case-insensitivity đến từ normalizeSearchText ở cả hai đầu', () => {
+    expect((buildIssueSearchFilter('t1', 'abc').searchText as RegExp).flags).not.toContain('i');
+  });
+
+  it('vẫn khớp không phân biệt hoa thường khi cả field lưu trữ lẫn q đều đi qua normalizeSearchText', () => {
+    const f = buildIssueSearchFilter('t1', normalizeSearchText('AbC'));
+    expect((f.searchText as RegExp).test(normalizeSearchText('Xyz AbC Def'))).toBe(true);
   });
 });
 

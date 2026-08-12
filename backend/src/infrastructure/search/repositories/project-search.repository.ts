@@ -18,7 +18,8 @@ export function activeProjectFilter(tenantId: string, q: string): FilterQuery<Pr
     tenantId,
     // Xoá mềm: không bao giờ trả về.
     deletedAt: null,
-    searchText: new RegExp(escapeRegex(q), 'i'),
+    // No `i` flag: `normalizeSearchText` already lowercases both sides.
+    searchText: new RegExp(escapeRegex(q)),
   };
 }
 

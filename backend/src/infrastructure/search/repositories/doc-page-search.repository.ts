@@ -10,7 +10,10 @@ import { clampSearchLimit, escapeRegex } from '../search-query.util';
 /** Một trang khớp nếu tiêu đề (`searchText`) HOẶC nội dung (`searchBody`) chứa
  *  chuỗi tìm — người dùng thường nhớ nội dung, không phải tiêu đề trang. */
 export function buildDocPageFilter(tenantId: string, q: string): FilterQuery<DocPageDoc> {
-  const re = new RegExp(escapeRegex(q), 'i');
+  // No `i` flag: `normalizeSearchText` already lowercases both the stored
+  // field and the query, so it's a no-op for matching and only costs index
+  // eligibility.
+  const re = new RegExp(escapeRegex(q));
   return { tenantId, $or: [{ searchText: re }, { searchBody: re }] };
 }
 

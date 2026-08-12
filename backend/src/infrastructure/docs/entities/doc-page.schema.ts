@@ -77,3 +77,8 @@ export const DocPageSchema = new Schema<DocPageDoc>(
 DocPageSchema.index({ tenantId: 1, 'links.refId': 1 });
 
 DocPageSchema.index({ tenantId: 1, searchText: 1 });
+// `buildDocPageFilter` queries `$or: [{searchText}, {searchBody}]` — with one
+// branch unindexed, Mongo degrades the WHOLE $or to a collection scan over
+// `searchBody` (the largest field on this document). Without this, doc-page
+// search would be the slowest query in the database on every keystroke.
+DocPageSchema.index({ tenantId: 1, searchBody: 1 });

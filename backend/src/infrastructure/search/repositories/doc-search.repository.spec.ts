@@ -1,3 +1,4 @@
+import { normalizeSearchText } from '@module-shared/utils/search-text.util';
 import { buildDocSearchFilter, mapDocRowToHit } from './doc-search.repository';
 import { DocDoc } from '../../docs/entities/doc.schema';
 
@@ -14,8 +15,17 @@ describe('buildDocSearchFilter', () => {
     expect((f.searchText as RegExp).source).toContain('\\(');
   });
 
-  it('không phân biệt hoa thường', () => {
-    expect((buildDocSearchFilter('t1', 'abc').searchText as RegExp).flags).toContain('i');
+  // `normalizeSearchText` lowercases both `searchText` (written at save time)
+  // and `q` (here, before the regex is built) — so an `i` flag would be a
+  // no-op and only costs index eligibility. Pin the absence of the flag, and
+  // pin that matching still works given both sides pre-normalized.
+  it('KHÔNG có flag "i" — case-insensitivity đến từ normalizeSearchText ở cả hai đầu', () => {
+    expect((buildDocSearchFilter('t1', 'abc').searchText as RegExp).flags).not.toContain('i');
+  });
+
+  it('vẫn khớp không phân biệt hoa thường khi cả field lưu trữ lẫn q đều đi qua normalizeSearchText', () => {
+    const f = buildDocSearchFilter('t1', normalizeSearchText('AbC'));
+    expect((f.searchText as RegExp).test(normalizeSearchText('Xyz AbC Def'))).toBe(true);
   });
 });
 

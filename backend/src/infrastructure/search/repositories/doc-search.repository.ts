@@ -7,8 +7,9 @@ import { SearchType } from '@application/search/domain/enums/search-type.enum';
 import { DocDoc } from '../../docs/entities/doc.schema';
 import { clampSearchLimit, escapeRegex } from '../search-query.util';
 
+// No `i` flag: `normalizeSearchText` already lowercases both sides.
 export function buildDocSearchFilter(tenantId: string, q: string): FilterQuery<DocDoc> {
-  return { tenantId, searchText: new RegExp(escapeRegex(q), 'i') };
+  return { tenantId, searchText: new RegExp(escapeRegex(q)) };
 }
 
 export function mapDocRowToHit(row: DocDoc): SearchHit {

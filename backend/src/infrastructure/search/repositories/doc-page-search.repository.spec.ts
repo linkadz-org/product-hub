@@ -1,3 +1,4 @@
+import { normalizeSearchText } from '@module-shared/utils/search-text.util';
 import { buildDocPageFilter, mapDocPageRowToHit } from './doc-page-search.repository';
 import { DocPageDoc } from '../../docs/entities/doc-page.schema';
 
@@ -20,10 +21,17 @@ describe('buildDocPageFilter', () => {
     expect(second.searchBody.source).toContain('\\(');
   });
 
-  it('không phân biệt hoa thường', () => {
+  it('KHÔNG có flag "i" trên cả hai field — case-insensitivity đến từ normalizeSearchText', () => {
     const f = buildDocPageFilter('t1', 'abc');
+    const [first, second] = f.$or as [{ searchText: RegExp }, { searchBody: RegExp }];
+    expect(first.searchText.flags).not.toContain('i');
+    expect(second.searchBody.flags).not.toContain('i');
+  });
+
+  it('vẫn khớp không phân biệt hoa thường khi cả field lưu trữ lẫn q đều đi qua normalizeSearchText', () => {
+    const f = buildDocPageFilter('t1', normalizeSearchText('AbC'));
     const [first] = f.$or as [{ searchText: RegExp }];
-    expect(first.searchText.flags).toContain('i');
+    expect(first.searchText.test(normalizeSearchText('Xyz AbC Def'))).toBe(true);
   });
 });
 

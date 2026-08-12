@@ -8,8 +8,9 @@ import { IssueDoc } from '../../issues/entities/issue.schema';
 import { exactRefSearch } from '../../issues/repositories/issue.repository';
 import { clampSearchLimit, escapeRegex, EXACT_MATCH_SCORE } from '../search-query.util';
 
+// No `i` flag: `normalizeSearchText` already lowercases both sides.
 export function buildIssueSearchFilter(tenantId: string, q: string): FilterQuery<IssueDoc> {
-  return { tenantId, searchText: new RegExp(escapeRegex(q), 'i') };
+  return { tenantId, searchText: new RegExp(escapeRegex(q)) };
 }
 
 /**

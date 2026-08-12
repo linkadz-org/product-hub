@@ -14,6 +14,25 @@ import { ProjectSearchRepository } from './repositories/project-search.repositor
 import { RoadmapItemSearchRepository } from './repositories/roadmap-item-search.repository';
 import { ReportSearchRepository, TestCaseSearchRepository } from './repositories/report-search.repository';
 
+/**
+ * Honest note on what the `{tenantId, searchText}` / `{tenantId, searchBody}`
+ * / `{tenantId, casesSearchText}` / `{tenantId, itemsSearchText}` indexes
+ * (defined on each schema, not here) actually buy: they serve *scans*, not
+ * *seeks*. Every query here builds an unanchored `RegExp` (`escapeRegex(q)`,
+ * no `^`) — Mongo can use a btree index to narrow to the `tenantId` prefix,
+ * but it cannot seek *into* that prefix for a substring match, so it still
+ * walks every doc in the tenant's slice. That's a meaningfully smaller scan
+ * than a full collection scan (bounded by one tenant, not every tenant), but
+ * it is not the O(log n) seek an index normally gets you, and it will not
+ * scale forever.
+ *
+ * `ISearchableRepository` is the designed swap point if that stops being
+ * good enough: it's already a leaf-level abstraction (one `search()` per
+ * source), so replacing this regex approach with a real search engine
+ * (Atlas Search, Elasticsearch/OpenSearch, Meilisearch…) behind the same
+ * interface would not require touching `GlobalSearchUseCase` or the command
+ * palette that consumes it.
+ */
 // Model token đã kiểm chứng trong các *.module.ts tương ứng (issues, docs,
 // projects, reports, roadmaps) — sai tên ở đây là app chết lúc boot chứ không
 // phải lúc compile.
