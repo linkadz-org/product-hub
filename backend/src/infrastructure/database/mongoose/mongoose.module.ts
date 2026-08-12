@@ -92,12 +92,34 @@ const searchLogger = new Logger('SearchBackfill');
  * "boot, then verify before opening traffic" check, same non-fatal shape: a
  * missing backfill degrades search, not the whole API, so this reports loudly
  * rather than refusing to start.
+ *
+ * Advisory, never fatal, under every failure mode — same rule
+ * `reportIndexBuildFailures` follows via `Promise.allSettled`. The query is
+ * wrapped in its own `try/catch` (a network blip, a replica-set election, or
+ * a locked `issues` collection during the very deploy window this runs in
+ * must not fail `bootstrap()` — `main.ts` calls it as a bare `bootstrap();`
+ * with no `.catch()`, so an unhandled rejection here would stop `app.listen()`
+ * from ever being reached) and bounded with `maxTimeMS` so a slow collection
+ * can degrade this check instead of hanging boot.
  */
 export async function reportSearchTextBackfillHazard(connection: Connection): Promise<void> {
   const Issue = connection.models['Issue'];
   if (!Issue) return; // Not every process registers the Issue model (e.g. collab).
 
-  const missing = await Issue.countDocuments({ searchText: '', title: { $ne: '' } }).exec();
+  let missing: number;
+  try {
+    missing = await Issue.countDocuments({ searchText: '', title: { $ne: '' } })
+      .maxTimeMS(5000)
+      .exec();
+  } catch (err) {
+    searchLogger.error(
+      'searchText backfill check failed to run (DB unavailable or too slow) — skipping, ' +
+        'not blocking boot. Re-check manually once the DB is healthy.',
+      err instanceof Error ? err.stack : String(err),
+    );
+    return;
+  }
+
   if (missing === 0) {
     searchLogger.log('searchText backfill: no gap found on issues');
     return;
