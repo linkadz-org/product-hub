@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { normalizeSearchText } from '@module-shared/utils/search-text.util';
 import { ISearchableRepository } from '../repositories/searchable.repository';
 import { SearchGroup, SearchHit } from '../domain/search-result.type';
@@ -23,13 +23,35 @@ const RECENT_DAYS = 7;
 export const SEARCH_TIMEOUT_MS = Symbol('SEARCH_TIMEOUT_MS');
 export const DEFAULT_TIMEOUT_MS = 1500;
 
-/** Bỏ qua một promise chậm thay vì để nó giữ cả request. */
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
+/** Bỏ qua một promise chậm thay vì để nó giữ cả request — nhưng không lặng
+ *  thinh: một repository lỗi hoặc timeout phải để lại dấu vết (warn kèm
+ *  `type`), nếu không cả nhóm biến mất khỏi ⌘K mà chẳng ai biết vì sao. */
+function withTimeout<T>(
+  run: () => Promise<T>,
+  ms: number,
+  type: SearchType,
+  logger: Logger,
+): Promise<T | null> {
   let timer: ReturnType<typeof setTimeout>;
+  // `run` is a thunk, not an already-started promise: calling it inside this
+  // try/catch contains a *synchronous* throw from `r.search(...)` the same
+  // way `.catch` contains a rejection. Every implementation today is `async`
+  // (so this can't happen in practice) but containment shouldn't depend on
+  // that staying true.
   return Promise.race([
-    p.catch(() => null),
+    (async () => {
+      try {
+        return await run();
+      } catch (err) {
+        logger.warn(`search repository "${type}" failed: ${err instanceof Error ? err.message : String(err)}`);
+        return null;
+      }
+    })(),
     new Promise<null>((res) => {
-      timer = setTimeout(() => res(null), ms);
+      timer = setTimeout(() => {
+        logger.warn(`search repository "${type}" timed out after ${ms}ms`);
+        res(null);
+      }, ms);
     }),
     // Dọn timer, nếu không mỗi request để lại N timer sống 1,5 giây — Jest sẽ
     // cảnh báo open handle và test treo tới khi chúng hết hạn.
@@ -38,6 +60,8 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
 
 @Injectable()
 export class GlobalSearchUseCase {
+  private readonly logger = new Logger(GlobalSearchUseCase.name);
+
   constructor(
     @Inject(ISearchableRepository) private readonly repos: ISearchableRepository[],
     @Optional() @Inject(SEARCH_TIMEOUT_MS) private readonly timeoutMs: number = DEFAULT_TIMEOUT_MS,
@@ -52,7 +76,9 @@ export class GlobalSearchUseCase {
     const wanted = types?.length ? this.repos.filter((r) => types.includes(r.type)) : this.repos;
 
     const settled = await Promise.all(
-      wanted.map((r) => withTimeout(r.search({ tenantId, q: needle, limit: capped }), this.timeoutMs)),
+      wanted.map((r) =>
+        withTimeout(() => r.search({ tenantId, q: needle, limit: capped }), this.timeoutMs, r.type, this.logger),
+      ),
     );
 
     // null = repository lỗi hoặc quá chậm. Bỏ nhóm đó, giữ phần còn lại: search

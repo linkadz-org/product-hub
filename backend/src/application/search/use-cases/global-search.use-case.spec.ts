@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { GlobalSearchUseCase } from './global-search.use-case';
 import { SearchType } from '../domain/enums/search-type.enum';
 import { ISearchableRepository } from '../repositories/searchable.repository';
@@ -37,23 +38,46 @@ describe('GlobalSearchUseCase', () => {
     expect(search).toHaveBeenCalledWith(expect.objectContaining({ q: 'dang nhap' }));
   });
 
-  it('một repository lỗi không làm hỏng các nhóm khác', async () => {
+  it('một repository lỗi không làm hỏng các nhóm khác, và log warn kèm type', async () => {
     const bad: ISearchableRepository = {
       type: SearchType.DOC,
       search: () => Promise.reject(new Error('boom')),
     };
+    const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     const uc = new GlobalSearchUseCase([repo(SearchType.ISSUE, [hit('ok')]), bad]);
     const out = await uc.execute({ tenantId: 't1', q: 'ok' });
     expect(out.groups.map((g) => g.type)).toEqual([SearchType.ISSUE]);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining(SearchType.DOC));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('boom'));
+    warnSpy.mockRestore();
   });
 
-  it('repository quá chậm bị bỏ qua, phần còn lại vẫn trả về', async () => {
+  it('một repository throw đồng bộ (không async) cũng bị chặn lại, không làm sập execute()', async () => {
+    const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const syncThrow: ISearchableRepository = {
+      type: SearchType.DOC,
+      search: () => {
+        throw new Error('sync boom');
+      },
+    };
+    const uc = new GlobalSearchUseCase([repo(SearchType.ISSUE, [hit('ok')]), syncThrow]);
+    const out = await uc.execute({ tenantId: 't1', q: 'ok' });
+    expect(out.groups.map((g) => g.type)).toEqual([SearchType.ISSUE]);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('sync boom'));
+    warnSpy.mockRestore();
+  });
+
+  it('repository quá chậm bị bỏ qua, phần còn lại vẫn trả về, và log warn kèm type + lý do timeout', async () => {
+    const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     const uc = new GlobalSearchUseCase(
       [repo(SearchType.ISSUE, [hit('nhanh')]), repo(SearchType.DOC, [hit('cham')], 3000)],
       50, // timeout ms, rút ngắn cho test
     );
     const out = await uc.execute({ tenantId: 't1', q: 'ab' });
     expect(out.groups.map((g) => g.type)).toEqual([SearchType.ISSUE]);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining(SearchType.DOC));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('timed out'));
+    warnSpy.mockRestore();
   });
 
   it('không đợi repository chậm — trả về trong khoảng thời gian của timeout, không phải delay của repo', async () => {
