@@ -9,14 +9,17 @@ import { TestCaseData, TestingSection } from '@application/reports/domain/types/
 import { buildSearchText } from '@module-shared/utils/search-text.util';
 import { ReportDoc } from '../../reports/entities/report.schema';
 import { ProjectDoc } from '../../projects/entities/project.schema';
-import { clampSearchLimit, escapeRegex } from '../search-query.util';
+import { boundedCandidateLimit, clampSearchLimit, escapeRegex } from '../search-query.util';
 
+// `normalizeSearchText` lowercases both the stored field and the query before
+// either is written, so the regex needs no `i` flag — adding one is a no-op
+// for matching and only costs index eligibility.
 export function buildReportSearchFilter(tenantId: string, q: string): FilterQuery<ReportDoc> {
-  return { tenantId, searchText: new RegExp(escapeRegex(q), 'i') };
+  return { tenantId, searchText: new RegExp(escapeRegex(q)) };
 }
 
 export function buildTestCaseSearchFilter(tenantId: string, q: string): FilterQuery<ReportDoc> {
-  return { tenantId, casesSearchText: new RegExp(escapeRegex(q), 'i') };
+  return { tenantId, casesSearchText: new RegExp(escapeRegex(q)) };
 }
 
 /**
@@ -97,8 +100,18 @@ export class ReportSearchRepository implements ISearchableRepository {
     const filter = buildReportSearchFilter(tenantId, q);
     const clampedLimit = clampSearchLimit(limit);
 
+    // `mapReportRowToHit` only reads _id/projectId/title/module/subtitle/
+    // updatedAt — never `sections` (a report's entire body: screenshots,
+    // steps, every test case). Projecting it away keeps a 2-char query from
+    // pulling the heaviest field in the collection over the wire for rows
+    // that only need it excluded, not read.
     const [found, liveProjectIds] = await Promise.all([
-      this.model.find(filter).sort({ updatedAt: -1 }).lean<ReportDoc[]>().exec(),
+      this.model
+        .find(filter, { sections: 0 })
+        .sort({ updatedAt: -1 })
+        .limit(boundedCandidateLimit(clampedLimit))
+        .lean<ReportDoc[]>()
+        .exec(),
       findLiveProjectIds(tenantId, this.projects),
     ]);
     const rows = keepReportsOfLiveProjects(found, liveProjectIds);
@@ -121,12 +134,20 @@ export class TestCaseSearchRepository implements ISearchableRepository {
   ) {}
 
   async search({ tenantId, q, limit }: SearchQuery): Promise<SearchGroup> {
-    const re = new RegExp(escapeRegex(q), 'i');
+    const re = new RegExp(escapeRegex(q));
     const filter = buildTestCaseSearchFilter(tenantId, q);
     const clampedLimit = clampSearchLimit(limit);
 
+    // Unlike `ReportSearchRepository`, `matchingTestCases` needs `sections`
+    // itself (that's where the cases live) so it can't be projected away —
+    // only bounded, same as the report search above.
     const [found, liveProjectIds] = await Promise.all([
-      this.model.find(filter).sort({ updatedAt: -1 }).lean<ReportDoc[]>().exec(),
+      this.model
+        .find(filter)
+        .sort({ updatedAt: -1 })
+        .limit(boundedCandidateLimit(clampedLimit))
+        .lean<ReportDoc[]>()
+        .exec(),
       findLiveProjectIds(tenantId, this.projects),
     ]);
     const rows = keepReportsOfLiveProjects(found, liveProjectIds);

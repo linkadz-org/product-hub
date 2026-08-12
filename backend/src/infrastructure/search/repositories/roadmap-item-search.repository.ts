@@ -7,7 +7,7 @@ import { SearchType } from '@application/search/domain/enums/search-type.enum';
 import { RoadmapItemData } from '@application/roadmaps/domain/types/roadmap-item.type';
 import { buildSearchText } from '@module-shared/utils/search-text.util';
 import { RoadmapDoc } from '../../roadmaps/entities/roadmap.schema';
-import { clampSearchLimit, escapeRegex } from '../search-query.util';
+import { boundedCandidateLimit, clampSearchLimit, escapeRegex } from '../search-query.util';
 
 /**
  * Roadmap item không phải document riêng — nó nằm trong mảng `items` của
@@ -17,8 +17,10 @@ import { clampSearchLimit, escapeRegex } from '../search-query.util';
  * trong bộ nhớ trên chính `board.items` (không phải trên `itemsSearchText` —
  * hai mảng đó chỉ đồng bộ theo vị trí, dựa vào vị trí là nguồn lỗi lệch item).
  */
+// `normalizeSearchText` lowercases both sides already — see the same note in
+// report-search.repository.ts.
 export function buildRoadmapItemSearchFilter(tenantId: string, q: string): FilterQuery<RoadmapDoc> {
-  return { tenantId, itemsSearchText: new RegExp(escapeRegex(q), 'i') };
+  return { tenantId, itemsSearchText: new RegExp(escapeRegex(q)) };
 }
 
 /** Khớp lại trên chính object item (tái tạo `itemsSearchText[i]` từ `item`
@@ -49,11 +51,15 @@ export class RoadmapItemSearchRepository implements ISearchableRepository {
   constructor(@InjectModel('Roadmap') private readonly model: Model<RoadmapDoc>) {}
 
   async search({ tenantId, q, limit }: SearchQuery): Promise<SearchGroup> {
-    const re = new RegExp(escapeRegex(q), 'i');
+    const re = new RegExp(escapeRegex(q));
     const clampedLimit = clampSearchLimit(limit);
 
+    // `items` (the field the post-filter actually needs) can't be projected
+    // away, but `description`/`columns`/`publicToken` never touch
+    // `itemMatchesQuery`/`mapRoadmapItemToHit`, so drop them from the wire.
     const boards = await this.model
-      .find(buildRoadmapItemSearchFilter(tenantId, q))
+      .find(buildRoadmapItemSearchFilter(tenantId, q), { description: 0, columns: 0, publicToken: 0 })
+      .limit(boundedCandidateLimit(clampedLimit))
       .lean<RoadmapDoc[]>()
       .exec();
 

@@ -23,6 +23,23 @@ export function escapeRegex(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/** Bội số ứng viên cho ba repository phải post-filter trong bộ nhớ (report,
+ *  test case, roadmap item): chúng không thể `.limit(clampedLimit)` thẳng vì
+ *  hàng bị loại *sau* khi đọc (project đã xoá mềm, item không khớp), nên trần
+ *  DB phải rộng hơn số muốn trả về. 10x là một biên rộng rãi có chủ đích: đủ
+ *  chỗ cho một tỷ lệ loại bỏ cao (nhiều report thuộc project đã xoá, nhiều
+ *  roadmap chỉ khớp 1/N item) mà vẫn chặn được trường hợp xấu nhất — một
+ *  workspace có hàng chục nghìn report/roadmap khớp `searchText` — không kéo
+ *  hết vào heap của Node. Không tinh chỉnh theo dữ liệu thật; đổi nếu đo được
+ *  cần khác. */
+export const SEARCH_CANDIDATE_MULTIPLIER = 10;
+
+/** Trần số dòng đọc từ DB cho repository phải post-filter — xem
+ *  `SEARCH_CANDIDATE_MULTIPLIER`. */
+export function boundedCandidateLimit(clampedLimit: number): number {
+  return clampedLimit * SEARCH_CANDIDATE_MULTIPLIER;
+}
+
 /** Điểm cộng cho một hit khớp *chính xác* một mã ref (`exactRefSearch` hoặc
  *  tương đương của từng loại) — đủ lớn để luôn nổi lên đầu trên điểm nền 0..~vài
  *  chục của một match theo văn bản thường. Named ở đây để sáu repository dùng
