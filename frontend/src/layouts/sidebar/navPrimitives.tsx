@@ -15,6 +15,7 @@ import {
 import { t } from '@/i18n';
 import { FAVOURITE_KIND_LABEL, FavouriteKind } from '@/types/enums';
 import { useRemoveFavourite } from '@/features/favourites/api';
+import { useDeleteSavedView } from '@/features/saved-views/api';
 import { TeamIconPicker } from '@/features/teams/TeamIconPicker';
 import type { FavouriteDto, SavedViewDto, TeamDto } from '@/types/dto';
 
@@ -1005,6 +1006,24 @@ export function isSavedViewActive(pathname: string, search: string, viewId: stri
 }
 
 /**
+ * Whether *this* viewer's row should offer the delete action — mirrors the
+ * backend's own gate (`canMutateSavedView` in
+ * `saved-view.use-cases.ts`: owner or admin, no other exception) exactly, so
+ * the button is only ever shown where clicking it would succeed. A shared
+ * view's row, opened by someone who isn't its owner and isn't an admin, never
+ * gets the button — showing it there would just be a 403 on click. Pure and
+ * exported for the same reason as `savedViewIcon`/`isSavedViewActive`: this
+ * project doesn't render-test components, so the one thing worth getting
+ * wrong here (the permission check) has to be unit-testable on its own.
+ */
+export function canDeleteSavedView(
+  view: Pick<SavedViewDto, 'ownerId'>,
+  actor: { id?: string; isAdmin: boolean },
+): boolean {
+  return view.ownerId === actor.id || actor.isAdmin;
+}
+
+/**
  * One saved view in the sidebar — a shortcut to the Issues board pre-filtered
  * by it (`/issues?sv=<id>`, applied by `IssuesPage`). Saved views are per-user
  * but can be shared, and the list the API returns already reflects that (own +
@@ -1026,36 +1045,71 @@ export function SavedViewNavItem({
   onNavigate: () => void;
 }) {
   const { pathname, search } = useLocation();
+  const { user, isAdmin } = useAuth();
+  const remove = useDeleteSavedView();
   const active = isSavedViewActive(pathname, search, view.id);
+  const canDelete = !collapsed && canDeleteSavedView(view, { id: user?.id, isAdmin });
 
-  return (
-    <Link
-      to={{ pathname: '/issues', search: `?sv=${view.id}` }}
-      onClick={onNavigate}
-      title={collapsed ? view.name : undefined}
-      aria-current={active ? 'page' : undefined}
-      className={cn(
-        ROW,
-        active && 'bg-sidebar-accent text-sidebar-accent-foreground',
-        collapsed && 'md:justify-center md:gap-0',
-      )}
-    >
-      <span
+  if (collapsed) {
+    return (
+      <Link
+        to={{ pathname: '/issues', search: `?sv=${view.id}` }}
+        onClick={onNavigate}
+        title={view.name}
+        aria-current={active ? 'page' : undefined}
         className={cn(
-          'grid size-5 shrink-0 place-items-center transition-colors',
-          active
-            ? 'text-sidebar-accent-foreground'
-            : 'text-muted-foreground group-hover:text-sidebar-accent-foreground',
+          ROW,
+          active && 'bg-sidebar-accent text-sidebar-accent-foreground',
+          'md:justify-center md:gap-0',
         )}
       >
+        <span
+          className={cn(
+            'grid size-5 shrink-0 place-items-center transition-colors',
+            active
+              ? 'text-sidebar-accent-foreground'
+              : 'text-muted-foreground group-hover:text-sidebar-accent-foreground',
+          )}
+        >
+          <Icon name={savedViewIcon(view)} size={18} />
+        </span>
+      </Link>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        ROW,
+        'group/sv',
+        active && 'bg-sidebar-accent text-sidebar-accent-foreground',
+      )}
+    >
+      <span className="grid size-5 shrink-0 place-items-center">
         <Icon name={savedViewIcon(view)} size={18} />
       </span>
-      <span className={cn('flex min-w-0 flex-1 items-center gap-1', collapsed && 'md:hidden')}>
+      <Link
+        to={{ pathname: '/issues', search: `?sv=${view.id}` }}
+        onClick={onNavigate}
+        aria-current={active ? 'page' : undefined}
+        className="flex min-w-0 flex-1 items-center gap-1"
+      >
         <span className="min-w-0 flex-1 truncate">{view.name}</span>
         {view.shared && (
           <Icon name="people" className="size-3 shrink-0 text-muted-foreground" />
         )}
-      </span>
-    </Link>
+      </Link>
+      {canDelete && (
+        <button
+          type="button"
+          onClick={() => remove.mutate(view.id)}
+          title={t('savedViews.delete')}
+          aria-label={t('savedViews.delete')}
+          className={cn(ACTION, 'group-hover/sv:opacity-100')}
+        >
+          <X className="size-3.5" aria-hidden />
+        </button>
+      )}
+    </div>
   );
 }

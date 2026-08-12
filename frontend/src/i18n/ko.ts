@@ -729,6 +729,9 @@ export const ko: Record<I18nKey, string> = {
   // Shown when applying a saved view drops a filter pointing at something
   // deleted since it was saved (a project, a backlog item).
   'savedViews.someFiltersDropped': '이 뷰의 일부 필터가 더 이상 존재하지 않는 항목을 가리켜 건너뛰었습니다.',
+  // Hover delete action on a saved-view sidebar row — shown only when the
+  // viewer owns the view or is an admin (mirrors the backend's own gate).
+  'savedViews.delete': '뷰 삭제',
   // Sort control (list view) — field on top, direction below. `sort.title` also
   // composes into the trigger (`정렬: ID`), so it carries no trailing colon.
   'sort.title': '정렬',

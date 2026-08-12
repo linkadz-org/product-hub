@@ -759,6 +759,9 @@ export const en = {
   // Shown when applying a saved view drops a filter pointing at something
   // deleted since it was saved (a project, a backlog item).
   'savedViews.someFiltersDropped': 'Some filters in this view point to items that no longer exist and were skipped.',
+  // Hover delete action on a saved-view sidebar row — shown only when the
+  // viewer owns the view or is an admin (mirrors the backend's own gate).
+  'savedViews.delete': 'Delete view',
   // Sort control (list view) — field on top, direction below. `sort.title` also
   // composes into the trigger (`Sort: ID`), so it carries no trailing colon.
   'sort.title': 'Sort',

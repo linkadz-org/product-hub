@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isSavedViewActive, savedViewIcon } from './navPrimitives';
+import { canDeleteSavedView, isSavedViewActive, savedViewIcon } from './navPrimitives';
 import type { SavedViewDto } from '@/types/dto';
 
 function view(overrides: Partial<SavedViewDto> = {}): SavedViewDto {
@@ -48,5 +48,23 @@ describe('isSavedViewActive', () => {
 
   it('false khi không đứng ở /issues, kể cả khi sv khớp', () => {
     expect(isSavedViewActive('/roadmaps', '?sv=sv-1', 'sv-1')).toBe(false);
+  });
+});
+
+describe('canDeleteSavedView', () => {
+  it('true khi actor là chủ sở hữu view', () => {
+    expect(canDeleteSavedView(view({ ownerId: 'u-1' }), { id: 'u-1', isAdmin: false })).toBe(true);
+  });
+
+  it('true khi actor là admin, kể cả không phải chủ sở hữu (view shared)', () => {
+    expect(canDeleteSavedView(view({ ownerId: 'u-1' }), { id: 'u-2', isAdmin: true })).toBe(true);
+  });
+
+  it('false khi actor không phải chủ sở hữu và cũng không phải admin — mới là ca của một view shared bị xem bởi đồng nghiệp khác', () => {
+    expect(canDeleteSavedView(view({ ownerId: 'u-1' }), { id: 'u-2', isAdmin: false })).toBe(false);
+  });
+
+  it('false khi chưa đăng nhập (id undefined) và không phải admin', () => {
+    expect(canDeleteSavedView(view({ ownerId: 'u-1' }), { id: undefined, isAdmin: false })).toBe(false);
   });
 });
