@@ -9,6 +9,7 @@ import { ApplicationDocsModule } from '@application/docs/docs.module';
 import { ApplicationActivityModule } from '@application/activity/activity.module';
 import { ApplicationIssueLinksModule } from '@application/issue-links/issue-links.module';
 import { ApplicationCyclesModule } from '@application/cycles/cycles.module';
+import { ApplicationStorageModule } from '@application/storage/storage.module';
 import {
   GetMcpContextUseCase,
   GetMcpEventsUseCase,
@@ -33,6 +34,7 @@ import {
   McpUpdateCommentUseCase,
   McpUpdateDocUseCase,
   McpUpdateIssueUseCase,
+  McpUploadFileUseCase,
 } from './use-cases';
 
 const useCases = [
@@ -59,6 +61,7 @@ const useCases = [
   McpGetCycleBurndownUseCase,
   McpGetTeamVelocityUseCase,
   McpGetBugStatsUseCase,
+  McpUploadFileUseCase,
 ];
 
 @Module({
@@ -84,6 +87,10 @@ const useCases = [
     // infrastructure vì ApplicationProjectsModule chỉ export use-case, không export
     // IProjectRepository.
     InfrastructureProjectsModule,
+    // upload_file đi qua UploadMediaUseCase — cùng use-case nút Upload trên web
+    // gọi, nên file MCP gửi lên chịu đúng cấu hình storage và giới hạn dung lượng
+    // của tenant, không có đường tắt riêng.
+    ApplicationStorageModule,
   ],
   providers: [...useCases],
   exports: [...useCases],

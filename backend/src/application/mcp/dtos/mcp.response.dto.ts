@@ -119,6 +119,25 @@ export class McpIssueResponseDto {
   updatedAt: Date;
 }
 
+/**
+ * A file that now lives in the workspace's storage. `upload_file` returns it and
+ * `update_issue`/`add_comment` take it back verbatim, so the round trip needs no
+ * reshaping — the assistant hands the reply straight to the next call.
+ */
+export class McpUploadedFileDto {
+  @ApiProperty({ description: 'Public URL — what an attachment field wants' })
+  url: string;
+
+  @ApiProperty({ description: 'The name it was stored under' })
+  name: string;
+
+  @ApiProperty({ description: 'MIME type it will be served as' })
+  contentType: string;
+
+  @ApiProperty({ description: 'Size in bytes' })
+  size: number;
+}
+
 /** One subtask line under an issue detail — enough to quote and address it. */
 export class McpSubtaskDto {
   @ApiProperty()
@@ -248,6 +267,14 @@ export class McpIssueDetailResponseDto {
 
   @ApiProperty({ description: 'Total subtasks on the issue' })
   subtaskCount: number;
+
+  @ApiProperty({
+    type: [McpUploadedFileDto],
+    description:
+      'Files on the issue (bug). Listed here because `update_issue.attachments` replaces the ' +
+      'whole set — this is what a caller sends back to keep them.',
+  })
+  attachments: McpUploadedFileDto[];
 
   @ApiProperty({ type: [McpCommentDto], description: 'Latest comments (capped); see commentCount for total' })
   comments: McpCommentDto[];

@@ -450,6 +450,15 @@ export class McpGetIssueUseCase
         status: s.status,
       })),
       subtaskCount: childPage.total,
+      // Reported because `update_issue.attachments` replaces the set: without
+      // seeing what is already there, an assistant adding one screenshot would
+      // silently drop every file someone else had attached.
+      attachments: issue.attachments.map((a) => ({
+        url: a.url,
+        name: a.name,
+        contentType: a.contentType,
+        size: a.size,
+      })),
       comments: recent.map(toCommentDto),
       commentCount: allComments.length,
       link: issueLink(issue.shortId || issueId),
@@ -542,6 +551,18 @@ export class McpUpdateIssueUseCase
         labelKeys.push(label.key);
       }
       update.labelKeys = labelKeys;
+    }
+
+    // attachments: files already in storage (upload_file), REPLACES the whole set
+    // — [] clears it. Defaults fill in what a caller may not have kept: a name is
+    // all the issue page needs to render a row, the rest only sharpens it.
+    if (dto.attachments !== undefined) {
+      update.attachments = dto.attachments.map((a) => ({
+        url: a.url,
+        name: a.name,
+        contentType: a.contentType ?? '',
+        size: a.size ?? 0,
+      }));
     }
 
     // parent: ref/id to nest under; '' detaches.
@@ -858,6 +879,9 @@ export class McpAddCommentUseCase
         body: docBodyToHtml(dto.body),
         parentId: dto.replyTo,
         mentions: mentions.getValue(),
+        // Already-stored URLs (upload_file); the comment carries the link, not
+        // the bytes, exactly as the web composer does.
+        images: dto.images,
       },
     });
     if (created.isFailure) return Result.fail(created.error as string);
@@ -917,7 +941,12 @@ export class McpUpdateCommentUseCase
       role,
       // Only convert when a body was actually sent — an omitted body means "leave
       // it unchanged", so it must stay undefined rather than becoming ''.
-      dto: { body: dto.body !== undefined ? docBodyToHtml(dto.body) : undefined, mentions },
+      // `images` follows the same rule: sent = replace the set, omitted = leave it.
+      dto: {
+        body: dto.body !== undefined ? docBodyToHtml(dto.body) : undefined,
+        mentions,
+        images: dto.images,
+      },
     });
     // Surfaces COMMENT_FORBIDDEN ("You can only edit your own comments") verbatim.
     if (result.isFailure) return Result.fail(result.error as string);

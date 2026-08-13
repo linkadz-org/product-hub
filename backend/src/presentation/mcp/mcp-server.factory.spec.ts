@@ -1,5 +1,7 @@
 import { McpServerFactory } from './mcp-server.factory';
 import { McpBugStatsResponseDto } from '@application/mcp/dtos/mcp-analytics.response.dto';
+import { ApiKeyScope } from '@application/api-keys/domain/api-key.enums';
+import type { McpActor } from '@application/mcp/use-cases';
 
 /** `describeBugStats` reads no injected dependency, so the factory doesn't need
  *  a real constructor call — just its prototype, to reach the private method
@@ -22,6 +24,38 @@ function baseStats(overrides: Partial<McpBugStatsResponseDto>): McpBugStatsRespo
     ...overrides,
   } as McpBugStatsResponseDto;
 }
+
+/**
+ * Registration itself. `create` only *reads* the injected use-cases inside the
+ * tool callbacks, so the prototype trick above reaches it too — which is what
+ * makes it cheap to assert that every tool's schema is well-formed enough for the
+ * SDK to accept it. A malformed zod shape throws here rather than at the first
+ * call in production.
+ */
+describe('McpServerFactory.create — registered tools', () => {
+  const actor: McpActor = {
+    tenantId: 't1',
+    keyId: 'k1',
+    keyName: 'CI',
+    userId: 'u1',
+    scope: ApiKeyScope.READ_WRITE,
+    clientName: 'claude-code/1.0',
+  };
+  const toolNames = (): string[] => {
+    const server = factory().create({ actor });
+    return Object.keys((server as unknown as { _registeredTools: object })._registeredTools);
+  };
+
+  it('exposes upload_file — the only tool that carries bytes', () => {
+    expect(toolNames()).toContain('upload_file');
+  });
+
+  it('still exposes the tools it had before, so nothing was traded for it', () => {
+    expect(toolNames()).toEqual(
+      expect.arrayContaining(['list_workspace', 'create_issue', 'update_issue', 'add_comment']),
+    );
+  });
+});
 
 describe('McpServerFactory.describeBugStats — scope line date filter', () => {
   const describe_ = (s: McpBugStatsResponseDto): string =>
