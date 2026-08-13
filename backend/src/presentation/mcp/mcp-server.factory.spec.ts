@@ -42,12 +42,16 @@ describe('McpServerFactory.create — registered tools', () => {
     clientName: 'claude-code/1.0',
   };
   const toolNames = (): string[] => {
-    const server = factory().create({ actor });
+    const server = factory().create({ actor, apiUrl: 'https://api.example.com/v1/mcp' });
     return Object.keys((server as unknown as { _registeredTools: object })._registeredTools);
   };
 
   it('exposes upload_file — the only tool that carries bytes', () => {
     expect(toolNames()).toContain('upload_file');
+  });
+
+  it('exposes create_upload_url, the path that keeps a file out of the context', () => {
+    expect(toolNames()).toContain('create_upload_url');
   });
 
   it('still exposes the tools it had before, so nothing was traded for it', () => {
