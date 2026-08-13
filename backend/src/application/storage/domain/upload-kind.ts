@@ -28,6 +28,27 @@ export const DOCUMENT_TYPE_BY_EXT: Record<string, string> = {
 /** Every content type the map above can produce — used for files with no extension. */
 const DOCUMENT_TYPES = new Set(Object.values(DOCUMENT_TYPE_BY_EXT));
 
+/**
+ * The common image/video types by extension. Only for callers that have a
+ * filename but *no* content type — a browser always sends one, an MCP client
+ * handing over raw bytes does not. Deliberately short: it names the formats a
+ * screen recording or screenshot actually arrives in, and `svg` is left out
+ * because these files are served from a public URL, where an SVG is a script.
+ */
+export const MEDIA_TYPE_BY_EXT: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  bmp: 'image/bmp',
+  heic: 'image/heic',
+  mp4: 'video/mp4',
+  mov: 'video/quicktime',
+  webm: 'video/webm',
+  m4v: 'video/x-m4v',
+};
+
 /** What the file picker should offer, so the dialog matches what the API accepts. */
 export const DOCUMENT_ACCEPT = Object.keys(DOCUMENT_TYPE_BY_EXT)
   .map((ext) => `.${ext}`)
@@ -36,6 +57,17 @@ export const DOCUMENT_ACCEPT = Object.keys(DOCUMENT_TYPE_BY_EXT)
 function extensionOf(filename: string): string {
   const dot = filename.lastIndexOf('.');
   return dot > -1 ? filename.slice(dot + 1).toLowerCase() : '';
+}
+
+/**
+ * What a file most likely is, from its name alone — `''` when the extension says
+ * nothing. Documents answer from {@link DOCUMENT_TYPE_BY_EXT}, the same map
+ * `classifyUpload` treats as authoritative, so a name resolved here and then
+ * classified never disagrees with itself.
+ */
+export function contentTypeFromName(filename: string): string {
+  const ext = extensionOf(filename);
+  return DOCUMENT_TYPE_BY_EXT[ext] ?? MEDIA_TYPE_BY_EXT[ext] ?? '';
 }
 
 /**

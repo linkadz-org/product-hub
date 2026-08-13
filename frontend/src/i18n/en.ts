@@ -1012,7 +1012,7 @@ export const en = {
   'settings.mcpVerbMoved': 'Moved',
   'settings.mcpVerbCommented': 'Commented',
   'settings.mcpTools':
-    'Then ask it to “list my Product OS workspace”, “file a bug for QC”, “add a backlog item”, or “write this up as a doc — with a diagram of the flow”. Team, status and assignee accept plain names; an unknown one comes back with the valid choices instead of guessing.',
+    'Then ask it to “list my Product OS workspace”, “file a bug for QC”, “add a backlog item”, or “write this up as a doc — with a diagram of the flow”. It can attach a screenshot too — “file this bug and attach the screenshot” uploads the file to your storage and puts it on the bug. Team, status and assignee accept plain names; an unknown one comes back with the valid choices instead of guessing.',
   'settings.mcpReady': 'Your key is ready',
   'settings.mcpReadyHint': 'This command already contains it — run it in your terminal.',
   'settings.mcpHistory': 'Created via MCP',

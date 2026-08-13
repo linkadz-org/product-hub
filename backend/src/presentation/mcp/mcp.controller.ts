@@ -26,6 +26,7 @@ import {
   McpUpdateCommentDto,
   McpUpdateDocDto,
   McpUpdateIssueDto,
+  McpUploadFileDto,
 } from '@application/mcp/dtos/mcp.dtos';
 import {
   McpBugStatsDto,
@@ -49,6 +50,7 @@ import {
   McpLinkResultDto,
   McpUnlinkResultDto,
   McpUpdatedDocResponseDto,
+  McpUploadedFileDto,
 } from '@application/mcp/dtos/mcp.response.dto';
 import {
   McpBugStatsResponseDto,
@@ -79,6 +81,7 @@ import {
   McpUpdateCommentUseCase,
   McpUpdateDocUseCase,
   McpUpdateIssueUseCase,
+  McpUploadFileUseCase,
 } from '@application/mcp/use-cases';
 import { ApiAuth, ApiKeyGuard } from '@presentation/api-keys/api-key.guard';
 import { assertCanDelete, assertCanWrite } from './mcp-scope';
@@ -138,6 +141,7 @@ export class McpController {
     private readonly cycleBurndown: McpGetCycleBurndownUseCase,
     private readonly velocity: McpGetTeamVelocityUseCase,
     private readonly bugStats: McpGetBugStatsUseCase,
+    private readonly uploadFile: McpUploadFileUseCase,
   ) {}
 
   @Get('context')
@@ -157,6 +161,21 @@ export class McpController {
     const actor = actorOf(req);
     guardWrite(actor);
     const result = await this.createIssue.execute({ actor, dto });
+    if (result.isFailure) throw new ValidationException(result.error as string);
+    return result.getValue();
+  }
+
+  @Post('uploads')
+  @ApiOperation({
+    summary: 'Store a base64 file and get its URL — attach it with PATCH issues/:issue (API key)',
+  })
+  async upload(
+    @Req() req: McpRequest,
+    @Body() dto: McpUploadFileDto,
+  ): Promise<McpUploadedFileDto> {
+    const actor = actorOf(req);
+    guardWrite(actor);
+    const result = await this.uploadFile.execute({ actor, dto });
     if (result.isFailure) throw new ValidationException(result.error as string);
     return result.getValue();
   }
