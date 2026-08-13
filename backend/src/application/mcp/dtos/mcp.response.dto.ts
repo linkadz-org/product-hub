@@ -138,6 +138,24 @@ export class McpUploadedFileDto {
   size: number;
 }
 
+/**
+ * A ticket URL that takes a file over multipart, so the bytes never pass through
+ * the assistant's context the way a base64 `upload_file` payload does.
+ */
+export class McpUploadUrlDto {
+  @ApiProperty({ description: 'POST a multipart body with a `file` field here — no auth header' })
+  uploadUrl: string;
+
+  @ApiProperty({ description: 'Seconds the URL stays valid' })
+  expiresInSeconds: number;
+
+  @ApiProperty({ description: 'Hard ceiling in bytes; the tenant’s per-type caps still apply' })
+  maxBytes: number;
+
+  @ApiProperty({ description: 'The command to run, field name and quoting already right' })
+  curl: string;
+}
+
 /** One subtask line under an issue detail — enough to quote and address it. */
 export class McpSubtaskDto {
   @ApiProperty()

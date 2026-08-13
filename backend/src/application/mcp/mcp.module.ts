@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
 import { InfrastructureMcpModule } from '@infrastructure/mcp/mcp.module';
 import { InfrastructureUsersModule } from '@infrastructure/users/users.module';
 import { InfrastructureProjectsModule } from '@infrastructure/projects/projects.module';
@@ -35,6 +36,9 @@ import {
   McpUpdateDocUseCase,
   McpUpdateIssueUseCase,
   McpUploadFileUseCase,
+  McpCreateUploadUrlUseCase,
+  McpRedeemUploadTicketUseCase,
+  MCP_UPLOAD_TICKET_SECRET,
 } from './use-cases';
 
 const useCases = [
@@ -62,6 +66,8 @@ const useCases = [
   McpGetTeamVelocityUseCase,
   McpGetBugStatsUseCase,
   McpUploadFileUseCase,
+  McpCreateUploadUrlUseCase,
+  McpRedeemUploadTicketUseCase,
 ];
 
 @Module({
@@ -91,6 +97,10 @@ const useCases = [
     // gọi, nên file MCP gửi lên chịu đúng cấu hình storage và giới hạn dung lượng
     // của tenant, không có đường tắt riêng.
     ApplicationStorageModule,
+    // Upload tickets are signed here rather than in AuthModule: the secret is
+    // derived, not JWT_SECRET itself, so a ticket can never be presented as a
+    // login token on the unauthenticated redeem route.
+    JwtModule.register({ secret: MCP_UPLOAD_TICKET_SECRET }),
   ],
   providers: [...useCases],
   exports: [...useCases],

@@ -27,6 +27,7 @@ import {
   McpUpdateDocDto,
   McpUpdateIssueDto,
   McpUploadFileDto,
+  McpCreateUploadUrlDto,
 } from '@application/mcp/dtos/mcp.dtos';
 import {
   McpBugStatsDto,
@@ -50,6 +51,7 @@ import {
   McpUnlinkResultDto,
   McpUpdatedDocResponseDto,
   McpUploadedFileDto,
+  McpUploadUrlDto,
 } from '@application/mcp/dtos/mcp.response.dto';
 import {
   McpBugStatsResponseDto,
@@ -85,6 +87,7 @@ import {
   McpUpdateDocUseCase,
   McpUpdateIssueUseCase,
   McpUploadFileUseCase,
+  McpCreateUploadUrlUseCase,
 } from '@application/mcp/use-cases';
 import { assertCanDelete, assertCanWrite } from './mcp-scope';
 
@@ -98,6 +101,14 @@ const SERVER_VERSION = '1.0.0';
  */
 export interface McpActorHolder {
   actor: McpActor;
+  /**
+   * This API's own base URL (`https://host/v1/mcp`), read off the request that
+   * opened the session rather than from config: `APP_BASE_URL` is the *web app*,
+   * and an upload URL built from it would point at the frontend. Taking it from
+   * the request also means it is right behind whatever proxy is in front,
+   * without a second env var to keep in sync.
+   */
+  apiUrl: string;
 }
 
 /** An MCP tool reply. Text only — these tools answer in prose, not structures. */
@@ -173,6 +184,7 @@ export class McpServerFactory {
     private readonly velocity: McpGetTeamVelocityUseCase,
     private readonly bugStats: McpGetBugStatsUseCase,
     private readonly uploadFile: McpUploadFileUseCase,
+    private readonly createUploadUrl: McpCreateUploadUrlUseCase,
     config: ConfigService,
   ) {
     this.appUrl = (config.get<string>('APP_BASE_URL') ?? 'http://localhost:3001').replace(/\/$/, '');
@@ -202,6 +214,7 @@ export class McpServerFactory {
     };
 
     this.registerListWorkspace(server, run);
+    this.registerCreateUploadUrl(server, run, holder.apiUrl);
     this.registerUploadFile(server, run);
     this.registerSearchIssues(server, run);
     this.registerGetIssue(server, run);
@@ -264,12 +277,13 @@ export class McpServerFactory {
       {
         title: 'Upload a file to the workspace storage',
         description:
-          'Store a screenshot, recording, log or document in the workspace’s cloud storage and get ' +
-          'back its public URL. Send the bytes base64-encoded in `data` — MCP cannot transfer a file ' +
-          'itself. Uploading does NOT attach anything: pass the returned URL to `update_issue` ' +
-          '(`attachments`, for a bug) or `add_comment` (`images`) to make it show up. Accepted: ' +
-          'images, video, PDF, Office documents, csv/txt/md. Roughly 7MB per call — anything bigger ' +
-          'has to go through the app.',
+          'Store a small file by sending its bytes base64-encoded in `data`. Use `create_upload_url` ' +
+          'instead whenever the file is on disk — this tool carries the whole file through the ' +
+          'conversation, which is slow, costly, and caps out around 7MB. This one is for the case ' +
+          'where you already hold the bytes and there is no shell. Uploading does NOT attach ' +
+          'anything: pass the returned URL to `update_issue` (`attachments`, for a bug) or ' +
+          '`add_comment` (`images`) to make it show up. Accepted: images, video, PDF, Office ' +
+          'documents, csv/txt/md.',
         inputSchema: {
           name: z
             .string()
@@ -292,6 +306,50 @@ export class McpServerFactory {
             `Uploaded ${f.name} (${describeSize(f.size)}) → ${f.url}\n\n` +
             'Not attached to anything yet — pass this to update_issue `attachments` or add_comment ' +
             '`images`.',
+        ),
+    );
+  }
+
+  /**
+   * The way out of base64. `upload_file` puts the whole file in the JSON-RPC
+   * body, so every byte is read into the assistant's context on the way past —
+   * a real screenshot can cost more context than the conversation it belongs to,
+   * and past ~7MB it does not fit at all. This hands back a URL instead: one
+   * `curl -F` sends the file straight from disk to storage.
+   *
+   * The reply is a command, not a description of one. An assistant asked to
+   * "POST multipart" invents the field name; given the line to run, it runs it.
+   */
+  private registerCreateUploadUrl(server: McpServer, run: Run, apiUrl: string): void {
+    registerTool<McpCreateUploadUrlDto>(
+      server,
+      'create_upload_url',
+      {
+        title: 'Get a URL to upload a file to',
+        description:
+          'Prefer this over `upload_file` for anything real — a screenshot, a recording, a log. It ' +
+          'returns a short-lived URL you upload to with one shell command, so the file goes from ' +
+          'disk to storage without passing through the conversation (which is what makes ' +
+          '`upload_file` lossy for big or high-resolution files). Run the returned `curl` line; it ' +
+          'replies with JSON whose `url` is the stored file. Uploading does NOT attach anything: ' +
+          'pass that `url` to `update_issue` (`attachments`, for a bug) or `add_comment` (`images`).',
+        annotations: { readOnlyHint: true },
+        inputSchema: {
+          name: z
+            .string()
+            .optional()
+            .describe('The file you are about to send — used to write the example command'),
+        },
+      },
+      (dto) =>
+        run<McpUploadUrlDto>(
+          (actor) =>
+            gated(actor, () => this.createUploadUrl.execute({ actor, dto, baseUrl: apiUrl })),
+          (t) =>
+            `Upload URL ready (valid ${Math.round(t.expiresInSeconds / 60)} minutes, up to ` +
+            `${describeSize(t.maxBytes)}). Run:\n\n  ${t.curl}\n\n` +
+            'Replace the path with the real file. The reply is JSON — take its `url` and attach it ' +
+            'with update_issue `attachments` or add_comment `images`. Nothing is attached until you do.',
         ),
     );
   }

@@ -5,6 +5,7 @@ import { ApiKeyGuard } from '@presentation/api-keys/api-key.guard';
 import { McpController } from './mcp.controller';
 import { McpEventsController } from './mcp-events.controller';
 import { McpHttpController } from './mcp-http.controller';
+import { McpUploadsController } from './mcp-uploads.controller';
 import { McpServerFactory } from './mcp-server.factory';
 import { McpSessionRegistry } from './mcp-session.registry';
 
@@ -14,7 +15,10 @@ import { McpSessionRegistry } from './mcp-session.registry';
   // `McpHttpController` is the MCP endpoint an assistant registers (`/v1/mcp`);
   // `McpController` is the plain REST shape of the same use-cases, kept because
   // it is the documented, scriptable surface and what the MCP tools call into.
-  controllers: [McpHttpController, McpController, McpEventsController],
+  // `McpUploadsController` is listed first so its literal `uploads/ticket/:ticket`
+  // is matched before any broader `uploads` route, and because it is the one MCP
+  // route that authenticates by ticket instead of by `x-api-key`.
+  controllers: [McpUploadsController, McpHttpController, McpController, McpEventsController],
   providers: [ApiKeyGuard, McpServerFactory, McpSessionRegistry],
 })
 export class McpPresentationModule {}

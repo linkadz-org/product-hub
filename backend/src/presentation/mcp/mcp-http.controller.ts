@@ -8,11 +8,16 @@ import { Public } from '@core/decorators';
 import { MCP_CLIENT_HEADER, UNKNOWN_MCP_CLIENT } from '@application/mcp/domain/enums/mcp.enums';
 import { McpActor } from '@application/mcp/use-cases';
 import { ApiAuth, ApiKeyGuard } from '@presentation/api-keys/api-key.guard';
+import { requestBaseUrl } from './mcp-request-url';
 import { McpActorHolder, McpServerFactory } from './mcp-server.factory';
 import { McpSession, McpSessionRegistry } from './mcp-session.registry';
 
 /** Header the Streamable HTTP transport carries its session on. */
 const SESSION_HEADER = 'mcp-session-id';
+
+/** Where this controller is mounted — only a fallback; the real path is read
+ *  off the request, so a change to the version prefix needs nothing here. */
+const MCP_PATH = '/v1/mcp';
 
 /** JSON-RPC error codes we raise before the transport ever sees the message. */
 const INVALID_REQUEST = -32600;
@@ -96,7 +101,7 @@ export class McpHttpController {
 
   /** Starts a session for an `initialize` message and answers it. */
   private async open(req: McpRequest, res: Response, body: unknown): Promise<void> {
-    const holder: McpActorHolder = { actor: actorOf(req) };
+    const holder: McpActorHolder = { actor: actorOf(req), apiUrl: requestBaseUrl(req, MCP_PATH) };
     const server = this.factory.create(holder);
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),

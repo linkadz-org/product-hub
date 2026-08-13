@@ -125,6 +125,22 @@ export class McpUploadFileDto {
 }
 
 /**
+ * Ask for an upload URL. Nothing about the file is promised up front — the name
+ * is only used to write the example command, and the real name, type and size
+ * come off the multipart body when the ticket is spent.
+ */
+export class McpCreateUploadUrlDto {
+  @ApiPropertyOptional({
+    example: 'checkout-500.png',
+    description: 'File name, used only to render the ready-to-run command',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  name?: string;
+}
+
+/**
  * One stored file as it hangs off an issue — the exact shape `upload_file` hands
  * back, so an assistant passes the reply straight through without reshaping it.
  */
