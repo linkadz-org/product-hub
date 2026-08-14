@@ -22,6 +22,8 @@ export interface TaskQuery {
   /** Multi-value — serialized as repeated keys (`?status=a&status=b`). */
   status?: TaskStatus[];
   assigneeId?: string[];
+  /** Who opened the task — user id(s). */
+  createdBy?: string[];
   /** Tasks assigned to this user id (the "Assigned to me" / personal views). */
   mine?: string;
   /**
@@ -39,6 +41,15 @@ export interface TaskQuery {
    *  resolve server-side against `teamId`, so saved links never go stale. */
   cycleId?: string;
   search?: string;
+  /** Opened on/after this instant (or `YYYY-MM-DD`, read as that UTC day). */
+  createdFrom?: string;
+  /** Opened on/before this instant — inclusive. */
+  createdTo?: string;
+  /** Solved (moved to a done status) on/after this instant. Still-open tasks
+   *  have no solved date, so either end on its own also excludes them. */
+  resolvedFrom?: string;
+  /** Solved on/before this instant — inclusive. */
+  resolvedTo?: string;
   /** Sort field. Omit to keep the board ordering (drag position, then newest first) —
    *  the kanban view must always omit it. */
   sort?: IssueSortField;
