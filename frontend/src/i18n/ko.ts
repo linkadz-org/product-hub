@@ -1317,6 +1317,8 @@ export const ko: Record<I18nKey, string> = {
   'filters.project': '프로젝트',
   'filters.unassigned': '담당자 미지정',
   'filters.assignedToMe': '나에게 배정됨',
+  'filters.creator': '등록자',
+  'filters.createdByMe': '내가 등록함',
   'filters.backlogItem': '백로그 항목',
   'filters.createdDate': '등록일',
   'filters.solvedDate': '해결일',

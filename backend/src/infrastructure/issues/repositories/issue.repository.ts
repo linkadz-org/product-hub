@@ -295,6 +295,9 @@ export class IssueRepository
     if (query.roadmapItemId?.length) filter.roadmapItemId = { $in: query.roadmapItemId };
     if (query.roadmapId?.length) filter.roadmapId = { $in: query.roadmapId };
     if (query.projectId?.length) filter.projectId = { $in: query.projectId };
+    // Who opened it. `createdBy` is set on every issue (a bug also mirrors it into
+    // `reporterId`), so one filter serves both kinds.
+    if (query.createdBy?.length) filter.createdBy = { $in: query.createdBy };
     if (query.teamId) filter.teamId = query.teamId;
     // '' is meaningful here (issues in no cycle) — sentinels like `current` were
     // already resolved to a real id (or a no-match id) by the use-case.

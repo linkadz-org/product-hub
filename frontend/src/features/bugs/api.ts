@@ -20,6 +20,8 @@ export interface BugQuery {
   status?: BugStatus[];
   severity?: BugSeverity[];
   assigneeId?: string[];
+  /** Who opened the bug — user id(s). */
+  createdBy?: string[];
   projectId?: string[];
   /** Team cycle: a cycle id, or `current` / `upcoming` / `none` — the sentinels
    *  resolve server-side against `teamId`, so saved links never go stale. */

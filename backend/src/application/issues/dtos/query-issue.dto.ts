@@ -44,6 +44,18 @@ export class QueryIssueDto extends PaginationDto {
   @IsString({ each: true })
   assigneeId?: string[];
 
+  @ApiPropertyOptional({
+    description:
+      'Filter by who opened the issue — user id(s). A bug mirrors this into its reporter, ' +
+      'so it is the one people axis that means the same thing on both kinds.',
+    isArray: true,
+  })
+  @IsOptional()
+  @TransformQueryArray()
+  @IsArray()
+  @IsString({ each: true })
+  createdBy?: string[];
+
   @ApiPropertyOptional({ description: "Filter by the team's issue list" })
   @IsOptional()
   @IsString()

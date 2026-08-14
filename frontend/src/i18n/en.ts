@@ -1355,6 +1355,8 @@ export const en = {
   'filters.project': 'Project',
   'filters.unassigned': 'Unassigned',
   'filters.assignedToMe': 'Assigned to me',
+  'filters.creator': 'Creator',
+  'filters.createdByMe': 'Created by me',
   'filters.backlogItem': 'Backlog item',
   'filters.createdDate': 'Created date',
   'filters.solvedDate': 'Solved date',

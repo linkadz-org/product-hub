@@ -16,12 +16,10 @@ import { BoardCard, BoardCardAge, KanbanBoard, KanbanCardToolbar } from '@/compo
 import { LabelChips } from '@/features/labels/LabelChips';
 import {
   FilterMenu,
-  UNASSIGNED,
-  dateRangeParams,
-  decodeDateRange,
   type FilterCategory,
   type FilterSelections,
 } from '@/components/FilterMenu';
+import { issueSharedFilterParams, issueSharedFilters } from '@/features/issues/issueFilters';
 import { useUsers } from '@/features/users/api';
 import { useProjects } from '@/features/projects/api';
 import {
@@ -192,25 +190,17 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
   const { data: cyclesData } = useCycles(cyclesEnabled ? teamId : undefined);
   const cycleOptions = cyclesEnabled ? buildCycleOptions(cyclesData) : undefined;
 
-  // The two date windows, as the instants the API filters on (see
-  // `dateRangeParams` for why they aren't sent as bare calendar dates).
-  const created = dateRangeParams(decodeDateRange(filters.createdAt));
-  const solved = dateRangeParams(decodeDateRange(filters.resolvedAt));
-
   const { data, isLoading } = useBugs({
     teamId,
     search: search || undefined,
     status: filters.status as BugStatus[] | undefined,
     severity: filters.severity as BugSeverity[] | undefined,
-    assigneeId: filters.assigneeId,
+    // Assignee, creator and the two date windows — the block every board shares.
+    ...issueSharedFilterParams(filters),
     // A ?projectId= in the URL scopes the whole board; the filter narrows within it.
     projectId: projectId ? [projectId] : filters.projectId,
     cycleId: teamId ? cycleParam || undefined : undefined,
     caseId,
-    createdFrom: created.from,
-    createdTo: created.to,
-    resolvedFrom: solved.from,
-    resolvedTo: solved.to,
     // Only the list view orders itself. Sending `sort` makes the API drop the
     // stored `order`, so the board (whose order *is* the drag position) and the
     // timeline must send neither param.
@@ -233,20 +223,6 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
         color: BUG_SEVERITY_COLOR[s],
       })),
     },
-    {
-      id: 'assigneeId',
-      label: t('filters.assignee'),
-      searchable: true,
-      options: [
-        // Everyone gets a self-filter first — the people list below is
-        // manager-only, so without this a member can't filter to their own bugs.
-        ...(user ? [{ id: user.id, label: t('filters.assignedToMe') }] : []),
-        { id: UNASSIGNED, label: t('filters.unassigned') },
-        ...(usersData?.items ?? [])
-          .filter((u) => u.id !== user?.id)
-          .map((u) => ({ id: u.id, label: u.name })),
-      ],
-    },
     // Already scoped by the URL — a project filter would be redundant.
     ...(projectId
       ? []
@@ -256,16 +232,10 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
             label: t('filters.project'),
             searchable: true,
             options: (projectsData?.items ?? []).map((p) => ({ id: p.id, label: p.title })),
-          },
+          } satisfies FilterCategory,
         ]),
-    // When it was reported, and when it was fixed. The two questions a QA board
-    // gets asked that the status columns can't answer — "what came in this
-    // week?" and "what did we actually close last month?".
-    { id: 'createdAt', label: t('filters.createdDate'), type: 'date' },
-    // Solved = the moment it entered Resolved/Closed (`resolvedAt`, stamped
-    // server-side). A bug that's still open has no solved date, so any window
-    // here narrows to fixed bugs on its own.
-    { id: 'resolvedAt', label: t('filters.solvedDate'), type: 'date' },
+    // Assignee · creator · created date · solved date — identical on every board.
+    ...issueSharedFilters({ user, users: usersData?.items }),
   ];
 
   const bugs = data?.items ?? [];
