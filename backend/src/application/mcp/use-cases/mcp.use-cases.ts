@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { IUsecaseExecute, Role } from '@core/interfaces';
+import { AuditActor } from '@application/audit-log/domain/enums/audit.enums';
 import { Result } from '@shared/logic/result';
 import { PaginationDto } from '@module-shared/modules/pagination/pagination.dto';
 import { CreateIssueUseCase } from '@application/issues/use-cases/create-issue.use-case';
@@ -322,6 +323,7 @@ export class McpCreateIssueUseCase
       // activity trail; the MCP history below records that a robot typed it.
       createdBy: actor.userId,
       createdByName: actorUser?.name ?? actor.keyName,
+      actorType: AuditActor.API,
       dto: {
         kind: dto.kind,
         title: dto.title,
@@ -598,6 +600,7 @@ export class McpUpdateIssueUseCase
       tenantId: actor.tenantId,
       requesterId: actor.userId,
       requesterName: actor.keyName,
+      actorType: AuditActor.API,
       isAdmin,
       dto: update,
     });
@@ -677,6 +680,7 @@ export class McpSetStatusUseCase
       tenantId: actor.tenantId,
       requesterId: actor.userId,
       requesterName: actor.keyName,
+      actorType: AuditActor.API,
       isAdmin,
       status,
     });
@@ -768,6 +772,7 @@ export class McpDeleteIssueUseCase
       tenantId: actor.tenantId,
       requesterId: actor.userId,
       requesterName: actor.keyName,
+      actorType: AuditActor.API,
       isAdmin,
       canDeleteBug,
     });

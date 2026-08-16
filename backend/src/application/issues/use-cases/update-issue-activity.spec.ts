@@ -1,6 +1,7 @@
 import { UpdateIssueUseCase } from './update-issue.use-case';
 import { IssueEntity } from '../domain/entities/issue.entity';
 import { IssueKind } from '../domain/enums/issue.enums';
+import { AuditActor } from '@application/audit-log/domain/enums/audit.enums';
 
 function makeIssue(): IssueEntity {
   return IssueEntity.create({
@@ -117,5 +118,26 @@ describe('UpdateIssueUseCase activity', () => {
 
     const changes = recorded[0].changes as { field: string; oldValue: string; newValue: string }[];
     expect(changes).toEqual([{ field: 'description', oldValue: '', newValue: '' }]);
+  });
+
+  it('records an MCP write as an API actor', async () => {
+    const issue = makeIssue();
+    const { uc, recorded } = build(issue);
+
+    await uc.execute({
+      id: 'i1',
+      tenantId: 't1',
+      requesterId: 'owner-1',
+      requesterName: 'qa-runner',
+      actorType: AuditActor.API,
+      isAdmin: true,
+      dto: { severity: 'critical' } as never,
+    });
+
+    expect(recorded[0].actor).toEqual({
+      type: AuditActor.API,
+      id: 'owner-1',
+      name: 'qa-runner',
+    });
   });
 });

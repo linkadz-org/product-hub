@@ -23,6 +23,8 @@ export interface CreateIssueRequest {
   tenantId: string;
   createdBy: string;
   createdByName: string;
+  /** Defaults to USER. MCP passes API so a bot is distinguishable from a person. */
+  actorType?: AuditActor;
   dto: CreateIssueDto;
 }
 
@@ -44,6 +46,7 @@ export class CreateIssueUseCase
     tenantId,
     createdBy,
     createdByName,
+    actorType,
     dto,
   }: CreateIssueRequest): Promise<Result<IssueEntity>> {
     // A personal issue is always a private task (bugs are never personal).
@@ -185,7 +188,7 @@ export class CreateIssueUseCase
       entity: AuditEntity.ISSUE,
       entityId: issue.id.toString(),
       entityRef: issue.shortId || issue.id.toString(),
-      actor: { type: AuditActor.USER, id: createdBy, name: createdByName },
+      actor: { type: actorType ?? AuditActor.USER, id: createdBy, name: createdByName },
       changes: [{ field: 'created', oldValue: '', newValue: '' }],
     });
 

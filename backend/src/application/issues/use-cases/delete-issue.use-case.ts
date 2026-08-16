@@ -13,6 +13,8 @@ export interface DeleteIssueRequest {
   requesterId: string;
   /** Display name of the caller — recorded on history rows. */
   requesterName: string;
+  /** Defaults to USER. MCP passes API so a bot is distinguishable from a person. */
+  actorType?: AuditActor;
   isAdmin: boolean;
   /** Deleting a *bug* is restricted to admin/product (mirrors the old bug rule). */
   canDeleteBug: boolean;
@@ -30,6 +32,7 @@ export class DeleteIssueUseCase implements IUsecaseExecute<DeleteIssueRequest, R
     tenantId,
     requesterId,
     requesterName,
+    actorType,
     isAdmin,
     canDeleteBug,
   }: DeleteIssueRequest): Promise<Result<void>> {
@@ -50,7 +53,7 @@ export class DeleteIssueUseCase implements IUsecaseExecute<DeleteIssueRequest, R
       entity: AuditEntity.ISSUE,
       entityId: id,
       entityRef: deletedRef,
-      actor: { type: AuditActor.USER, id: requesterId, name: requesterName },
+      actor: { type: actorType ?? AuditActor.USER, id: requesterId, name: requesterName },
       changes: [{ field: 'deleted', oldValue: '', newValue: '' }],
     });
 

@@ -20,6 +20,8 @@ export interface UpdateIssueRequest {
   requesterId: string;
   /** Display name of the caller — recorded on history rows. */
   requesterName: string;
+  /** Defaults to USER. MCP passes API so a bot is distinguishable from a person. */
+  actorType?: AuditActor;
   isAdmin: boolean;
   dto: UpdateIssueDto;
 }
@@ -40,6 +42,7 @@ export class UpdateIssueUseCase
     tenantId,
     requesterId,
     requesterName,
+    actorType,
     isAdmin,
     dto,
   }: UpdateIssueRequest): Promise<Result<IssueEntity>> {
@@ -121,7 +124,7 @@ export class UpdateIssueUseCase
       entity: AuditEntity.ISSUE,
       entityId: issue.id.toString(),
       entityRef: issue.shortId || issue.id.toString(),
-      actor: { type: AuditActor.USER, id: requesterId, name: requesterName },
+      actor: { type: actorType ?? AuditActor.USER, id: requesterId, name: requesterName },
       changes: diffIssue(before, issue),
     });
 

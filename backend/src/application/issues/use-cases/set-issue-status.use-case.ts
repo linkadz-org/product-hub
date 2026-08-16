@@ -13,6 +13,8 @@ export interface SetIssueStatusRequest {
   requesterId: string;
   /** Display name of the caller — recorded on history rows. */
   requesterName: string;
+  /** Defaults to USER. MCP passes API so a bot is distinguishable from a person. */
+  actorType?: AuditActor;
   isAdmin: boolean;
   status: string;
 }
@@ -32,6 +34,7 @@ export class SetIssueStatusUseCase
     tenantId,
     requesterId,
     requesterName,
+    actorType,
     isAdmin,
     status,
   }: SetIssueStatusRequest): Promise<Result<IssueEntity>> {
@@ -48,7 +51,7 @@ export class SetIssueStatusUseCase
       entity: AuditEntity.ISSUE,
       entityId: issue.id.toString(),
       entityRef: issue.shortId || issue.id.toString(),
-      actor: { type: AuditActor.USER, id: requesterId, name: requesterName },
+      actor: { type: actorType ?? AuditActor.USER, id: requesterId, name: requesterName },
       changes:
         oldStatus === status
           ? []
