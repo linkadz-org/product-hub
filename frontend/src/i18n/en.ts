@@ -389,10 +389,15 @@ export const en = {
   'activityLog.field.caseId': 'test case',
   'activityLog.field.title': 'title',
   'activityLog.field.description': 'description',
+  // Doc-page only: a page's rank among its siblings (see NO_VALUE_FIELDS in
+  // entryText.ts) — reads as "changed position", never the raw integer.
+  'activityLog.field.order': 'position',
   'activityLog.verb.created': 'created this',
   'activityLog.verb.deleted': 'deleted this',
   'activityLog.verb.changed': 'changed',
   'activityLog.verb.edited': 'edited the',
+  // Doc pages only (RestoreDocPageVersionUseCase).
+  'activityLog.verb.restored': 'restored an earlier version',
   // Word order for "{verb} {field}" — English is SVO (verb before object), so
   // the verb comes first. Kept as its own key (not a hardcoded join) so `ko`
   // can flip the order without either locale reading backwards. See the `ko`

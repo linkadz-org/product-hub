@@ -61,7 +61,10 @@ export type TrackedField =
   | 'reportId'
   | 'caseId'
   | 'title'
-  | 'description';
+  | 'description'
+  // Doc-page-only field (see backend/src/application/docs/domain/doc-page-diff.ts):
+  // a page's rank among its siblings. Value-less — see NO_VALUE_FIELDS below.
+  | 'order';
 
 /**
  * Field name -> i18n key for its label. A `Record` over the closed
@@ -86,20 +89,38 @@ export const FIELD_LABEL: Record<TrackedField, I18nKey> = {
   caseId: 'activityLog.field.caseId',
   title: 'activityLog.field.title',
   description: 'activityLog.field.description',
+  order: 'activityLog.field.order',
 };
 
 /** Long-form-text fields: the backend never stores their content, so the
- *  sentence reads "edited the X" — a distinct verb from a plain value change. */
-const LONG_TEXT_FIELDS = new Set<string>(['title', 'description']);
+ *  sentence reads "edited the X" — a distinct verb from a plain value change.
+ *
+ *  `title` is deliberately NOT here (nor is it in NO_VALUE_FIELDS below): the
+ *  backend promoted it to a value-bearing field — see `issue-diff.ts` and
+ *  `doc-page-diff.ts` — because "renamed" with no values is a log line that
+ *  tells you nothing, and a title is short enough that the storage argument
+ *  for `description` never applied to it. It falls through to the generic
+ *  value-pair branch at the bottom of `describeEntry`, same as `status`. */
+const LONG_TEXT_FIELDS = new Set<string>(['description']);
 
 /** Fields whose values are deliberately stored empty by the backend — the
- *  superset of {@link LONG_TEXT_FIELDS} plus bare ids with no display form
- *  (`cycleId`, `parentId`, `projectId`; see NO_VALUE_FIELDS in
- *  backend/src/application/issues/domain/issue-diff.ts for why). Mirrors that
- *  backend set so the row never shows raw UUIDs; verb choice for the two
- *  sub-cases still differs (see `describeEntry`), only "don't show values"
- *  is shared here — that is the concept this generalises. */
-const NO_VALUE_FIELDS = new Set<string>([...LONG_TEXT_FIELDS, 'cycleId', 'parentId', 'projectId']);
+ *  superset of {@link LONG_TEXT_FIELDS} plus bare ids/indexes with no display
+ *  form (`cycleId`, `parentId`, `projectId`; see NO_VALUE_FIELDS in
+ *  backend/src/application/issues/domain/issue-diff.ts for why). `order` is
+ *  the doc-page equivalent (see NO_VALUE_FIELDS in
+ *  backend/src/application/docs/domain/doc-page-diff.ts): the move is worth a
+ *  row, the raw position index is not. Mirrors those backend sets so the row
+ *  never shows a raw uuid or an integer nobody reads as history; verb choice
+ *  for the long-text vs. bare-id/index sub-cases still differs (see
+ *  `describeEntry`), only "don't show values" is shared here — that is the
+ *  concept this generalises. */
+const NO_VALUE_FIELDS = new Set<string>([
+  ...LONG_TEXT_FIELDS,
+  'cycleId',
+  'parentId',
+  'projectId',
+  'order',
+]);
 
 function isTrackedField(field: string): field is TrackedField {
   return Object.prototype.hasOwnProperty.call(FIELD_LABEL, field);
@@ -163,6 +184,20 @@ export function describeEntry(entry: ActivityEntry): EntryText {
     return {
       subject,
       verb: t('activityLog.verb.deleted'),
+      from: '',
+      to: '',
+      noValue: false,
+      valuesBeforeVerb: order,
+    };
+  }
+  // Doc pages only (RestoreDocPageVersionUseCase). A dedicated event, not a
+  // diff of `title`/`content` — "restored an earlier version" is the useful
+  // fact, not the version's label, so this reads like `created`/`deleted`
+  // above rather than a value-bearing field change.
+  if (entry.field === 'version_restored') {
+    return {
+      subject,
+      verb: t('activityLog.verb.restored'),
       from: '',
       to: '',
       noValue: false,

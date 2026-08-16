@@ -86,6 +86,51 @@ describe('describeEntry', () => {
     }
   });
 
+  // Backend fix: title was promoted out of the long-text set (issue-diff.ts /
+  // doc-page-diff.ts) because "renamed" with no values tells you nothing, and
+  // a title is short enough that the storage argument for `description`
+  // never applied to it. It must render like an ordinary value-bearing field.
+  it('renders a title change with its real values, not as "edited the title"', () => {
+    const r = describeEntry({
+      ...base,
+      field: 'title',
+      oldValue: 'Login fails',
+      newValue: 'Login fails on Safari',
+    } as never);
+    expect(r.noValue).toBe(false);
+    expect(r.from).toBe('Login fails');
+    expect(r.to).toBe('Login fails on Safari');
+    expect(r.verb).toContain('changed');
+  });
+
+  // A doc-page reorder among siblings: the move is worth a row, the raw
+  // position index is not — nobody reads "changed position from 3 to 5" as
+  // history.
+  it('renders order as value-less — no raw position index', () => {
+    const r = describeEntry({ ...base, field: 'order', oldValue: '', newValue: '' } as never);
+    expect(r.noValue).toBe(true);
+    expect(r.from).toBe('');
+    expect(r.to).toBe('');
+    expect(r.verb).toContain('changed');
+  });
+
+  // Unmapped since Task 15 first shipped — previously rendered the raw field
+  // name "version_restored" via the generic fallback branch.
+  it('renders version_restored with a dedicated verb, not the raw field name', () => {
+    const r = describeEntry({
+      ...base,
+      entity: 'doc_page',
+      field: 'version_restored',
+      oldValue: '',
+      newValue: 'Before the rewrite',
+    } as never);
+    expect(r.verb).toContain('restored');
+    expect(r.verb).not.toContain('version_restored');
+    expect(r.noValue).toBe(false);
+    expect(r.from).toBe('');
+    expect(r.to).toBe('');
+  });
+
   it('renders roadmapItemId/caseId as an ordinary value pair (already a label, not an id)', () => {
     const r = describeEntry({
       ...base,

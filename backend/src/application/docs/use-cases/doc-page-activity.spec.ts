@@ -128,6 +128,34 @@ describe('UpdateDocPageUseCase activity', () => {
     const title = changes.find((c) => c.field === 'title');
     expect(title?.oldValue).toBe('Old');
   });
+
+  // Runs the REAL use-case with a fake activity recorder — not a mocked
+  // collaborator asserting it was called with the right argument. That
+  // distinction matters: a test against a mock only proves the caller
+  // *forwards* actorType, not that it *reaches* the recorded row. If someone
+  // later dropped `actorType` from the `activity.execute` call inside
+  // UpdateDocPageUseCase, a mock-boundary test would stay green while every
+  // MCP doc event silently went back to reading as a human. Mirrors
+  // `update-issue-activity.spec.ts`'s "records an MCP write as an API actor".
+  it('records an MCP write as an API actor', async () => {
+    const page = withId(makePage({ title: 'Old' }), 'p1');
+    const { uc, recorded } = build(page);
+
+    await uc.execute({
+      docId: 'doc1',
+      pageId: 'p1',
+      tenantId: 't1',
+      author: { userId: 'owner-1', name: 'qa-runner' },
+      actorType: AuditActor.API,
+      dto: { title: 'New' } as never,
+    });
+
+    expect(recorded[0].actor).toEqual({
+      type: AuditActor.API,
+      id: 'owner-1',
+      name: 'qa-runner',
+    });
+  });
 });
 
 describe('DeleteDocPageUseCase activity', () => {

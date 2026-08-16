@@ -384,10 +384,12 @@ export const ko: Record<I18nKey, string> = {
   'activityLog.field.caseId': '테스트 케이스',
   'activityLog.field.title': '제목',
   'activityLog.field.description': '설명',
+  'activityLog.field.order': '위치',
   'activityLog.verb.created': '이 항목을 생성함',
   'activityLog.verb.deleted': '이 항목을 삭제함',
   'activityLog.verb.changed': '변경함',
   'activityLog.verb.edited': '수정함',
+  'activityLog.verb.restored': '이전 버전으로 복원함',
   // Korean is SOV — the object (field) comes before the verb, the reverse of
   // English. "상태 변경함" ("status changed"), not "변경함 상태".
   'activityLog.sentence': '{field} {verb}',
