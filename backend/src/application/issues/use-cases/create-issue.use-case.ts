@@ -11,6 +11,8 @@ import { WebhookEvent } from '@application/app-settings/domain/webhook.types';
 import { ICycleRepository } from '@application/cycles/repositories/cycle.repository';
 import { CycleStatus } from '@application/cycles/domain/enums/cycle.enums';
 import { todayISO } from '@application/cycles/domain/cycle-dates';
+import { RecordActivityUseCase } from '@application/audit-log/use-cases';
+import { AuditActor, AuditEntity } from '@application/audit-log/domain/enums/audit.enums';
 import { CreateIssueDto } from '../dtos/create-issue.dto';
 import { IssueEntity } from '../domain/entities/issue.entity';
 import { ISSUE_REF_PREFIX, IssueKind } from '../domain/enums/issue.enums';
@@ -35,6 +37,7 @@ export class CreateIssueUseCase
     @Inject(ICycleRepository) private readonly cycles: ICycleRepository,
     @Inject(INotifier) private readonly notifier: INotifier,
     private readonly counters: CounterService,
+    private readonly activity: RecordActivityUseCase,
   ) {}
 
   async execute({
@@ -176,6 +179,15 @@ export class CreateIssueUseCase
 
     const issue = created.getValue();
     await this.issues.save(issue);
+
+    await this.activity.execute({
+      tenantId,
+      entity: AuditEntity.ISSUE,
+      entityId: issue.id.toString(),
+      entityRef: issue.shortId || issue.id.toString(),
+      actor: { type: AuditActor.USER, id: createdBy, name: createdByName },
+      changes: [{ field: 'created', oldValue: '', newValue: '' }],
+    });
 
     // Preserve the bug's outbound webhooks (best-effort, never blocks the response).
     if (isBug) {
