@@ -9,7 +9,6 @@ function makeIssue(over: Record<string, unknown> = {}): IssueEntity {
     title: 'Login fails',
     createdBy: 'u1',
     status: 'Backlog',
-    severity: '',
     ...over,
   } as never).getValue();
 }
@@ -27,7 +26,7 @@ describe('diffIssue', () => {
     issue.applyUpdate({ severity: 'critical' } as never);
     const changes = diffIssue(before, issue);
     expect(changes).toEqual([
-      { field: 'severity', oldValue: '', newValue: 'critical' },
+      { field: 'severity', oldValue: 'medium', newValue: 'critical' },
     ]);
   });
 
