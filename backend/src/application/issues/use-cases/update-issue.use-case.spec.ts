@@ -22,8 +22,14 @@ const build = (byId: Record<string, IssueEntity>) => {
   };
   const users = { findByIds: jest.fn(() => Promise.resolve([])) };
   const cycles = { findById: jest.fn(() => Promise.resolve(null)) };
+  const activity = { execute: jest.fn(() => Promise.resolve()) };
   return {
-    useCase: new UpdateIssueUseCase(issues as never, users as never, cycles as never),
+    useCase: new UpdateIssueUseCase(
+      issues as never,
+      users as never,
+      cycles as never,
+      activity as never,
+    ),
     issues,
   };
 };
