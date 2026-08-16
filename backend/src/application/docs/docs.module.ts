@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { InfrastructureDocsModule } from '@infrastructure/docs/docs.module';
 // Deleting a doc / page takes its comment threads with it.
 import { InfrastructureActivityModule } from '@infrastructure/activity/activity.module';
+import { ApplicationAuditLogModule } from '@application/audit-log/audit-log.module';
 import {
   CreateDocUseCase,
   DuplicateDocUseCase,
@@ -51,7 +52,7 @@ const useCases = [
 ];
 
 @Module({
-  imports: [InfrastructureDocsModule, InfrastructureActivityModule],
+  imports: [InfrastructureDocsModule, InfrastructureActivityModule, ApplicationAuditLogModule],
   providers: [...useCases],
   exports: [...useCases],
 })

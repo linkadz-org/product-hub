@@ -216,7 +216,12 @@ export class DocsController {
     @Param('id') id: string,
     @Body() dto: ReorderDocPagesDto,
   ): Promise<DocPageSummaryDto[]> {
-    const result = await this.reorderPages.execute({ docId: id, tenantId: auth.tenantId, dto });
+    const result = await this.reorderPages.execute({
+      docId: id,
+      tenantId: auth.tenantId,
+      author: { userId: auth.userId, name: auth.name },
+      dto,
+    });
     if (result.isFailure) throw new EntityNotFoundException(result.error as string);
     return result.getValue().map((p) => DocMapper.toPageSummaryDto(p));
   }
@@ -300,7 +305,12 @@ export class DocsController {
     @Param('id') id: string,
     @Param('pageId') pageId: string,
   ): Promise<{ ok: true; deletedIds: string[] }> {
-    const result = await this.deletePage.execute({ docId: id, pageId, tenantId: auth.tenantId });
+    const result = await this.deletePage.execute({
+      docId: id,
+      pageId,
+      tenantId: auth.tenantId,
+      author: { userId: auth.userId, name: auth.name },
+    });
     if (result.isFailure) throw new EntityNotFoundException(result.error as string);
     return { ok: true, deletedIds: result.getValue() };
   }

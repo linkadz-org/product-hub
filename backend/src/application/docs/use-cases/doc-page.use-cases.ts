@@ -2,11 +2,14 @@ import { Inject, Injectable } from '@nestjs/common';
 import { IUsecaseExecute } from '@core/interfaces';
 import { Result } from '@shared/logic/result';
 import { ICommentRepository } from '@application/activity/repositories/comment.repository';
+import { RecordActivityUseCase } from '@application/audit-log/use-cases';
+import { AuditActor, AuditEntity } from '@application/audit-log/domain/enums/audit.enums';
 import { CreateDocPageDto, ReorderDocPagesDto, UpdateDocPageDto } from '../dtos/doc.dtos';
 import { DocPageEntity } from '../domain/entities/doc-page.entity';
 import { IDocRepository } from '../repositories/doc.repository';
 import { IDocPageRepository } from '../repositories/doc-page.repository';
 import { IDocPageVersionRepository } from '../repositories/doc-page-version.repository';
+import { diffDocPage, snapshotDocPage } from '../domain/doc-page-diff';
 
 /**
  * A page plus the doc it lives in — the linked-docs list needs the doc's title
@@ -52,6 +55,7 @@ export class CreateDocPageUseCase
   constructor(
     @Inject(IDocRepository) private readonly docs: IDocRepository,
     @Inject(IDocPageRepository) private readonly pages: IDocPageRepository,
+    private readonly activity: RecordActivityUseCase,
   ) {}
 
   async execute({
@@ -96,6 +100,16 @@ export class CreateDocPageUseCase
     // The hub sorts by activity, so adding a page counts as touching the doc.
     doc.touch();
     await this.docs.update(doc);
+
+    await this.activity.execute({
+      tenantId,
+      entity: AuditEntity.DOC_PAGE,
+      entityId: page.id.toString(),
+      entityRef: page.title,
+      actor: { type: AuditActor.USER, id: author.userId, name: author.name },
+      changes: [{ field: 'created', oldValue: '', newValue: '' }],
+    });
+
     return Result.ok(page);
   }
 }
@@ -141,6 +155,7 @@ export class UpdateDocPageUseCase
   constructor(
     @Inject(IDocRepository) private readonly docs: IDocRepository,
     @Inject(IDocPageRepository) private readonly pages: IDocPageRepository,
+    private readonly activity: RecordActivityUseCase,
   ) {}
 
   async execute({
@@ -160,6 +175,11 @@ export class UpdateDocPageUseCase
     if (!page || page.tenantId !== tenantId || page.docId !== docId) {
       return Result.fail('Page not found');
     }
+
+    // Before ANY mutation — applyEdit below mutates the entity in place, so a
+    // snapshot taken afterwards would diff the entity against itself.
+    const before = snapshotDocPage(page);
+
     page.applyEdit(
       {
         title: dto.title,
@@ -189,6 +209,18 @@ export class UpdateDocPageUseCase
       doc.touch();
       await this.docs.update(doc);
     }
+
+    // `content` is deliberately not a tracked field — see doc-page-diff.ts. Only
+    // structural fields (title today) ever reach the log from this route.
+    await this.activity.execute({
+      tenantId,
+      entity: AuditEntity.DOC_PAGE,
+      entityId: page.id.toString(),
+      entityRef: page.title,
+      actor: { type: AuditActor.USER, id: author.userId, name: author.name },
+      changes: diffDocPage(before, page),
+    });
+
     return Result.ok(page);
   }
 }
@@ -196,13 +228,17 @@ export class UpdateDocPageUseCase
 @Injectable()
 export class DeleteDocPageUseCase
   implements
-    IUsecaseExecute<{ docId: string; pageId: string; tenantId: string }, Result<string[]>>
+    IUsecaseExecute<
+      { docId: string; pageId: string; tenantId: string; author: Author },
+      Result<string[]>
+    >
 {
   constructor(
     @Inject(IDocRepository) private readonly docs: IDocRepository,
     @Inject(IDocPageRepository) private readonly pages: IDocPageRepository,
     @Inject(IDocPageVersionRepository) private readonly versions: IDocPageVersionRepository,
     @Inject(ICommentRepository) private readonly comments: ICommentRepository,
+    private readonly activity: RecordActivityUseCase,
   ) {}
 
   /** Resolves to the ids that were removed — the page and everything under it. */
@@ -210,15 +246,21 @@ export class DeleteDocPageUseCase
     docId,
     pageId,
     tenantId,
+    author,
   }: {
     docId: string;
     pageId: string;
     tenantId: string;
+    author: Author;
   }): Promise<Result<string[]>> {
     const doc = await this.docs.findById(docId);
     if (!doc || doc.tenantId !== tenantId) return Result.fail('Doc not found');
     const all = await this.pages.findByDoc(docId);
-    if (!all.some((p) => p.id.toString() === pageId)) return Result.fail('Page not found');
+    const target = all.find((p) => p.id.toString() === pageId);
+    if (!target) return Result.fail('Page not found');
+    // Captured before the delete — the entity is gone afterwards, but the row
+    // has to outlive it.
+    const deletedRef = target.title;
 
     // A sub-page has no meaning without its parent, so the branch goes together.
     const ids = withDescendants(all, pageId);
@@ -230,6 +272,19 @@ export class DeleteDocPageUseCase
     await this.comments.deleteByDocPages(tenantId, ids);
     doc.touch();
     await this.docs.update(doc);
+
+    // One row for the page the caller acted on — deleted descendants are a
+    // consequence of that action, not a thing anybody chose separately, and
+    // they no longer have a readable history stream to append to anyway.
+    await this.activity.execute({
+      tenantId,
+      entity: AuditEntity.DOC_PAGE,
+      entityId: pageId,
+      entityRef: deletedRef,
+      actor: { type: AuditActor.USER, id: author.userId, name: author.name },
+      changes: [{ field: 'deleted', oldValue: '', newValue: '' }],
+    });
+
     return Result.ok(ids);
   }
 }
@@ -238,22 +293,25 @@ export class DeleteDocPageUseCase
 export class ReorderDocPagesUseCase
   implements
     IUsecaseExecute<
-      { docId: string; tenantId: string; dto: ReorderDocPagesDto },
+      { docId: string; tenantId: string; author: Author; dto: ReorderDocPagesDto },
       Result<DocPageEntity[]>
     >
 {
   constructor(
     @Inject(IDocRepository) private readonly docs: IDocRepository,
     @Inject(IDocPageRepository) private readonly pages: IDocPageRepository,
+    private readonly activity: RecordActivityUseCase,
   ) {}
 
   async execute({
     docId,
     tenantId,
+    author,
     dto,
   }: {
     docId: string;
     tenantId: string;
+    author: Author;
     dto: ReorderDocPagesDto;
   }): Promise<Result<DocPageEntity[]>> {
     const doc = await this.docs.findById(docId);
@@ -284,6 +342,11 @@ export class ReorderDocPagesUseCase
     }
 
     const moved: DocPageEntity[] = [];
+    // Snapshot every page BEFORE moveTo mutates it in place — same trap as
+    // UpdateDocPageUseCase above.
+    const before = new Map(
+      dto.pages.map((pos) => [pos.id, snapshotDocPage(byId.get(pos.id) as DocPageEntity)]),
+    );
     for (const pos of dto.pages) {
       const page = byId.get(pos.id) as DocPageEntity;
       page.moveTo(pos.parentId || '', pos.order);
@@ -292,6 +355,22 @@ export class ReorderDocPagesUseCase
     await this.pages.updateMany(moved);
     doc.touch();
     await this.docs.update(doc);
+
+    for (const page of moved) {
+      const snapshot = before.get(page.id.toString());
+      if (!snapshot) continue;
+      const changes = diffDocPage(snapshot, page);
+      if (!changes.length) continue;
+      await this.activity.execute({
+        tenantId,
+        entity: AuditEntity.DOC_PAGE,
+        entityId: page.id.toString(),
+        entityRef: page.title,
+        actor: { type: AuditActor.USER, id: author.userId, name: author.name },
+        changes,
+      });
+    }
+
     return Result.ok(await this.pages.findByDoc(docId));
   }
 }

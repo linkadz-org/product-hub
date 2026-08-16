@@ -1,6 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { IUsecaseExecute } from '@core/interfaces';
 import { Result } from '@shared/logic/result';
+import { RecordActivityUseCase } from '@application/audit-log/use-cases';
+import { AuditActor, AuditEntity } from '@application/audit-log/domain/enums/audit.enums';
 import { SaveDocPageVersionDto } from '../dtos/doc.dtos';
 import { DocPageEntity } from '../domain/entities/doc-page.entity';
 import { DocPageVersionEntity } from '../domain/entities/doc-page-version.entity';
@@ -132,6 +134,7 @@ export class RestoreDocPageVersionUseCase
     @Inject(IDocRepository) private readonly docs: IDocRepository,
     @Inject(IDocPageRepository) private readonly pages: IDocPageRepository,
     @Inject(IDocPageVersionRepository) private readonly versions: IDocPageVersionRepository,
+    private readonly activity: RecordActivityUseCase,
   ) {}
 
   async execute({
@@ -166,6 +169,19 @@ export class RestoreDocPageVersionUseCase
       doc.touch();
       await this.docs.update(doc);
     }
+
+    // This is a dedicated event, not a diff of `title`/`content` — the body
+    // itself is never tracked (see doc-page-diff.ts), and "restored to an old
+    // version" is a more useful fact than "the title changed".
+    await this.activity.execute({
+      tenantId,
+      entity: AuditEntity.DOC_PAGE,
+      entityId: page.id.toString(),
+      entityRef: page.title,
+      actor: { type: AuditActor.USER, id: author.userId, name: author.name },
+      changes: [{ field: 'version_restored', oldValue: '', newValue: version.label }],
+    });
+
     return Result.ok(page);
   }
 }

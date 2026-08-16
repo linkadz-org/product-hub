@@ -5,12 +5,12 @@ import { GetActivityUseCase } from '@application/audit-log/use-cases/get-activit
 
 /**
  * There is no MongoDB in CI/dev for this task, so the only way to prove the DI
- * graph actually resolves — GetActivityUseCase gets both IAuditLogRepository
- * and IIssueRepository injected, and every module in between exports what the
- * next one needs — is to compile the real module graph here with the two
- * Mongoose models it pulls in stubbed out. A stub model is safe because the
- * repository constructors only store the injected model; they never call it
- * until a query method runs.
+ * graph actually resolves — GetActivityUseCase gets IAuditLogRepository,
+ * IIssueRepository and IDocPageRepository injected, and every module in
+ * between exports what the next one needs — is to compile the real module
+ * graph here with the Mongoose models it pulls in stubbed out. A stub model is
+ * safe because the repository constructors only store the injected model;
+ * they never call it until a query method runs.
  */
 describe('ActivityLogPresentationModule (DI graph)', () => {
   it('compiles without a live Mongo connection and resolves GetActivityUseCase', async () => {
@@ -20,6 +20,12 @@ describe('ActivityLogPresentationModule (DI graph)', () => {
       .overrideProvider(getModelToken('AuditLog'))
       .useValue({})
       .overrideProvider(getModelToken('Issue'))
+      .useValue({})
+      .overrideProvider(getModelToken('Doc'))
+      .useValue({})
+      .overrideProvider(getModelToken('DocPage'))
+      .useValue({})
+      .overrideProvider(getModelToken('DocPageVersion'))
       .useValue({})
       .compile();
 
