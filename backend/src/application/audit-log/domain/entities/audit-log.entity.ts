@@ -36,7 +36,7 @@ export class AuditLogEntity extends AggregateRoot<AuditLogProps> {
           projectId: props.projectId,
           reportId: props.reportId,
           entity: props.entity,
-          entityId: props.entityId,
+          entityId: props.entityId ?? '',
           entityRef: props.entityRef,
           field: props.field,
           oldValue: props.oldValue,
