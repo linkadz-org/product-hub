@@ -1071,6 +1071,7 @@ export class McpCreateBacklogItemUseCase
       );
     }
 
+    const actorUser = await this.users.findById(actor.userId);
     const added = await this.addItem.execute({
       id: roadmap.id.toString(),
       tenantId: actor.tenantId,
@@ -1087,6 +1088,11 @@ export class McpCreateBacklogItemUseCase
         startDate: dto.startDate,
         endDate: dto.endDate,
       },
+      // Attributed to the key's owner, so the item has a real author in the
+      // app's activity trail; the MCP history below records that a robot typed it.
+      requesterId: actor.userId,
+      requesterName: actorUser?.name ?? actor.keyName,
+      actorType: AuditActor.API,
     });
     if (added.isFailure) return Result.fail(added.error as string);
 
@@ -1094,7 +1100,6 @@ export class McpCreateBacklogItemUseCase
     const roadmapId = roadmap.id.toString();
     const link = backlogItemLink(roadmapId, item.shortId || item.id);
 
-    const actorUser = await this.users.findById(actor.userId);
     const event = McpEventEntity.create({
       tenantId: actor.tenantId,
       keyId: actor.keyId,

@@ -78,6 +78,7 @@ describe('ReplaceRoadmapItemsUseCase', () => {
         update: async () => undefined,
       } as never,
       c as never,
+      { execute: async () => undefined } as never,
     );
     return { useCase, roadmap, counters: c };
   }
@@ -101,6 +102,8 @@ describe('ReplaceRoadmapItemsUseCase', () => {
     const result = await useCase.execute({
       id: 'r1',
       tenantId: 't1',
+      requesterId: 'u1',
+      requesterName: 'Tester',
       // The client echoes a different shortId back; it must be ignored.
       dto: { items: [item({ id: 'a', shortId: 'RM-999' } as never)] } as never,
     });
@@ -117,6 +120,8 @@ describe('ReplaceRoadmapItemsUseCase', () => {
     await useCase.execute({
       id: 'r1',
       tenantId: 't1',
+      requesterId: 'u1',
+      requesterName: 'Tester',
       dto: {
         items: [
           item({
@@ -148,6 +153,8 @@ describe('ReplaceRoadmapItemsUseCase', () => {
     await useCase.execute({
       id: 'r1',
       tenantId: 't1',
+      requesterId: 'u1',
+      requesterName: 'Tester',
       dto: {
         items: [
           item({ id: 'b' } as never),
@@ -170,6 +177,8 @@ describe('ReplaceRoadmapItemsUseCase', () => {
     await useCase.execute({
       id: 'r1',
       tenantId: 't1',
+      requesterId: 'u1',
+      requesterName: 'Tester',
       dto: {
         items: [item({ id: 'new-1', status: RoadmapItemStatus.IN_PROGRESS } as never)],
       } as never,

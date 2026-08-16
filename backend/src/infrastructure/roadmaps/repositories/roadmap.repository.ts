@@ -71,6 +71,15 @@ export class RoadmapRepository
     return doc ? this.toDomain(doc) : null;
   }
 
+  async findByItemId(tenantId: string, itemId: string): Promise<RoadmapEntity | null> {
+    if (!itemId) return null;
+    const doc = await this.model
+      .findOne({ tenantId, 'items.id': itemId })
+      .lean<RoadmapDoc>()
+      .exec();
+    return doc ? this.toDomain(doc) : null;
+  }
+
   async findItemByRef(tenantId: string, ref: string): Promise<RoadmapItemLocation | null> {
     if (!ref) return null;
     // Only the items array comes back — a roadmap can hold hundreds of items with

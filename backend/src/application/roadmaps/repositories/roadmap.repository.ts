@@ -15,6 +15,14 @@ export abstract class IRoadmapRepository {
    * of ids needed to reach one. Null when no item holds that ref.
    */
   findItemByRef: (tenantId: string, ref: string) => Promise<RoadmapItemLocation | null>;
+  /**
+   * Locate the roadmap that embeds an item by the item's own `id` (not its
+   * ref). Items have no independent access rule — a caller who only holds an
+   * item id (e.g. reading its activity history) guards on the roadmap this
+   * returns, the same way the roadmap-detail endpoint does. Null when no
+   * roadmap in this tenant holds that item.
+   */
+  findByItemId: (tenantId: string, itemId: string) => Promise<RoadmapEntity | null>;
   findByPublicToken: (token: string) => Promise<RoadmapEntity | null>;
   findByTenant: (tenantId: string) => Promise<RoadmapEntity[]>;
   save: (roadmap: RoadmapEntity) => Promise<void>;

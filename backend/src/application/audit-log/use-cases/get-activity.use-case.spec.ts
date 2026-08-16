@@ -12,7 +12,7 @@ const hiddenIssue = {
   id: { toString: () => 'i1' },
 };
 
-function build(issue: unknown, docPage: unknown = null) {
+function build(issue: unknown, docPage: unknown = null, roadmap: unknown = null) {
   const calls: unknown[] = [];
   const audit = {
     findByEntities: async (...args: unknown[]) => {
@@ -22,8 +22,9 @@ function build(issue: unknown, docPage: unknown = null) {
   };
   const issues = { findById: async () => issue };
   const docPages = { findById: async () => docPage };
+  const roadmaps = { findByItemId: async () => roadmap };
   return {
-    uc: new GetActivityUseCase(audit as never, issues as never, docPages as never),
+    uc: new GetActivityUseCase(audit as never, issues as never, docPages as never, roadmaps as never),
     calls,
   };
 }
@@ -63,9 +64,9 @@ describe('GetActivityUseCase', () => {
     expect((await uc.execute(req)).isFailure).toBe(true);
   });
 
-  it('refuses an entity kind it cannot guard yet', async () => {
+  it('refuses an entity kind it cannot guard at all', async () => {
     const { uc, calls } = build(visibleIssue);
-    const result = await uc.execute({ ...req, entity: AuditEntity.ROADMAP_ITEM });
+    const result = await uc.execute({ ...req, entity: 'nonsense' as AuditEntity });
     expect(result.isFailure).toBe(true);
     expect(calls).toHaveLength(0);
   });
@@ -95,6 +96,39 @@ describe('GetActivityUseCase', () => {
     it('fails, and never queries, when the page does not exist', async () => {
       const { uc, calls } = build(null, null);
       const result = await uc.execute(docReq);
+      expect(result.isFailure).toBe(true);
+      expect(calls).toHaveLength(0);
+    });
+  });
+
+  describe('roadmap items', () => {
+    // entityId here is the ITEM's id, not the roadmap's — the request never
+    // carries a roadmapId, so the guard has to resolve the containing roadmap
+    // from the item id alone (IRoadmapRepository#findByItemId).
+    const itemReq = { ...req, entity: AuditEntity.ROADMAP_ITEM, entityId: 'it1' };
+    const readableRoadmap = { tenantId: 't1' };
+
+    it('returns history for an item whose roadmap is in the caller\'s tenant', async () => {
+      const { uc, calls } = build(null, null, readableRoadmap);
+      const result = await uc.execute(itemReq);
+      expect(result.isSuccess).toBe(true);
+      expect(calls).toHaveLength(1);
+    });
+
+    it('fails, and runs no query, when the item has no independent access rule and its roadmap is unreadable', async () => {
+      // Items have no independent access rule — the only guard is the
+      // roadmap that contains them. An unreadable roadmap (different tenant)
+      // must fail without ever touching the audit log.
+      const { uc, calls } = build(null, null, { tenantId: 't2' });
+      const result = await uc.execute(itemReq);
+      expect(result.isFailure).toBe(true);
+      // The important half: no query ran, so no entityRef could leak.
+      expect(calls).toHaveLength(0);
+    });
+
+    it('fails, and never queries, when no roadmap embeds this item', async () => {
+      const { uc, calls } = build(null, null, null);
+      const result = await uc.execute(itemReq);
       expect(result.isFailure).toBe(true);
       expect(calls).toHaveLength(0);
     });

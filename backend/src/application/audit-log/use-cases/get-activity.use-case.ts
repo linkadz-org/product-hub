@@ -4,6 +4,7 @@ import { Result } from '@shared/logic/result';
 import { PaginationDto } from '@module-shared/modules/pagination/pagination.dto';
 import { IIssueRepository } from '@application/issues/repositories/issue.repository';
 import { IDocPageRepository } from '@application/docs/repositories/doc-page.repository';
+import { IRoadmapRepository } from '@application/roadmaps/repositories/roadmap.repository';
 import { AuditEntity } from '../domain/enums/audit.enums';
 import {
   AuditLogPaginationResponse,
@@ -23,9 +24,9 @@ export interface GetActivityRequest {
 /**
  * Reads one object's history behind its own permission guard.
  *
- * v1 knows how to guard `AuditEntity.ISSUE` and `AuditEntity.DOC_PAGE` —
- * roadmap items arrive in a later task. Any other entity kind is refused
- * outright rather than queried without a check.
+ * Knows how to guard `AuditEntity.ISSUE`, `AuditEntity.DOC_PAGE` and
+ * `AuditEntity.ROADMAP_ITEM`. Any other entity kind is refused outright
+ * rather than queried without a check.
  */
 @Injectable()
 export class GetActivityUseCase
@@ -35,6 +36,7 @@ export class GetActivityUseCase
     @Inject(IAuditLogRepository) private readonly audit: IAuditLogRepository,
     @Inject(IIssueRepository) private readonly issues: IIssueRepository,
     @Inject(IDocPageRepository) private readonly docPages: IDocPageRepository,
+    @Inject(IRoadmapRepository) private readonly roadmaps: IRoadmapRepository,
   ) {}
 
   async execute({
@@ -58,6 +60,14 @@ export class GetActivityUseCase
       // the page-detail endpoint would let you".
       const page = await this.docPages.findById(entityId);
       if (!page || page.tenantId !== tenantId) return Result.fail('Not found');
+    } else if (entity === AuditEntity.ROADMAP_ITEM) {
+      // Items have no independent access rule — guard on the roadmap that
+      // contains them, the same tenant-match guard the authenticated
+      // roadmap-detail endpoint uses (GetRoadmapUseCase). `entityId` here is
+      // the ITEM's id, so this looks the roadmap up by the item it embeds
+      // rather than by its own id.
+      const roadmap = await this.roadmaps.findByItemId(tenantId, entityId);
+      if (!roadmap || roadmap.tenantId !== tenantId) return Result.fail('Not found');
     } else {
       return Result.fail('Not found');
     }

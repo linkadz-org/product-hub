@@ -4,6 +4,8 @@ import { IUsecaseExecute } from '@core/interfaces';
 import { Result } from '@shared/logic/result';
 import { sequentialRef } from '@module-shared/utils/sequential-ref.util';
 import { CounterService } from '@module-shared/services/counter.service';
+import { RecordActivityUseCase } from '@application/audit-log/use-cases';
+import { AuditActor, AuditEntity } from '@application/audit-log/domain/enums/audit.enums';
 import {
   CreateRoadmapDto,
   ReplaceRoadmapColumnsDto,
@@ -17,7 +19,35 @@ import {
   ROADMAP_ITEM_REF_PREFIX,
   RoadmapItemData,
 } from '../domain/types/roadmap-item.type';
+import { diffRoadmapItems } from '../domain/roadmap-item-diff';
 import { IRoadmapRepository } from '../repositories/roadmap.repository';
+
+/** Fires one `RecordActivityUseCase` call per changed item, all sharing one
+ *  `at` so a single drag or bulk edit groups together in the UI. `entityId`
+ *  is deliberately the ITEM's id, not the roadmap's — the roadmap is only the
+ *  container; the timeline a user opens belongs to the item. */
+async function recordItemChanges(
+  activity: RecordActivityUseCase,
+  tenantId: string,
+  before: RoadmapItemData[],
+  after: RoadmapItemData[],
+  actor: { type: AuditActor; id: string; name: string },
+): Promise<void> {
+  const itemChanges = diffRoadmapItems(before, after);
+  if (!itemChanges.length) return;
+  const at = new Date();
+  for (const change of itemChanges) {
+    await activity.execute({
+      tenantId,
+      entity: AuditEntity.ROADMAP_ITEM,
+      entityId: change.itemId,
+      entityRef: change.itemRef,
+      actor,
+      changes: change.changes,
+      at,
+    });
+  }
+}
 
 /**
  * The next `RM-n` for this tenant, skipping anything the roadmap already holds.
@@ -114,29 +144,40 @@ export class UpdateRoadmapUseCase
   }
 }
 
+export interface ReplaceRoadmapItemsRequest {
+  id: string;
+  tenantId: string;
+  dto: ReplaceRoadmapItemsDto;
+  /** The caller — recorded on history rows. */
+  requesterId: string;
+  requesterName: string;
+  /** Defaults to USER. MCP passes API so a bot is distinguishable from a person. */
+  actorType?: AuditActor;
+}
+
 @Injectable()
 export class ReplaceRoadmapItemsUseCase
-  implements
-    IUsecaseExecute<
-      { id: string; tenantId: string; dto: ReplaceRoadmapItemsDto },
-      Result<RoadmapEntity>
-    >
+  implements IUsecaseExecute<ReplaceRoadmapItemsRequest, Result<RoadmapEntity>>
 {
   constructor(
     @Inject(IRoadmapRepository) private readonly roadmaps: IRoadmapRepository,
     private readonly counters: CounterService,
+    private readonly activity: RecordActivityUseCase,
   ) {}
   async execute({
     id,
     tenantId,
     dto,
-  }: {
-    id: string;
-    tenantId: string;
-    dto: ReplaceRoadmapItemsDto;
-  }): Promise<Result<RoadmapEntity>> {
+    requesterId,
+    requesterName,
+    actorType,
+  }: ReplaceRoadmapItemsRequest): Promise<Result<RoadmapEntity>> {
     const roadmap = await this.roadmaps.findById(id);
     if (!roadmap || roadmap.tenantId !== tenantId) return Result.fail('Roadmap not found');
+    // Snapshot BEFORE any mutation: `roadmap.replaceItems` below assigns a whole
+    // new array onto the entity in place, so a snapshot taken after would diff
+    // the entity against itself and yield a permanently empty diff.
+    const itemsBefore = roadmap.items;
     // The client replaces the whole array on every edit/drag, so createdAt is
     // stamped and preserved here rather than trusted from the request: keep an
     // existing item's original date (matched by id), and give brand-new items —
@@ -179,6 +220,13 @@ export class ReplaceRoadmapItemsUseCase
     }
     roadmap.replaceItems(items);
     await this.roadmaps.update(roadmap);
+
+    await recordItemChanges(this.activity, tenantId, itemsBefore, roadmap.items, {
+      type: actorType ?? AuditActor.USER,
+      id: requesterId,
+      name: requesterName,
+    });
+
     return Result.ok(roadmap);
   }
 }
@@ -187,6 +235,11 @@ export interface AddRoadmapItemRequest {
   id: string;
   tenantId: string;
   item: Partial<Omit<RoadmapItemData, 'id'>> & { title: string };
+  /** The caller — recorded on history rows. */
+  requesterId: string;
+  requesterName: string;
+  /** Defaults to USER. MCP passes API so a bot is distinguishable from a person. */
+  actorType?: AuditActor;
 }
 
 /**
@@ -203,14 +256,20 @@ export class AddRoadmapItemUseCase
   constructor(
     @Inject(IRoadmapRepository) private readonly roadmaps: IRoadmapRepository,
     private readonly counters: CounterService,
+    private readonly activity: RecordActivityUseCase,
   ) {}
   async execute({
     id,
     tenantId,
     item,
+    requesterId,
+    requesterName,
+    actorType,
   }: AddRoadmapItemRequest): Promise<Result<{ roadmap: RoadmapEntity; item: RoadmapItemData }>> {
     const roadmap = await this.roadmaps.findById(id);
     if (!roadmap || roadmap.tenantId !== tenantId) return Result.fail('Roadmap not found');
+    // Snapshot BEFORE any mutation — see the same note in ReplaceRoadmapItemsUseCase.
+    const itemsBefore = roadmap.items;
 
     const columns = roadmap.columns.length ? roadmap.columns : DEFAULT_ROADMAP_COLUMNS;
     const phase = item.phase || columns[0].key;
@@ -266,6 +325,13 @@ export class AddRoadmapItemUseCase
 
     roadmap.replaceItems([...roadmap.items, created]);
     await this.roadmaps.update(roadmap);
+
+    await recordItemChanges(this.activity, tenantId, itemsBefore, roadmap.items, {
+      type: actorType ?? AuditActor.USER,
+      id: requesterId,
+      name: requesterName,
+    });
+
     return Result.ok({ roadmap, item: created });
   }
 }
