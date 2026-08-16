@@ -4,6 +4,7 @@ import { Model } from 'mongoose';
 import { UniqueEntityID } from '@core/domain';
 import { BaseRepository } from '@core/infrastructure/database/mongoose/base';
 import {
+  AuditEntityRef,
   AuditLogPaginationResponse,
   IAuditLogRepository,
 } from '@application/audit-log/repositories/audit-log.repository';
@@ -11,6 +12,24 @@ import { AuditLogEntity } from '@application/audit-log/domain/entities/audit-log
 import { AuditActor, AuditEntity } from '@application/audit-log/domain/enums/audit.enums';
 import { PaginationDto } from '@module-shared/modules/pagination/pagination.dto';
 import { AuditLogDoc } from '../entities/audit-log.schema';
+
+/**
+ * Tenant-bounded filter for one or more objects.
+ *
+ * An empty `refs` list must not widen the query — `$or: []` is a Mongo error and
+ * dropping the clause entirely would return the whole tenant's history. An
+ * impossible `entityId` is the safe answer.
+ */
+export function buildEntityFilter(
+  tenantId: string,
+  refs: AuditEntityRef[],
+): Record<string, unknown> {
+  if (!refs.length) return { tenantId, entityId: '__none__' };
+  return {
+    tenantId,
+    $or: refs.map((r) => ({ entity: r.entity, entityId: r.entityId })),
+  };
+}
 
 @Injectable()
 export class AuditLogRepository
@@ -69,6 +88,11 @@ export class AuditLogRepository
     await this.model.create(this.toDocument(entry));
   }
 
+  async appendMany(entries: AuditLogEntity[]): Promise<void> {
+    if (!entries.length) return;
+    await this.model.insertMany(entries.map((e) => this.toDocument(e)));
+  }
+
   async findByProject(
     tenantId: string,
     projectId: string,
@@ -77,6 +101,35 @@ export class AuditLogRepository
     const page = query.page ?? 1;
     const limit = query.limit ?? 10;
     const filter = { tenantId, projectId };
+
+    const [docs, total] = await Promise.all([
+      this.model
+        .find(filter)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean<AuditLogDoc[]>()
+        .exec(),
+      this.model.countDocuments(filter).exec(),
+    ]);
+
+    return {
+      data: docs.map((d) => this.toDomain(d)),
+      total,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    };
+  }
+
+  async findByEntities(
+    tenantId: string,
+    refs: AuditEntityRef[],
+    query: PaginationDto,
+  ): Promise<AuditLogPaginationResponse> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+    const filter = buildEntityFilter(tenantId, refs);
 
     const [docs, total] = await Promise.all([
       this.model
