@@ -48,9 +48,18 @@ describe('diffIssue', () => {
     ]);
   });
 
-  it('treats title as value-less too', () => {
-    expect(NO_VALUE_FIELDS).toContain('title');
+  it('keeps description value-less, but not title — a title is short enough to show', () => {
+    expect(NO_VALUE_FIELDS).not.toContain('title');
     expect(NO_VALUE_FIELDS).toContain('description');
+  });
+
+  it('records a title change with its real values', () => {
+    const issue = makeIssue({ title: 'Login fails' });
+    const before = snapshotIssue(issue);
+    issue.applyUpdate({ title: 'Login fails on Safari' } as never);
+    expect(diffIssue(before, issue)).toEqual([
+      { field: 'title', oldValue: 'Login fails', newValue: 'Login fails on Safari' },
+    ]);
   });
 
   it('does not track dueDate — it mirrors endDate on a task', () => {

@@ -120,6 +120,24 @@ describe('UpdateIssueUseCase activity', () => {
     expect(changes).toEqual([{ field: 'description', oldValue: '', newValue: '' }]);
   });
 
+  it('records a title change with its real values — unlike description, a title is short', async () => {
+    const issue = makeIssue();
+    const { uc, recorded } = build(issue);
+
+    await uc.execute({
+      id: 'i1',
+      tenantId: 't1',
+      requesterId: 'u1',
+      requesterName: 'Lucas',
+      isAdmin: true,
+      dto: { title: 'Login fails on Safari' } as never,
+    });
+
+    expect(recorded[0].changes).toEqual([
+      { field: 'title', oldValue: 'Login fails', newValue: 'Login fails on Safari' },
+    ]);
+  });
+
   it('records an MCP write as an API actor', async () => {
     const issue = makeIssue();
     const { uc, recorded } = build(issue);

@@ -48,7 +48,14 @@ function withDescendants(pages: DocPageEntity[], pageId: string): string[] {
 export class CreateDocPageUseCase
   implements
     IUsecaseExecute<
-      { docId: string; tenantId: string; author: Author; dto: CreateDocPageDto },
+      {
+        docId: string;
+        tenantId: string;
+        author: Author;
+        /** Defaults to USER. MCP passes API so a bot is distinguishable from a person. */
+        actorType?: AuditActor;
+        dto: CreateDocPageDto;
+      },
       Result<DocPageEntity>
     >
 {
@@ -62,11 +69,13 @@ export class CreateDocPageUseCase
     docId,
     tenantId,
     author,
+    actorType,
     dto,
   }: {
     docId: string;
     tenantId: string;
     author: Author;
+    actorType?: AuditActor;
     dto: CreateDocPageDto;
   }): Promise<Result<DocPageEntity>> {
     const doc = await this.docs.findById(docId);
@@ -106,7 +115,7 @@ export class CreateDocPageUseCase
       entity: AuditEntity.DOC_PAGE,
       entityId: page.id.toString(),
       entityRef: page.title,
-      actor: { type: AuditActor.USER, id: author.userId, name: author.name },
+      actor: { type: actorType ?? AuditActor.USER, id: author.userId, name: author.name },
       changes: [{ field: 'created', oldValue: '', newValue: '' }],
     });
 
@@ -147,6 +156,8 @@ export class UpdateDocPageUseCase
         pageId: string;
         tenantId: string;
         author: Author;
+        /** Defaults to USER. MCP passes API so a bot is distinguishable from a person. */
+        actorType?: AuditActor;
         dto: UpdateDocPageDto;
       },
       Result<DocPageEntity>
@@ -163,12 +174,14 @@ export class UpdateDocPageUseCase
     pageId,
     tenantId,
     author,
+    actorType,
     dto,
   }: {
     docId: string;
     pageId: string;
     tenantId: string;
     author: Author;
+    actorType?: AuditActor;
     dto: UpdateDocPageDto;
   }): Promise<Result<DocPageEntity>> {
     const page = await this.pages.findById(pageId);
@@ -217,7 +230,7 @@ export class UpdateDocPageUseCase
       entity: AuditEntity.DOC_PAGE,
       entityId: page.id.toString(),
       entityRef: page.title,
-      actor: { type: AuditActor.USER, id: author.userId, name: author.name },
+      actor: { type: actorType ?? AuditActor.USER, id: author.userId, name: author.name },
       changes: diffDocPage(before, page),
     });
 
@@ -229,7 +242,14 @@ export class UpdateDocPageUseCase
 export class DeleteDocPageUseCase
   implements
     IUsecaseExecute<
-      { docId: string; pageId: string; tenantId: string; author: Author },
+      {
+        docId: string;
+        pageId: string;
+        tenantId: string;
+        author: Author;
+        /** Defaults to USER. MCP passes API so a bot is distinguishable from a person. */
+        actorType?: AuditActor;
+      },
       Result<string[]>
     >
 {
@@ -247,11 +267,13 @@ export class DeleteDocPageUseCase
     pageId,
     tenantId,
     author,
+    actorType,
   }: {
     docId: string;
     pageId: string;
     tenantId: string;
     author: Author;
+    actorType?: AuditActor;
   }): Promise<Result<string[]>> {
     const doc = await this.docs.findById(docId);
     if (!doc || doc.tenantId !== tenantId) return Result.fail('Doc not found');
@@ -281,7 +303,7 @@ export class DeleteDocPageUseCase
       entity: AuditEntity.DOC_PAGE,
       entityId: pageId,
       entityRef: deletedRef,
-      actor: { type: AuditActor.USER, id: author.userId, name: author.name },
+      actor: { type: actorType ?? AuditActor.USER, id: author.userId, name: author.name },
       changes: [{ field: 'deleted', oldValue: '', newValue: '' }],
     });
 
@@ -293,7 +315,14 @@ export class DeleteDocPageUseCase
 export class ReorderDocPagesUseCase
   implements
     IUsecaseExecute<
-      { docId: string; tenantId: string; author: Author; dto: ReorderDocPagesDto },
+      {
+        docId: string;
+        tenantId: string;
+        author: Author;
+        /** Defaults to USER. MCP passes API so a bot is distinguishable from a person. */
+        actorType?: AuditActor;
+        dto: ReorderDocPagesDto;
+      },
       Result<DocPageEntity[]>
     >
 {
@@ -307,11 +336,13 @@ export class ReorderDocPagesUseCase
     docId,
     tenantId,
     author,
+    actorType,
     dto,
   }: {
     docId: string;
     tenantId: string;
     author: Author;
+    actorType?: AuditActor;
     dto: ReorderDocPagesDto;
   }): Promise<Result<DocPageEntity[]>> {
     const doc = await this.docs.findById(docId);
@@ -366,7 +397,7 @@ export class ReorderDocPagesUseCase
         entity: AuditEntity.DOC_PAGE,
         entityId: page.id.toString(),
         entityRef: page.title,
-        actor: { type: AuditActor.USER, id: author.userId, name: author.name },
+        actor: { type: actorType ?? AuditActor.USER, id: author.userId, name: author.name },
         changes,
       });
     }

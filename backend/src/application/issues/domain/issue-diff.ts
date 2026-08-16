@@ -38,10 +38,16 @@ export type TrackedField = (typeof TRACKED_FIELDS)[number];
  * Fields recorded as "changed" with no values shown.
  *
  * Two different reasons land a field here, generalised into one set:
- *  - long-form text (`title`, `description`): a 4KB description edited ten
- *    times would otherwise produce 80KB of log for one issue, for something
- *    almost nobody reads back. Anyone who genuinely needs old content needs a
- *    versioning system, not a log line.
+ *  - long-form text (`description`): a 4KB description edited ten times would
+ *    otherwise produce 80KB of log for one issue, for something almost nobody
+ *    reads back. Anyone who genuinely needs old content needs a versioning
+ *    system, not a log line. `title` does NOT belong here — a title tops out
+ *    around 160 characters, so the storage argument that justifies hiding a
+ *    4KB description doesn't apply, and "renamed" with no values is a log
+ *    line that tells you nothing. Doc-page titles were never value-less (see
+ *    `doc-page-diff.ts`); this promotes the issue path to match rather than
+ *    demoting the doc-page one, per spec §5.2's own note that promoting
+ *    `title` later is additive.
  *  - a bare id with no display form (`cycleId`, `parentId`, `projectId`): the
  *    event is worth recording, but a raw UUID is not worth showing, and
  *    resolving it to a name would require a repository lookup in this module,
@@ -51,7 +57,6 @@ export type TrackedField = (typeof TRACKED_FIELDS)[number];
  *    later (e.g. once a related-object assembly step exists) is additive.
  */
 export const NO_VALUE_FIELDS: readonly string[] = [
-  'title',
   'description',
   'cycleId',
   'parentId',

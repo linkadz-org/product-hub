@@ -1169,6 +1169,7 @@ export class McpCreateDocUseCase
         pageId,
         tenantId: actor.tenantId,
         author,
+        actorType: AuditActor.API,
         dto: { content } as UpdateDocPageDto,
       });
       if (written.isFailure) return Result.fail(written.error as string);
@@ -1268,6 +1269,7 @@ export class McpUpdateDocUseCase
         pageId,
         tenantId: actor.tenantId,
         author,
+        actorType: AuditActor.API,
         dto: { content } as UpdateDocPageDto,
       });
       if (written.isFailure) return this.partial(changed, written.error as string);
@@ -1281,6 +1283,7 @@ export class McpUpdateDocUseCase
         docId,
         tenantId: actor.tenantId,
         author,
+        actorType: AuditActor.API,
         dto: {
           title: dto.appendPage.title,
           content: stripEchoedTitle(

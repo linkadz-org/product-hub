@@ -188,6 +188,25 @@ describe('ReorderDocPagesUseCase activity', () => {
     ]);
   });
 
+  it('records a reorder-among-siblings as value-less — nobody reads a raw position index', async () => {
+    const doc = withId(makeDoc(), 'doc1');
+    const page = withId(makePage({ title: 'Child', parentId: '', order: 0 }), 'p1');
+    const { activity, recorded } = makeRecorder();
+    const docs = { findById: async () => doc, update: async () => undefined };
+    const pages = { findByDoc: async () => [page], updateMany: async () => undefined };
+    const uc = new ReorderDocPagesUseCase(docs as never, pages as never, activity as never);
+
+    await uc.execute({
+      docId: 'doc1',
+      tenantId: 't1',
+      author,
+      dto: { pages: [{ id: 'p1', parentId: '', order: 3 }] } as never,
+    });
+
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0].changes).toEqual([{ field: 'order', oldValue: '', newValue: '' }]);
+  });
+
   it('records nothing when a page does not actually move', async () => {
     const doc = withId(makeDoc(), 'doc1');
     const page = withId(makePage({ title: 'Child', parentId: '', order: 0 }), 'p1');

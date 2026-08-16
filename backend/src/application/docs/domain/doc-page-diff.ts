@@ -21,8 +21,15 @@ export type TrackedField = (typeof TRACKED_FIELDS)[number];
  * and resolving it to the new parent's title would require a repository
  * lookup in this module, which is deliberately pure (no I/O). Same reasoning
  * as `cycleId`/`parentId`/`projectId` in `issue-diff.ts`.
+ *
+ * `order` is value-less for a different reason: the fact that a page moved
+ * among its siblings is worth a row, but the raw position index is not —
+ * nobody reads "changed order 3 → 5" as history. Contrast with `title` (kept
+ * value-bearing, see the review note this file's sibling `issue-diff.ts`
+ * carries) — a title change's *content* is the event; a reorder's position
+ * number is not.
  */
-export const NO_VALUE_FIELDS: readonly string[] = ['parentId'];
+export const NO_VALUE_FIELDS: readonly string[] = ['parentId', 'order'];
 
 export interface FieldChange {
   field: string;
