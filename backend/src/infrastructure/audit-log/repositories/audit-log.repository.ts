@@ -28,6 +28,7 @@ export class AuditLogRepository
         projectId: doc.projectId,
         reportId: doc.reportId,
         entity: doc.entity as AuditEntity,
+        entityId: doc.entityId,
         entityRef: doc.entityRef,
         field: doc.field,
         oldValue: doc.oldValue,
@@ -35,6 +36,7 @@ export class AuditLogRepository
         actorType: doc.actorType as AuditActor,
         actorId: doc.actorId,
         actorName: doc.actorName,
+        automated: doc.automated,
         createdAt: doc.createdAt,
       },
       new UniqueEntityID(doc._id),
@@ -50,6 +52,7 @@ export class AuditLogRepository
       projectId: entry.projectId,
       reportId: entry.reportId,
       entity: entry.entity,
+      entityId: entry.entityId,
       entityRef: entry.entityRef,
       field: entry.field,
       oldValue: entry.oldValue,
@@ -57,6 +60,7 @@ export class AuditLogRepository
       actorType: entry.actorType,
       actorId: entry.actorId,
       actorName: entry.actorName,
+      automated: entry.automated,
       createdAt: entry.createdAt,
     };
   }

@@ -55,6 +55,7 @@ export class SetTestCaseResultUseCase
       projectId,
       reportId: report.id.toString(),
       entity: AuditEntity.TESTCASE,
+      entityId: report.id.toString(),
       entityRef: `${shortId}${outcome.area ? ` · ${outcome.area}` : ''}`,
       field: 'result',
       oldValue: outcome.oldValue ?? '',

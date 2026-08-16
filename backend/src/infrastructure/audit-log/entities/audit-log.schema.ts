@@ -8,6 +8,7 @@ export interface AuditLogDoc {
   projectId: string;
   reportId: string;
   entity: AuditEntity;
+  entityId: string;
   entityRef: string;
   field: string;
   oldValue: string;
@@ -15,6 +16,7 @@ export interface AuditLogDoc {
   actorType: AuditActor;
   actorId: string;
   actorName: string;
+  automated: boolean;
   createdAt: Date;
 }
 
@@ -25,6 +27,7 @@ export const AuditLogSchema = new Schema<AuditLogDoc>(
     projectId: { type: String, required: true, index: true },
     reportId: { type: String, default: '' },
     entity: { type: String, enum: Object.values(AuditEntity), required: true },
+    entityId: { type: String, default: '' },
     entityRef: { type: String, default: '' },
     field: { type: String, default: '' },
     oldValue: { type: String, default: '' },
@@ -32,6 +35,7 @@ export const AuditLogSchema = new Schema<AuditLogDoc>(
     actorType: { type: String, enum: Object.values(AuditActor), required: true },
     actorId: { type: String, default: '' },
     actorName: { type: String, default: '' },
+    automated: { type: Boolean, default: false },
   },
   // Only createdAt matters — entries are immutable.
   { timestamps: { createdAt: true, updatedAt: false } },
