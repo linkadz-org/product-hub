@@ -119,6 +119,43 @@ export class McpIssueResponseDto {
   updatedAt: Date;
 }
 
+/**
+ * A file that now lives in the workspace's storage. `upload_file` returns it and
+ * `update_issue`/`add_comment` take it back verbatim, so the round trip needs no
+ * reshaping — the assistant hands the reply straight to the next call.
+ */
+export class McpUploadedFileDto {
+  @ApiProperty({ description: 'Public URL — what an attachment field wants' })
+  url: string;
+
+  @ApiProperty({ description: 'The name it was stored under' })
+  name: string;
+
+  @ApiProperty({ description: 'MIME type it will be served as' })
+  contentType: string;
+
+  @ApiProperty({ description: 'Size in bytes' })
+  size: number;
+}
+
+/**
+ * A ticket URL that takes a file over multipart, so the bytes never pass through
+ * the assistant's context the way a base64 `upload_file` payload does.
+ */
+export class McpUploadUrlDto {
+  @ApiProperty({ description: 'POST a multipart body with a `file` field here — no auth header' })
+  uploadUrl: string;
+
+  @ApiProperty({ description: 'Seconds the URL stays valid' })
+  expiresInSeconds: number;
+
+  @ApiProperty({ description: 'Hard ceiling in bytes; the tenant’s per-type caps still apply' })
+  maxBytes: number;
+
+  @ApiProperty({ description: 'The command to run, field name and quoting already right' })
+  curl: string;
+}
+
 /** One subtask line under an issue detail — enough to quote and address it. */
 export class McpSubtaskDto {
   @ApiProperty()
@@ -248,6 +285,14 @@ export class McpIssueDetailResponseDto {
 
   @ApiProperty({ description: 'Total subtasks on the issue' })
   subtaskCount: number;
+
+  @ApiProperty({
+    type: [McpUploadedFileDto],
+    description:
+      'Files on the issue (bug). Listed here because `update_issue.attachments` replaces the ' +
+      'whole set — this is what a caller sends back to keep them.',
+  })
+  attachments: McpUploadedFileDto[];
 
   @ApiProperty({ type: [McpCommentDto], description: 'Latest comments (capped); see commentCount for total' })
   comments: McpCommentDto[];

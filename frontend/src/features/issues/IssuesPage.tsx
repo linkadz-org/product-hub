@@ -11,12 +11,8 @@ import { Icon } from '@/components/Icon';
 import { IssueTimelineView } from '@/features/issues/IssueTimelineView';
 import { NO_ISSUE_SORT, SortMenu, type IssueSort } from '@/features/issues/SortMenu';
 import { LabelChips } from '@/features/labels/LabelChips';
-import {
-  FilterMenu,
-  UNASSIGNED,
-  type FilterCategory,
-  type FilterSelections,
-} from '@/components/FilterMenu';
+import { FilterMenu, type FilterCategory, type FilterSelections } from '@/components/FilterMenu';
+import { issueSharedFilterParams, issueSharedFilters } from '@/features/issues/issueFilters';
 import { t } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
@@ -201,6 +197,8 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
   // Labels resolve per-item: each card carries its own teamId (see the task board).
   const labelsFor = useTeamLabelsLookup();
 
+  const shared = issueSharedFilterParams(filters);
+
   const { data, isLoading } = useIssues({
     kind: [kind],
     // "Assigned to me" is strictly the assignee, never the creator. The sentinel
@@ -209,8 +207,11 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
     mine: isAll ? undefined : user?.id ?? '__none__',
     search: search || undefined,
     status: filters.status,
-    // Filtering by person only means something when the list isn't already one person's.
-    assigneeId: isAll ? filters.assigneeId : undefined,
+    // Assignee, creator and the two date windows — the block every board shares.
+    ...shared,
+    // Filtering by assignee only means something when the list isn't already one
+    // person's (the API's `mine` wins over it anyway).
+    assigneeId: isAll ? shared.assigneeId : undefined,
     severity: isBug ? (filters.severity as BugSeverity[] | undefined) : undefined,
     projectId: filters.projectId,
     roadmapItemId: isBug ? undefined : filters.roadmapItemId,
@@ -245,8 +246,9 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
     navigate(status ? `${base}?status=${encodeURIComponent(status)}` : base);
   };
 
-  // Only needed to label the filter options — people only on the all-issues board.
-  const { data: usersData } = useUsers({ limit: 100 }, isAll && canManageDelivery);
+  // Only needed to label the filter options. Both scopes need people now: even
+  // "Assigned to me" can be narrowed by who *opened* the issue.
+  const { data: usersData } = useUsers({ limit: 100 }, canManageDelivery);
   const { data: projectsData } = useProjects({ limit: 100 });
   const { data: roadmaps } = useRoadmaps();
 
@@ -322,25 +324,6 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
       label: t('roadmaps.status'),
       options: columns.map((c) => ({ id: c.key, label: c.label, color: c.color })),
     },
-    // Assignee is the axis that only appears once the board isn't already one
-    // person's — same shape as the team boards', self-filter first (the people
-    // list is manager-only, so a member can still narrow to their own).
-    ...(isAll
-      ? [
-          {
-            id: 'assigneeId',
-            label: t('filters.assignee'),
-            searchable: true,
-            options: [
-              ...(user ? [{ id: user.id, label: t('filters.assignedToMe') }] : []),
-              { id: UNASSIGNED, label: t('filters.unassigned') },
-              ...(usersData?.items ?? [])
-                .filter((u) => u.id !== user?.id)
-                .map((u) => ({ id: u.id, label: u.name })),
-            ],
-          },
-        ]
-      : []),
     // Severity is a bug-only axis; backlog item is task-only.
     ...(isBug
       ? [
@@ -371,6 +354,9 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
       searchable: true,
       options: (projectsData?.items ?? []).map((p) => ({ id: p.id, label: p.title })),
     },
+    // Assignee · creator · created date · solved date — identical on every board.
+    // Assignee only appears once the board isn't already one person's.
+    ...issueSharedFilters({ user, users: usersData?.items, includeAssignee: isAll }),
   ];
 
   /** Issues don't persist ordering, so the drop slot is ignored — only the

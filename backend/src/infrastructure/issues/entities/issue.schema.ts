@@ -108,7 +108,9 @@ export const IssueSchema = new Schema<IssueDoc>(
     // per-assignee filters `$or` against `assignees.id`.
     assigneeId: { type: String, default: '', index: true },
     assigneeName: { type: String, default: '' },
-    createdBy: { type: String, default: '' },
+    // Who opened it. Indexed like `assigneeId` above: it's what the boards'
+    // "Creator" filter narrows on.
+    createdBy: { type: String, default: '', index: true },
     createdByName: { type: String, default: '' },
     // BUG-only reporter (mirrors createdBy on a bug); '' for a task.
     reporterId: { type: String, default: '' },

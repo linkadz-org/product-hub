@@ -94,6 +94,80 @@ export class McpCreateIssueDto {
   parent?: string;
 }
 
+/**
+ * Put a file in the workspace's storage. MCP is JSON-RPC — there is no multipart
+ * and no file transfer in the protocol itself — so the bytes ride base64-encoded
+ * in `data`, which is what an assistant holds anyway once it has read a
+ * screenshot off disk. What comes back is the public URL; attaching it to an
+ * issue or a comment is a second, separate call, exactly as it is in the web app.
+ */
+export class McpUploadFileDto {
+  @ApiProperty({
+    example: 'checkout-500.png',
+    description: 'File name including its extension — the extension decides the stored type',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  name: string;
+
+  @ApiProperty({ description: 'The file bytes, base64-encoded. A `data:…;base64,…` URL is accepted' })
+  @IsString()
+  @IsNotEmpty()
+  data: string;
+
+  @ApiPropertyOptional({
+    description: 'MIME type. Only needed when the name carries no (or an unusual) extension',
+  })
+  @IsOptional()
+  @IsString()
+  contentType?: string;
+}
+
+/**
+ * Ask for an upload URL. Nothing about the file is promised up front — the name
+ * is only used to write the example command, and the real name, type and size
+ * come off the multipart body when the ticket is spent.
+ */
+export class McpCreateUploadUrlDto {
+  @ApiPropertyOptional({
+    example: 'checkout-500.png',
+    description: 'File name, used only to render the ready-to-run command',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  name?: string;
+}
+
+/**
+ * One stored file as it hangs off an issue — the exact shape `upload_file` hands
+ * back, so an assistant passes the reply straight through without reshaping it.
+ */
+export class McpAttachmentDto {
+  @ApiProperty({ description: 'Public URL from upload_file' })
+  @IsString()
+  @IsNotEmpty()
+  url: string;
+
+  @ApiProperty({ description: 'Display name shown on the issue' })
+  @IsString()
+  @IsNotEmpty()
+  name: string;
+
+  @ApiPropertyOptional({ description: 'MIME type — decides whether it previews inline' })
+  @IsOptional()
+  @IsString()
+  contentType?: string;
+
+  @ApiPropertyOptional({ description: 'Size in bytes' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  size?: number;
+}
+
 /** Read one issue in full — the ref (`ENG-14`) or its uuid. */
 export class McpGetIssueDto {
   @ApiProperty({ description: 'Issue ref (ENG-14 / QC-103) or id' })
@@ -179,6 +253,18 @@ export class McpUpdateIssueDto {
   @IsArray()
   @IsString({ each: true })
   labels?: string[];
+
+  @ApiPropertyOptional({
+    type: [McpAttachmentDto],
+    description:
+      'Files on a bug (from upload_file) — REPLACES the whole set ([] clears them). ' +
+      'Read the issue first and send its existing attachments back alongside the new one.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => McpAttachmentDto)
+  attachments?: McpAttachmentDto[];
 }
 
 /** Move an issue to another status column (validated against the team's board). */
@@ -242,6 +328,15 @@ export class McpAddCommentDto {
   @IsArray()
   @IsString({ each: true })
   mentions?: string[];
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Image URLs from upload_file, shown under the comment body',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  images?: string[];
 }
 
 /**
@@ -274,6 +369,15 @@ export class McpUpdateCommentDto {
   @IsArray()
   @IsString({ each: true })
   mentions?: string[];
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Image URLs — REPLACES the comment’s images ([] clears them)',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  images?: string[];
 }
 
 /** Delete a comment by its id (author or admin/product only). */

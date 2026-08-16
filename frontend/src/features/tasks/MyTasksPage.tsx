@@ -9,12 +9,8 @@ import { BoardCard, BoardCardAge, KanbanBoard, KanbanCardToolbar } from '@/compo
 import { IssueTimelineView } from '@/features/issues/IssueTimelineView';
 import { NO_ISSUE_SORT, SortMenu, type IssueSort } from '@/features/issues/SortMenu';
 import { LabelChips } from '@/features/labels/LabelChips';
-import {
-  FilterMenu,
-  UNASSIGNED,
-  type FilterCategory,
-  type FilterSelections,
-} from '@/components/FilterMenu';
+import { FilterMenu, type FilterCategory, type FilterSelections } from '@/components/FilterMenu';
+import { issueSharedFilterParams, issueSharedFilters } from '@/features/issues/issueFilters';
 import { t } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
@@ -133,7 +129,8 @@ export function MyTasksPage({ teamId, teamName, titleIcon, shareTeam }: MyTasksP
     // Inside a team the list is the team's issues; standalone it's *my* queue.
     mine: teamId ? undefined : user?.id ?? '__none__',
     status: filters.status as TaskStatus[] | undefined,
-    assigneeId: filters.assigneeId,
+    // Assignee, creator and the two date windows — the block every board shares.
+    ...issueSharedFilterParams(filters),
     roadmapItemId: filters.roadmapItemId,
     projectId: filters.projectId,
     cycleId: teamId ? cycleParam || undefined : undefined,
@@ -177,15 +174,6 @@ export function MyTasksPage({ teamId, teamName, titleIcon, shareTeam }: MyTasksP
       options: columns.map((c) => ({ id: c.key, label: c.label, color: c.color })),
     },
     {
-      id: 'assigneeId',
-      label: t('filters.assignee'),
-      searchable: true,
-      options: [
-        { id: UNASSIGNED, label: t('filters.unassigned') },
-        ...(usersData?.items ?? []).map((u) => ({ id: u.id, label: u.name })),
-      ],
-    },
-    {
       id: 'roadmapItemId',
       label: t('filters.backlogItem'),
       searchable: true,
@@ -200,6 +188,11 @@ export function MyTasksPage({ teamId, teamName, titleIcon, shareTeam }: MyTasksP
       searchable: true,
       options: (projectsData?.items ?? []).map((p) => ({ id: p.id, label: p.title })),
     },
+    // Assignee · creator · created date · solved date — identical on every board.
+    // Assignee is dropped on the standalone "Assigned to me" queue: that list is
+    // already one person's (the API's `mine` wins over any assignee filter), so
+    // the row could only ever return the same board back.
+    ...issueSharedFilters({ user, users: usersData?.items, includeAssignee: !!teamId }),
   ];
 
   /** Tasks don't persist ordering, so the drop slot is ignored — only the

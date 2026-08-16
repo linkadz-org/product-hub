@@ -26,6 +26,8 @@ import {
   McpUpdateCommentDto,
   McpUpdateDocDto,
   McpUpdateIssueDto,
+  McpUploadFileDto,
+  McpCreateUploadUrlDto,
 } from '@application/mcp/dtos/mcp.dtos';
 import {
   McpBugStatsDto,
@@ -48,6 +50,8 @@ import {
   McpLinkResultDto,
   McpUnlinkResultDto,
   McpUpdatedDocResponseDto,
+  McpUploadedFileDto,
+  McpUploadUrlDto,
 } from '@application/mcp/dtos/mcp.response.dto';
 import {
   McpBugStatsResponseDto,
@@ -82,6 +86,8 @@ import {
   McpUpdateCommentUseCase,
   McpUpdateDocUseCase,
   McpUpdateIssueUseCase,
+  McpUploadFileUseCase,
+  McpCreateUploadUrlUseCase,
 } from '@application/mcp/use-cases';
 import { assertCanDelete, assertCanWrite } from './mcp-scope';
 
@@ -95,6 +101,14 @@ const SERVER_VERSION = '1.0.0';
  */
 export interface McpActorHolder {
   actor: McpActor;
+  /**
+   * This API's own base URL (`https://host/v1/mcp`), read off the request that
+   * opened the session rather than from config: `APP_BASE_URL` is the *web app*,
+   * and an upload URL built from it would point at the frontend. Taking it from
+   * the request also means it is right behind whatever proxy is in front,
+   * without a second env var to keep in sync.
+   */
+  apiUrl: string;
 }
 
 /** An MCP tool reply. Text only — these tools answer in prose, not structures. */
@@ -169,6 +183,8 @@ export class McpServerFactory {
     private readonly cycleBurndown: McpGetCycleBurndownUseCase,
     private readonly velocity: McpGetTeamVelocityUseCase,
     private readonly bugStats: McpGetBugStatsUseCase,
+    private readonly uploadFile: McpUploadFileUseCase,
+    private readonly createUploadUrl: McpCreateUploadUrlUseCase,
     config: ConfigService,
   ) {
     this.appUrl = (config.get<string>('APP_BASE_URL') ?? 'http://localhost:3001').replace(/\/$/, '');
@@ -198,6 +214,8 @@ export class McpServerFactory {
     };
 
     this.registerListWorkspace(server, run);
+    this.registerCreateUploadUrl(server, run, holder.apiUrl);
+    this.registerUploadFile(server, run);
     this.registerSearchIssues(server, run);
     this.registerGetIssue(server, run);
     this.registerCreateIssue(server, run);
@@ -241,6 +259,97 @@ export class McpServerFactory {
         run<McpContextResponseDto>(
           (actor) => this.getContext.execute({ actor }),
           (ctx) => this.describeWorkspace(ctx),
+        ),
+    );
+  }
+
+  /**
+   * The one tool that moves bytes. MCP itself carries no files, so the payload is
+   * base64 — and the reply is a URL, not a record: attaching it is `update_issue`
+   * (bug attachments) or `add_comment` (images), the same two steps the web app
+   * takes. Saying so in the description matters, because an assistant that
+   * uploads and stops has produced a file nobody will ever find.
+   */
+  private registerUploadFile(server: McpServer, run: Run): void {
+    registerTool<McpUploadFileDto>(
+      server,
+      'upload_file',
+      {
+        title: 'Upload a file to the workspace storage',
+        description:
+          'Store a small file by sending its bytes base64-encoded in `data`. Use `create_upload_url` ' +
+          'instead whenever the file is on disk — this tool carries the whole file through the ' +
+          'conversation, which is slow, costly, and caps out around 7MB. This one is for the case ' +
+          'where you already hold the bytes and there is no shell. Uploading does NOT attach ' +
+          'anything: pass the returned URL to `update_issue` (`attachments`, for a bug) or ' +
+          '`add_comment` (`images`) to make it show up. Accepted: images, video, PDF, Office ' +
+          'documents, csv/txt/md.',
+        inputSchema: {
+          name: z
+            .string()
+            .min(1)
+            .describe('File name WITH its extension (checkout-500.png) — the extension sets the type'),
+          data: z
+            .string()
+            .min(1)
+            .describe('The file bytes, base64-encoded. A `data:<type>;base64,<bytes>` URL also works'),
+          contentType: z
+            .string()
+            .optional()
+            .describe('MIME type — only needed when the name has no usable extension'),
+        },
+      },
+      (dto) =>
+        run<McpUploadedFileDto>(
+          (actor) => gated(actor, () => this.uploadFile.execute({ actor, dto })),
+          (f) =>
+            `Uploaded ${f.name} (${describeSize(f.size)}) → ${f.url}\n\n` +
+            'Not attached to anything yet — pass this to update_issue `attachments` or add_comment ' +
+            '`images`.',
+        ),
+    );
+  }
+
+  /**
+   * The way out of base64. `upload_file` puts the whole file in the JSON-RPC
+   * body, so every byte is read into the assistant's context on the way past —
+   * a real screenshot can cost more context than the conversation it belongs to,
+   * and past ~7MB it does not fit at all. This hands back a URL instead: one
+   * `curl -F` sends the file straight from disk to storage.
+   *
+   * The reply is a command, not a description of one. An assistant asked to
+   * "POST multipart" invents the field name; given the line to run, it runs it.
+   */
+  private registerCreateUploadUrl(server: McpServer, run: Run, apiUrl: string): void {
+    registerTool<McpCreateUploadUrlDto>(
+      server,
+      'create_upload_url',
+      {
+        title: 'Get a URL to upload a file to',
+        description:
+          'Prefer this over `upload_file` for anything real — a screenshot, a recording, a log. It ' +
+          'returns a short-lived URL you upload to with one shell command, so the file goes from ' +
+          'disk to storage without passing through the conversation (which is what makes ' +
+          '`upload_file` lossy for big or high-resolution files). Run the returned `curl` line; it ' +
+          'replies with JSON whose `url` is the stored file. Uploading does NOT attach anything: ' +
+          'pass that `url` to `update_issue` (`attachments`, for a bug) or `add_comment` (`images`).',
+        annotations: { readOnlyHint: true },
+        inputSchema: {
+          name: z
+            .string()
+            .optional()
+            .describe('The file you are about to send — used to write the example command'),
+        },
+      },
+      (dto) =>
+        run<McpUploadUrlDto>(
+          (actor) =>
+            gated(actor, () => this.createUploadUrl.execute({ actor, dto, baseUrl: apiUrl })),
+          (t) =>
+            `Upload URL ready (valid ${Math.round(t.expiresInSeconds / 60)} minutes, up to ` +
+            `${describeSize(t.maxBytes)}). Run:\n\n  ${t.curl}\n\n` +
+            'Replace the path with the real file. The reply is JSON — take its `url` and attach it ' +
+            'with update_issue `attachments` or add_comment `images`. Nothing is attached until you do.',
         ),
     );
   }
@@ -387,6 +496,21 @@ export class McpServerFactory {
             .array(z.string())
             .optional()
             .describe('Team label keys/names — REPLACES the whole set ([] clears)'),
+          attachments: z
+            .array(
+              z.object({
+                url: z.string().describe('Public URL returned by upload_file'),
+                name: z.string().describe('Display name on the issue'),
+                contentType: z.string().optional(),
+                size: z.number().min(0).optional(),
+              }),
+            )
+            .optional()
+            .describe(
+              'Files on a bug — REPLACES the whole set ([] clears). Call upload_file first, and ' +
+                'get_issue to read the existing attachments so you can send them back alongside ' +
+                'the new one instead of dropping them.',
+            ),
         },
       },
       (dto) =>
@@ -492,6 +616,10 @@ export class McpServerFactory {
             .array(z.string())
             .optional()
             .describe('People to notify, by name or email'),
+          images: z
+            .array(z.string())
+            .optional()
+            .describe('Image URLs from upload_file, shown under the comment'),
         },
       },
       (dto) =>
@@ -520,6 +648,10 @@ export class McpServerFactory {
             .array(z.string())
             .optional()
             .describe('Names/emails — REPLACES the mention set ([] clears)'),
+          images: z
+            .array(z.string())
+            .optional()
+            .describe('Image URLs — REPLACES the comment’s images ([] clears)'),
         },
       },
       (dto) =>
@@ -936,6 +1068,17 @@ export class McpServerFactory {
           ...i.subtasks.map((s) => `  ${s.shortId} · ${s.title} · ${s.status}`),
         ]
       : ['', 'No subtasks.'];
+    // Listed with their URLs, because `update_issue.attachments` replaces the set
+    // — this is the list a caller has to send back to keep what is already there.
+    const attachments = i.attachments.length
+      ? [
+          '',
+          `Attachments (${i.attachments.length}):`,
+          ...i.attachments.map(
+            (a) => `  ${a.name}${a.size ? ` · ${describeSize(a.size)}` : ''}\n    ${a.url}`,
+          ),
+        ]
+      : [];
     const comments = i.commentCount
       ? [
           '',
@@ -945,7 +1088,9 @@ export class McpServerFactory {
           ...this.describeComments(i.comments).split('\n'),
         ]
       : ['', 'No comments.'];
-    return [...head, ...subtasks, ...comments, '', `  ${this.url(i.link)}`].join('\n');
+    return [...head, ...subtasks, ...attachments, ...comments, '', `  ${this.url(i.link)}`].join(
+      '\n',
+    );
   }
 
   /** A comment thread as text — replies indented one level under their root. */
@@ -1148,6 +1293,13 @@ interface ToolConfig {
   /** Zod shape — the SDK turns it into the JSON Schema the client is shown. */
   inputSchema?: Record<string, unknown>;
   annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean };
+}
+
+/** A byte count as a person reads it — "412 KB", "3.1 MB". */
+function describeSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 /** The un-generic shape of `McpServer.registerTool`, see below. */

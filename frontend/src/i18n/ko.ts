@@ -996,7 +996,7 @@ export const ko: Record<I18nKey, string> = {
   'settings.mcpVerbMoved': '이동',
   'settings.mcpVerbCommented': '댓글',
   'settings.mcpTools':
-    '그런 다음 “내 Product OS 워크스페이스를 보여줘”, “QC에 버그를 등록해줘”, “백로그 항목을 추가해줘”, “이걸 문서로 정리해줘”처럼 요청하세요. 팀, 상태, 담당자는 이름 그대로 받으며, 알 수 없는 값이면 추측하지 않고 가능한 선택지를 알려줍니다.',
+    '그런 다음 “내 Product OS 워크스페이스를 보여줘”, “QC에 버그를 등록해줘”, “백로그 항목을 추가해줘”, “이걸 문서로 정리해줘”처럼 요청하세요. 스크린샷도 첨부할 수 있습니다 — “이 버그를 등록하고 스크린샷도 첨부해줘”라고 하면 파일을 스토리지에 올린 뒤 버그에 붙여 줍니다. 팀, 상태, 담당자는 이름 그대로 받으며, 알 수 없는 값이면 추측하지 않고 가능한 선택지를 알려줍니다.',
   'settings.mcpReady': '키가 준비되었습니다',
   'settings.mcpReadyHint': '이 명령에 키가 이미 들어 있습니다 — 터미널에서 실행하세요.',
   'settings.mcpHistory': 'MCP로 만든 항목',
@@ -1336,6 +1336,8 @@ export const ko: Record<I18nKey, string> = {
   'filters.project': '프로젝트',
   'filters.unassigned': '담당자 미지정',
   'filters.assignedToMe': '나에게 배정됨',
+  'filters.creator': '등록자',
+  'filters.createdByMe': '내가 등록함',
   'filters.backlogItem': '백로그 항목',
   'filters.createdDate': '등록일',
   'filters.solvedDate': '해결일',

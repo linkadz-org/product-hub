@@ -26,6 +26,8 @@ import {
   McpUpdateCommentDto,
   McpUpdateDocDto,
   McpUpdateIssueDto,
+  McpUploadFileDto,
+  McpCreateUploadUrlDto,
 } from '@application/mcp/dtos/mcp.dtos';
 import {
   McpBugStatsDto,
@@ -49,6 +51,8 @@ import {
   McpLinkResultDto,
   McpUnlinkResultDto,
   McpUpdatedDocResponseDto,
+  McpUploadedFileDto,
+  McpUploadUrlDto,
 } from '@application/mcp/dtos/mcp.response.dto';
 import {
   McpBugStatsResponseDto,
@@ -79,11 +83,19 @@ import {
   McpUpdateCommentUseCase,
   McpUpdateDocUseCase,
   McpUpdateIssueUseCase,
+  McpUploadFileUseCase,
+  McpCreateUploadUrlUseCase,
 } from '@application/mcp/use-cases';
 import { ApiAuth, ApiKeyGuard } from '@presentation/api-keys/api-key.guard';
+import { requestBaseUrl } from './mcp-request-url';
 import { assertCanDelete, assertCanWrite } from './mcp-scope';
 
-type McpRequest = { apiAuth: ApiAuth; headers: Record<string, string | undefined> };
+type McpRequest = {
+  apiAuth: ApiAuth;
+  headers: Record<string, string | undefined>;
+  protocol?: string;
+  originalUrl?: string;
+};
 
 /** The REST mirror is an equal write path to the MCP tools, so it enforces the
  *  same scope gate — a read-only key is refused here too, not just over JSON-RPC. */
@@ -138,6 +150,8 @@ export class McpController {
     private readonly cycleBurndown: McpGetCycleBurndownUseCase,
     private readonly velocity: McpGetTeamVelocityUseCase,
     private readonly bugStats: McpGetBugStatsUseCase,
+    private readonly uploadFile: McpUploadFileUseCase,
+    private readonly createUploadUrl: McpCreateUploadUrlUseCase,
   ) {}
 
   @Get('context')
@@ -157,6 +171,39 @@ export class McpController {
     const actor = actorOf(req);
     guardWrite(actor);
     const result = await this.createIssue.execute({ actor, dto });
+    if (result.isFailure) throw new ValidationException(result.error as string);
+    return result.getValue();
+  }
+
+  @Post('uploads')
+  @ApiOperation({
+    summary: 'Store a base64 file and get its URL — attach it with PATCH issues/:issue (API key)',
+  })
+  async upload(
+    @Req() req: McpRequest,
+    @Body() dto: McpUploadFileDto,
+  ): Promise<McpUploadedFileDto> {
+    const actor = actorOf(req);
+    guardWrite(actor);
+    const result = await this.uploadFile.execute({ actor, dto });
+    if (result.isFailure) throw new ValidationException(result.error as string);
+    return result.getValue();
+  }
+
+  @Post('uploads/url')
+  @ApiOperation({
+    summary: 'Get a ticket URL to POST a file to — no base64, no auth header (API key)',
+  })
+  async uploadUrl(
+    @Req() req: McpRequest,
+    @Body() dto: McpCreateUploadUrlDto,
+  ): Promise<McpUploadUrlDto> {
+    const actor = actorOf(req);
+    guardWrite(actor);
+    // `…/v1/mcp/uploads/url` minus this route's own tail — the ticket hangs off
+    // the controller root, and deriving it beats hardcoding a host.
+    const baseUrl = requestBaseUrl(req, '/v1/mcp/uploads/url').replace(/\/uploads\/url$/, '');
+    const result = await this.createUploadUrl.execute({ actor, dto, baseUrl });
     if (result.isFailure) throw new ValidationException(result.error as string);
     return result.getValue();
   }
