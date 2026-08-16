@@ -29,7 +29,7 @@ const build = (byId: Record<string, IssueEntity>) => {
 };
 
 describe('UpdateIssueUseCase parent guard', () => {
-  const scope = { tenantId: 't1', requesterId: 'u1', isAdmin: false };
+  const scope = { tenantId: 't1', requesterId: 'u1', requesterName: 'Alice', isAdmin: false };
 
   /** Give an entity a stable id, since `create` mints its own. */
   const withId = (issue: IssueEntity, id: string) => {

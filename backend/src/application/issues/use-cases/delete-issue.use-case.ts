@@ -9,6 +9,8 @@ export interface DeleteIssueRequest {
   tenantId: string;
   /** The caller — a personal task is only deletable by its owner or an admin. */
   requesterId: string;
+  /** Display name of the caller — recorded on history rows. */
+  requesterName: string;
   isAdmin: boolean;
   /** Deleting a *bug* is restricted to admin/product (mirrors the old bug rule). */
   canDeleteBug: boolean;

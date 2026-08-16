@@ -108,6 +108,7 @@ export class IssuesController {
       id,
       tenantId: auth.tenantId,
       requesterId: auth.userId,
+      requesterName: auth.name,
       isAdmin: auth.role === Role.ADMIN,
       dto,
     });
@@ -127,6 +128,7 @@ export class IssuesController {
       id,
       tenantId: auth.tenantId,
       requesterId: auth.userId,
+      requesterName: auth.name,
       isAdmin: auth.role === Role.ADMIN,
       status: dto.status,
     });
@@ -145,6 +147,7 @@ export class IssuesController {
       id,
       tenantId: auth.tenantId,
       requesterId: auth.userId,
+      requesterName: auth.name,
       isAdmin: auth.role === Role.ADMIN,
       // Bugs were admin/product-only to delete; tasks stay deletable by the broader
       // board-write roles (their owner-or-admin check is enforced in the use-case).

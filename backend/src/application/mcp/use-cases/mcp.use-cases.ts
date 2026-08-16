@@ -597,6 +597,7 @@ export class McpUpdateIssueUseCase
       id: issue.id.toString(),
       tenantId: actor.tenantId,
       requesterId: actor.userId,
+      requesterName: actor.keyName,
       isAdmin,
       dto: update,
     });
@@ -675,6 +676,7 @@ export class McpSetStatusUseCase
       id: issue.id.toString(),
       tenantId: actor.tenantId,
       requesterId: actor.userId,
+      requesterName: actor.keyName,
       isAdmin,
       status,
     });
@@ -765,6 +767,7 @@ export class McpDeleteIssueUseCase
       id: issueId,
       tenantId: actor.tenantId,
       requesterId: actor.userId,
+      requesterName: actor.keyName,
       isAdmin,
       canDeleteBug,
     });

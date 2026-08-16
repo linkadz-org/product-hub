@@ -15,6 +15,8 @@ export interface UpdateIssueRequest {
   tenantId: string;
   /** The caller — a personal task is only editable by its owner or an admin. */
   requesterId: string;
+  /** Display name of the caller — recorded on history rows. */
+  requesterName: string;
   isAdmin: boolean;
   dto: UpdateIssueDto;
 }

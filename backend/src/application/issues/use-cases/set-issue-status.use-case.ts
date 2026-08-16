@@ -9,6 +9,8 @@ export interface SetIssueStatusRequest {
   tenantId: string;
   /** The caller — a personal task is only movable by its owner or an admin. */
   requesterId: string;
+  /** Display name of the caller — recorded on history rows. */
+  requesterName: string;
   isAdmin: boolean;
   status: string;
 }
