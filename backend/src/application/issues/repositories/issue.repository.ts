@@ -36,6 +36,11 @@ export abstract class IIssueRepository {
    *  privacy filter on `findByTenant` hides personal-task children, but the
    *  delete-orphan guard must see them too, or it would orphan a private subtask. */
   countChildren: (tenantId: string, parentId: string) => Promise<number>;
+  /** Every issue whose parent is `parentId`, regardless of owner — same
+   *  no-ownerId scoping as `countChildren` (privacy filtering, if any, is the
+   *  caller's job: e.g. Task 17's related-history assembly runs each child
+   *  through its own `isVisibleTo` guard before using it). */
+  findChildren: (tenantId: string, parentId: string) => Promise<IssueEntity[]>;
   /** Scope/completed (count + points) per cycle id, in one aggregation. Feeds
    *  both the live rollups and the freeze at cycle completion. */
   cycleRollups: (

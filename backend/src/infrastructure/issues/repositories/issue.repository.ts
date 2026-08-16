@@ -420,6 +420,17 @@ export class IssueRepository
     return this.model.countDocuments({ tenantId, parentId }).exec();
   }
 
+  async findChildren(tenantId: string, parentId: string): Promise<IssueEntity[]> {
+    // No ownerId scoping — same reasoning as countChildren. Callers that care
+    // about per-child visibility (e.g. the related-history assembly in
+    // GetActivityUseCase) run each result through its own `isVisibleTo` guard.
+    const docs = await this.model
+      .find({ tenantId, parentId })
+      .lean<IssueDoc[]>()
+      .exec();
+    return docs.map((d) => this.toDomain(d));
+  }
+
   async cycleRollups(
     tenantId: string,
     cycleIds: string[],

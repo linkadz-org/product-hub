@@ -20,11 +20,24 @@ function build(issue: unknown, docPage: unknown = null, roadmap: unknown = null)
       return { data: [], total: 0, page: 1, limit: 50, totalPages: 0 };
     },
   };
-  const issues = { findById: async () => issue };
-  const docPages = { findById: async () => docPage };
+  const issues = {
+    findById: async () => issue,
+    findChildren: async () => [],
+  };
+  const docPages = {
+    findById: async () => docPage,
+    findByLinkRef: async () => [],
+  };
   const roadmaps = { findByItemId: async () => roadmap };
+  const reports = { findById: async () => null };
   return {
-    uc: new GetActivityUseCase(audit as never, issues as never, docPages as never, roadmaps as never),
+    uc: new GetActivityUseCase(
+      audit as never,
+      issues as never,
+      docPages as never,
+      roadmaps as never,
+      reports as never,
+    ),
     calls,
   };
 }

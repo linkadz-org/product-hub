@@ -21,7 +21,7 @@ export class ActivityLogController {
   async list(
     @AuthUser() auth: JwtPayload,
     @Query() query: ActivityQueryDto,
-  ): Promise<IServiceListResponse<ActivityEntryDto>> {
+  ): Promise<IServiceListResponse<ActivityEntryDto> & { relatedTruncated: boolean }> {
     const result = await this.getActivity.execute({
       tenantId: auth.tenantId,
       requesterId: auth.userId,
@@ -36,7 +36,10 @@ export class ActivityLogController {
     // for objects the caller isn't allowed to know about.
     if (result.isFailure) throw new EntityNotFoundException(result.error as string);
 
-    const { data, total, page, limit } = result.getValue();
-    return ServiceResponse.paginate(ActivityMapper.toDtoArray(data), total, page, limit);
+    const { data, total, page, limit, labelByEntityId, relatedTruncated } = result.getValue();
+    return {
+      ...ServiceResponse.paginate(ActivityMapper.toDtoArray(data, labelByEntityId), total, page, limit),
+      relatedTruncated,
+    };
   }
 }
