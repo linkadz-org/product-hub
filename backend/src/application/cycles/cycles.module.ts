@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { InfrastructureCyclesModule } from '@infrastructure/cycles/cycles.module';
 import { InfrastructureIssuesModule } from '@infrastructure/issues/issues.module';
 import { InfrastructureTeamsModule } from '@infrastructure/teams/teams.module';
+import { ApplicationAuditLogModule } from '@application/audit-log/audit-log.module';
 import { CycleSchedulerService } from './services/cycle-scheduler.service';
 import {
   CreateCycleUseCase,
@@ -16,7 +17,12 @@ import {
   // The scheduler reads/writes cycles, freezes rollups from issues, and the
   // use-cases resolve the owning team. No import of ApplicationIssuesModule —
   // that module imports *this* one (list reads run the scheduler).
-  imports: [InfrastructureCyclesModule, InfrastructureIssuesModule, InfrastructureTeamsModule],
+  imports: [
+    InfrastructureCyclesModule,
+    InfrastructureIssuesModule,
+    InfrastructureTeamsModule,
+    ApplicationAuditLogModule,
+  ],
   providers: [
     CycleSchedulerService,
     GetTeamCyclesUseCase,

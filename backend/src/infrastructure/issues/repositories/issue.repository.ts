@@ -12,6 +12,7 @@ import { BurndownIssueRow } from '@application/cycles/domain/cycle-burndown';
 import {
   IssuePaginationResponse,
   IIssueRepository,
+  MovedIssue,
 } from '@application/issues/repositories/issue.repository';
 import { IssueEntity } from '@application/issues/domain/entities/issue.entity';
 import { BugSeverity, IssueKind } from '@application/issues/domain/enums/issue.enums';
@@ -658,21 +659,32 @@ export class IssueRepository
     fromCycleIds: string[],
     toCycleId: string,
     completedStatusKeys: string[],
-  ): Promise<number> {
-    if (!fromCycleIds.length) return 0;
+  ): Promise<MovedIssue[]> {
+    if (!fromCycleIds.length) return [];
+    const filter = { tenantId, cycleId: { $in: fromCycleIds }, status: { $nin: completedStatusKeys } };
+    // Read the affected issues *before* the bulk write — it's the only way to
+    // capture which cycle each one moved from; the write itself only knows the
+    // filter, not the per-document `cycleId` it matched.
+    const affected = await this.model
+      .find(filter, { _id: 1, shortId: 1, cycleId: 1 })
+      .lean<{ _id: string; shortId?: string; cycleId: string }[]>()
+      .exec();
+    if (!affected.length) return [];
+
     // Rolling into a real next cycle bumps the carry counter (drives the
     // "Carried over ×N" badge). Dropping to no-cycle (rollover off) clears it —
     // a detached issue isn't "carried" anywhere.
     const update = toCycleId
       ? { $set: { cycleId: toCycleId }, $inc: { carryOverCount: 1 } }
       : { $set: { cycleId: toCycleId, carryOverCount: 0 } };
-    const res = await this.model
-      .updateMany(
-        { tenantId, cycleId: { $in: fromCycleIds }, status: { $nin: completedStatusKeys } },
-        update,
-      )
-      .exec();
-    return res.modifiedCount ?? 0;
+    await this.model.updateMany(filter, update).exec();
+
+    return affected.map((d) => ({
+      id: d._id,
+      shortId: d.shortId ?? '',
+      fromCycleId: d.cycleId,
+      toCycleId,
+    }));
   }
 
   async clearCycleIds(tenantId: string, cycleIds: string[]): Promise<number> {

@@ -1,6 +1,7 @@
 import { TeamEntity } from '@application/teams/domain/entities/team.entity';
 import { CycleMode, TeamIssueType } from '@application/teams/domain/enums/team.enums';
 import { IIssueRepository } from '@application/issues/repositories/issue.repository';
+import { RecordActivityUseCase } from '@application/audit-log/use-cases/record-activity.use-case';
 import { CycleEntity } from '../domain/entities/cycle.entity';
 import { CycleRollup, CycleStatus, CYCLE_FILTER_NO_MATCH } from '../domain/enums/cycle.enums';
 import { ICycleRepository } from '../repositories/cycle.repository';
@@ -94,10 +95,14 @@ describe('CycleSchedulerService', () => {
     cycles = new FakeCycleRepo();
     issues = {
       cycleRollups: jest.fn().mockResolvedValue({}),
-      moveUnfinishedIssues: jest.fn().mockResolvedValue(0),
+      moveUnfinishedIssues: jest.fn().mockResolvedValue([]),
       clearCycleIds: jest.fn().mockResolvedValue(0),
     };
-    scheduler = new CycleSchedulerService(cycles, issues as unknown as IIssueRepository);
+    scheduler = new CycleSchedulerService(
+      cycles,
+      issues as unknown as IIssueRepository,
+      { execute: jest.fn().mockResolvedValue(undefined) } as unknown as RecordActivityUseCase,
+    );
   });
 
   it('does nothing for a team without cycles', async () => {

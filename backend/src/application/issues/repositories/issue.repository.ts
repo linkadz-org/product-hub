@@ -12,6 +12,14 @@ export interface IssuePaginationResponse {
   totalPages: number;
 }
 
+/** One issue swept out of a completed cycle by {@link IIssueRepository.moveUnfinishedIssues}. */
+export interface MovedIssue {
+  id: string;
+  shortId: string;
+  fromCycleId: string;
+  toCycleId: string;
+}
+
 /** Port for issue persistence (the unified tasks+bugs store). All reads are
  *  tenant-scoped. */
 export abstract class IIssueRepository {
@@ -58,13 +66,14 @@ export abstract class IIssueRepository {
     extraIds: string[],
   ) => Promise<BurndownIssueRow[]>;
   /** Sweep unfinished issues out of completed cycles into `toCycleId` (auto-
-   *  rollover) or '' (back to no-cycle). Idempotent; returns how many moved. */
+   *  rollover) or '' (back to no-cycle). Idempotent; returns the issues moved
+   *  (with the cycle each came from), so the caller can log the rollover. */
   moveUnfinishedIssues: (
     tenantId: string,
     fromCycleIds: string[],
     toCycleId: string,
     completedStatusKeys: string[],
-  ) => Promise<number>;
+  ) => Promise<MovedIssue[]>;
   /** Detach every issue pointing at these cycles (deleted upcoming cycles). */
   clearCycleIds: (tenantId: string, cycleIds: string[]) => Promise<number>;
   /** Phân bố bug, gom nhóm nhiều chiều trong một lần aggregation. Chỉ chiều
