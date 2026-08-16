@@ -1,6 +1,40 @@
 import { AuditLogRepository } from './audit-log.repository';
+import { AuditLogEntity } from '@application/audit-log/domain/entities/audit-log.entity';
 import { AuditActor, AuditEntity } from '@application/audit-log/domain/enums/audit.enums';
 import { AuditLogDoc } from '../entities/audit-log.schema';
+
+describe('AuditLogRepository round-trip mapping', () => {
+  it('round-trips entityId and automated through toDocument/toDomain', () => {
+    const entity = AuditLogEntity.create({
+      tenantId: 't1',
+      projectId: '',
+      reportId: '',
+      entity: AuditEntity.ISSUE,
+      entityId: 'issue-1',
+      entityRef: 'QC-10',
+      field: 'status',
+      oldValue: 'Backlog',
+      newValue: 'Done',
+      actorType: AuditActor.USER,
+      actorId: 'u1',
+      actorName: 'Lucas',
+      automated: true,
+    }).getValue();
+
+    const repo = new AuditLogRepository({} as never);
+    const doc = repo.toDocument(entity);
+    expect(doc.entityId).toBe('issue-1');
+    expect(doc.automated).toBe(true);
+
+    const back = repo.toDomain({
+      ...doc,
+      _id: entity.id.toString(),
+      createdAt: entity.createdAt,
+    } as AuditLogDoc);
+    expect(back.entityId).toBe('issue-1');
+    expect(back.automated).toBe(true);
+  });
+});
 
 describe('AuditLogRepository.toDomain', () => {
   it('falls back entityId and automated to their defaults for legacy docs missing them', () => {
