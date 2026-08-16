@@ -16,15 +16,18 @@ export type TrackedField = (typeof TRACKED_FIELDS)[number];
 /**
  * Fields recorded as "changed" with no values shown.
  *
- * `title` lands here for roadmap items — unlike the issue and doc-page paths,
- * where a rename's values are promoted to the event itself. The row already
- * carries `itemRef` (the item's `RM-…` shortId), which is what a reader uses
- * to find the item; the row's job here is to say a rename happened, not to
- * replay the wording, so it stays grouped with the other value-less fields
- * rather than costing the log the italic diff the entity+long-text callout in
- * `issue-diff.ts` argues against duplicating for a same-shaped rename.
+ * `title` is NOT here — it is value-bearing, same as for issues and doc
+ * pages: a rename's values *are* the event. "Changed the title" with nothing
+ * on either side of the arrow tells a reader nothing they could act on, and
+ * the storage argument that justifies hiding a `description` (a 4KB body
+ * edited repeatedly) doesn't apply to a short title — the row count is
+ * identical either way, only the values shown differ. All three entity types
+ * agree: titles carry their values, descriptions do not. Nothing is
+ * value-less here today; the set exists (empty) for parity with
+ * `issue-diff.ts` / `doc-page-diff.ts`, and so a future long-text field (a
+ * `description` on roadmap items, say) has an obvious place to land.
  */
-export const LONG_TEXT_FIELDS: readonly string[] = ['title'];
+export const LONG_TEXT_FIELDS: readonly string[] = [];
 
 /**
  * Bare-id fields with no display form. None today — `phase` already reads as

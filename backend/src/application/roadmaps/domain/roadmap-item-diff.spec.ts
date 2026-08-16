@@ -43,8 +43,10 @@ describe('diffRoadmapItems', () => {
     expect(diffRoadmapItems([item()], [item()])).toEqual([]);
   });
 
-  it('treats the item title as long text', () => {
+  it('records a title change with its real values — a rename IS the event', () => {
     const out = diffRoadmapItems([item()], [item({ title: 'Something else' })]);
-    expect(out[0].changes).toEqual([{ field: 'title', oldValue: '', newValue: '' }]);
+    expect(out[0].changes).toEqual([
+      { field: 'title', oldValue: 'Login redesign', newValue: 'Something else' },
+    ]);
   });
 });
