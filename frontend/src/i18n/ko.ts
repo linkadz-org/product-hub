@@ -390,6 +390,9 @@ export const ko: Record<I18nKey, string> = {
   'activityLog.verb.deleted': '이 항목을 삭제함',
   'activityLog.verb.changed': '변경함',
   'activityLog.verb.edited': '수정함',
+  // Korean is SOV — the object (field) comes before the verb, the reverse of
+  // English. "상태 변경함" ("status changed"), not "변경함 상태".
+  'activityLog.sentence': '{field} {verb}',
   'activityLog.viaApiKey': 'API 키',
   'activityLog.notSet': '설정 안 됨',
   'activityLog.systemActor': '자동으로',

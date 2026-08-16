@@ -374,6 +374,34 @@ export interface CommentDto {
   updatedAt: string;
 }
 
+/**
+ * One system-event row from `GET /v1/activity` (`ActivityEntryDto` on the
+ * backend, `backend/src/application/audit-log/dtos/activity-entry.response.dto.ts`).
+ *
+ * Not `AuditLogDto` above — that's the older, narrower test-case/report change
+ * log (`AuditEntityType`/`AuditActorType` only cover `testcase`/`report` and
+ * `user`/`api`). This one backs the newer, broader activity feed (issues today,
+ * doc pages and roadmap items later) whose `entity`/`actorType` values — e.g.
+ * `'issue'`, `'system'` — don't fit those older enums, so it types them as
+ * plain strings/literals instead of stretching those enums to cover both.
+ */
+export interface ActivityEntryDto {
+  id: string;
+  entity: string;
+  entityId: string;
+  entityRef: string;
+  field: string;
+  oldValue: string;
+  newValue: string;
+  actorType: 'user' | 'api' | 'system';
+  actorId: string;
+  actorName: string;
+  automated: boolean;
+  createdAt: string;
+  /** '' when the row belongs to the object being viewed. */
+  relationLabel: string;
+}
+
 /** How many open threads a doc page carries — drives the badge in the page rail. */
 export interface DocPageCommentCount {
   pageId: string;

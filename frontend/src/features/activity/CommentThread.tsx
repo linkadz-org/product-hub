@@ -16,6 +16,9 @@ import {
 } from '@/features/activity/api';
 import { useMediaAttachments } from '@/features/uploads/useMediaAttachments';
 import { AttachMediaButton, AttachmentStrip, CommentMedia } from '@/features/activity/CommentMedia';
+import { useActivity } from '@/features/activity-log/api';
+import { ActivityEntry } from '@/features/activity-log/ActivityEntry';
+import { mergeStream } from '@/features/activity-log/mergeStream';
 
 export interface Person {
   id: string;
@@ -82,6 +85,21 @@ export function CommentThread({
   const { data: fetched } = useComments(source, comments === undefined);
   const thread = comments ?? fetched ?? [];
 
+  // System events (status changes, edits, …) only exist for a bug/task's own
+  // issue history today — a roadmap-item thread has no history endpoint yet
+  // (Phase 5), and a public viewer has no token to read an authed one with.
+  // `useActivity` disables itself on an empty id, so this just means "don't fetch".
+  const isIssueSource = source.kind === 'bug' || source.kind === 'task';
+  const historyId = isIssueSource && comments === undefined ? source.id : '';
+  // `undefined` on both loading and error — defaulting to `[]` here (rather
+  // than guarding the whole component) is what keeps a failed history fetch
+  // from blanking comments that already loaded fine.
+  const { data: history } = useActivity('issue', historyId);
+  // The issue's own creation is already shown as its own timeline row above
+  // this thread (`IssueDetailMain`'s "{createdByName} {createdLabel}" line) —
+  // drop it here so it isn't rendered twice.
+  const events = (history ?? []).filter((e) => e.field !== 'created');
+
   // Fold the flat list into one-level threads: each top-level comment plus the
   // replies pointing at it. A reply whose parent isn't a known top-level comment
   // (e.g. the parent was deleted) starts its own thread, so a reply is never
@@ -99,20 +117,30 @@ export function CommentThread({
     }
   }
 
+  // Events interleave with top-level threads by time; a reply always stays
+  // nested under its own root (below) rather than floating loose in the
+  // stream, so an event landing between a root and its reply can't split
+  // them apart visually.
+  const stream = mergeStream(roots, events);
+
   return (
     <>
-      {roots.map((root) => (
-        <CommentThreadCard
-          key={root.id}
-          source={source}
-          root={root}
-          replies={repliesByRoot.get(root.id) ?? []}
-          users={users}
-          canWrite={canWrite}
-          isAdmin={isAdmin}
-          currentUserId={currentUserId}
-        />
-      ))}
+      {stream.map((item) =>
+        item.kind === 'event' ? (
+          <ActivityEntry key={`event-${item.id}`} entry={item} />
+        ) : (
+          <CommentThreadCard
+            key={item.id}
+            source={source}
+            root={item}
+            replies={repliesByRoot.get(item.id) ?? []}
+            users={users}
+            canWrite={canWrite}
+            isAdmin={isAdmin}
+            currentUserId={currentUserId}
+          />
+        ),
+      )}
 
       {canWrite && <CommentComposer source={source} users={users} variant="root" />}
     </>

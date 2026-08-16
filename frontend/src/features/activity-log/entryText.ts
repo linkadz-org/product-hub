@@ -92,6 +92,17 @@ function fieldLabel(field: string): string {
   return isTrackedField(field) ? t(FIELD_LABEL[field]) : field;
 }
 
+/**
+ * `verb` + `field` in the current locale's word order — English is SVO
+ * ("changed status"), Korean is SOV ("상태 변경함"). A naive `${verb} ${field}`
+ * join is only ever correct for English, so the join lives here, driven by
+ * the `activityLog.sentence` template, rather than in a component that would
+ * bake the English order into every locale.
+ */
+function sentence(verb: string, field: string): string {
+  return t('activityLog.sentence').replace('{verb}', verb).replace('{field}', field);
+}
+
 /** An empty `oldValue` reads as "not set", never as a blank gap before the
  *  arrow (e.g. "changed assignee → Felix" with nothing on the left). */
 function displayValue(value: string): string {
@@ -119,7 +130,7 @@ export function describeEntry(entry: ActivityEntry): EntryText {
   if (longText) {
     return {
       subject,
-      verb: `${t('activityLog.verb.edited')} ${fieldLabel(entry.field)}`,
+      verb: sentence(t('activityLog.verb.edited'), fieldLabel(entry.field)),
       from: '',
       to: '',
       longText: true,
@@ -128,7 +139,7 @@ export function describeEntry(entry: ActivityEntry): EntryText {
 
   return {
     subject,
-    verb: `${t('activityLog.verb.changed')} ${fieldLabel(entry.field)}`,
+    verb: sentence(t('activityLog.verb.changed'), fieldLabel(entry.field)),
     from: displayValue(entry.oldValue),
     to: displayValue(entry.newValue),
     longText: false,

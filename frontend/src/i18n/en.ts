@@ -395,6 +395,11 @@ export const en = {
   'activityLog.verb.deleted': 'deleted this',
   'activityLog.verb.changed': 'changed',
   'activityLog.verb.edited': 'edited the',
+  // Word order for "{verb} {field}" — English is SVO (verb before object), so
+  // the verb comes first. Kept as its own key (not a hardcoded join) so `ko`
+  // can flip the order without either locale reading backwards. See the `ko`
+  // entry for why this one differs.
+  'activityLog.sentence': '{verb} {field}',
   'activityLog.viaApiKey': 'API key',
   'activityLog.notSet': 'not set',
   'activityLog.systemActor': 'Automatically',
