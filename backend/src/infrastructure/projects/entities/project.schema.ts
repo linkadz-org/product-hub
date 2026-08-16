@@ -18,6 +18,9 @@ export interface ProjectDoc {
   deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  /** `title`, đã chuẩn hoá. Xem search-text.util.ts. Repository tính field này
+   *  trong `toDocument()`. */
+  searchText: string;
 }
 
 export const ProjectSchema = new Schema<ProjectDoc>(
@@ -39,6 +42,7 @@ export const ProjectSchema = new Schema<ProjectDoc>(
     publicEnabled: { type: Boolean, default: false },
     publicToken: { type: String, default: null },
     deletedAt: { type: Date, default: null },
+    searchText: { type: String, default: '' },
   },
   { timestamps: true },
 );
@@ -49,3 +53,5 @@ ProjectSchema.index(
   { tenantId: 1, slug: 1 },
   { unique: true, partialFilterExpression: { deletedAt: null } },
 );
+
+ProjectSchema.index({ tenantId: 1, searchText: 1 });

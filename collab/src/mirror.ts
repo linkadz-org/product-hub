@@ -7,6 +7,25 @@ import { pages } from './mongo.js';
 import { logHookFailure } from './persistence.js';
 import { getRoom } from './rooms.js';
 import { log } from './log.js';
+import { normalizeSearchText, SEARCH_BODY_MAX } from './searchText.js';
+import { plainText } from './plainText.js';
+
+/**
+ * Same one-line formula as `backend/src/shared/utils/search-body.util.ts`'s
+ * `computeSearchBody` — kept here as a literal duplicate rather than an
+ * import of that file, because it can't be a third verbatim-synced module:
+ * this package's `tsconfig.json` requires an explicit `.js` extension on
+ * every relative import (`module`/`moduleResolution: NodeNext`), while the
+ * backend package is `commonjs` with classic Node resolution and rejects
+ * that same extension on a `.ts` source file. One byte-identical file cannot
+ * satisfy both module systems, so `search-text.util.ts`/`plain-text.util.ts`
+ * stay import-free and sync as-is, and this composition of them is
+ * re-declared on each side instead. If you change this line, change the
+ * backend one too — nothing else catches the two drifting apart.
+ */
+function computeSearchBody(html: string): string {
+  return normalizeSearchText(plainText(html).slice(0, SEARCH_BODY_MAX));
+}
 
 /**
  * Keeps `docpages.content` in step with the CRDT.
@@ -56,6 +75,10 @@ export function mirror(db: Db): Extension {
           {
             $set: {
               content: html,
+              // Giữ khớp với DocPageRepository.toDocument(). Đây là đường ghi
+              // duy nhất không đi qua Mongoose, nên nếu quên thì mọi nội dung gõ
+              // trong editor realtime sẽ không tìm kiếm được.
+              searchBody: computeSearchBody(html),
               updatedAt: new Date(),
               // Whoever's edit triggered this store gets the byline, matching
               // what the REST PATCH would have recorded.

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
 import { apiGet } from '@/lib/api';
 import { DatePicker } from '@/components/ui';
@@ -72,6 +72,26 @@ export function ReportView() {
   const userNames = usersData?.items.map((u) => u.name || u.email) ?? [];
   const [importOpen, setImportOpen] = useState(false);
   const navigate = useNavigate();
+  const { hash } = useLocation();
+
+  // Deep link from search: `#TC-A1` scrolls to and briefly highlights the
+  // matching test-case row. `report` only arrives after an async fetch, so
+  // the row this anchor targets doesn't exist on first paint — the effect
+  // re-runs once `report` lands and the table has rendered. The extra
+  // `requestAnimationFrame` waits one more frame for that render to commit
+  // before querying the DOM. A stale/deleted case (or any other unmatched
+  // hash) just finds nothing and does nothing — the report still opens.
+  useEffect(() => {
+    if (!hash || !report) return;
+    const id = requestAnimationFrame(() => {
+      const el = document.getElementById(hash.slice(1));
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('ring-2', 'ring-primary');
+      setTimeout(() => el.classList.remove('ring-2', 'ring-primary'), 2000);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [hash, report]);
 
   // Bug ↔ test-case linking: count linked bugs per case for this report.
   const { data: bugData } = useBugs(effectiveId ? { reportId: effectiveId } : undefined);

@@ -5,6 +5,8 @@ import { UniqueEntityID } from '@core/domain';
 import { BaseRepository } from '@core/infrastructure/database/mongoose/base';
 import { resolveAssignees } from '@module-shared/utils/query-array.util';
 import { dateRangeFilter } from '@module-shared/utils/date-range.util';
+import { buildSearchText, normalizeSearchText } from '@module-shared/utils/search-text.util';
+import { escapeRegex } from '@infrastructure/search/search-query.util';
 import { CycleRollup } from '@application/cycles/domain/enums/cycle.enums';
 import { BurndownIssueRow } from '@application/cycles/domain/cycle-burndown';
 import {
@@ -105,6 +107,26 @@ export function shouldRankExactRefFirst(
   sort?: IssueSortField,
 ): boolean {
   return !!exactRef && !sort;
+}
+
+/**
+ * Các nhánh $or cho một chuỗi trong ô tìm kiếm của board.
+ *
+ * `searchText` là nhánh chính: nó đã bỏ dấu nên "dang nh" khớp "Đăng nhập" —
+ * cùng hành vi với ⌘K, vốn là điều kiện để hai ô tìm kiếm không mâu thuẫn nhau.
+ * `description` giữ regex thô (không chuẩn hoá) vì nó không có bản chuẩn hoá;
+ * `_id` giữ lại cho link cũ dán vào ô tìm kiếm. `title`/`shortId` không còn là
+ * nhánh riêng — cả hai đã nằm trong `searchText` (xem `buildSearchText`), nên
+ * gộp vào đó là mất nhánh thừa, không phải mất bề mặt tìm kiếm.
+ *
+ * ⚠️ Chỉ tìm đúng trên document đã có `searchText` (ghi mới hoặc đã backfill —
+ * Task 6). Document cũ chưa backfill có `searchText` rỗng và sẽ không khớp qua
+ * nhánh này nữa dù `title` của nó chứa từ khoá.
+ */
+export function buildIssueTextFilter(search: string) {
+  const raw = new RegExp(escapeRegex(search), 'i');
+  const norm = new RegExp(escapeRegex(normalizeSearchText(search)), 'i');
+  return [{ searchText: norm }, { description: raw }, { _id: raw }];
 }
 
 @Injectable()
@@ -218,6 +240,7 @@ export class IssueRepository
       createdAt: issue.createdAt,
       updatedAt: issue.updatedAt,
       resolvedAt: issue.resolvedAt,
+      searchText: buildSearchText(issue.title, issue.shortId),
     };
   }
 
@@ -330,11 +353,7 @@ export class IssueRepository
       ];
     }
     if (query.search) {
-      // Escaped: free text from a search box would otherwise throw on `(`.
-      const escaped = query.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const re = new RegExp(escaped, 'i');
-      // Name or id — the picker accepts a pasted id (`_id` is a uuid string).
-      const searchOr = [{ title: re }, { description: re }, { _id: re }, { shortId: re }];
+      const searchOr = buildIssueTextFilter(query.search);
       if (filter.$or) {
         filter.$and = [{ $or: filter.$or }, { $or: searchOr }];
         delete filter.$or;

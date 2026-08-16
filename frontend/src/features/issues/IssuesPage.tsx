@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import { CalendarRange, LayoutGrid, List } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { AssigneeBadge } from '@/components/AssigneeBadge';
@@ -34,7 +35,41 @@ import { IssueCycleChip } from '@/features/cycles/CycleControls';
 import { useCycleLookup } from '@/features/cycles/api';
 import { TaskCard } from '@/features/tasks/MyTasksPage';
 import { BugCard } from '@/features/bugs/BugsBoardPage';
+import { pruneFilters, sanitizeSavedViewQuery, useSavedViews } from '@/features/saved-views/api';
+import { SavedViewBar } from '@/features/saved-views/SavedViewBar';
 import { useDeleteIssue, useIssues, useSetIssueStatus } from './api';
+
+/**
+ * Builds the URL params for setting `kind` and `view` together in one
+ * `setSearchParams` call.
+ *
+ * `setKind`/`setView` (below) each wrap `setSearchParams` by building a fresh
+ * `URLSearchParams` from whatever `params` snapshot is in their closure, then
+ * calling `setParams`. React-router's `setSearchParams` builds its next
+ * params purely from that argument — it does not merge with any other call
+ * made in the same tick. So calling `setKind(...)` then `setView(...)`
+ * back-to-back (as the saved-view apply effect used to) races: both read the
+ * *same* stale `params` snapshot, and the second call's `replace()` silently
+ * discards whatever the first one just wrote — the URL ends up reflecting
+ * only the second call. Concretely, applying a saved Bug-board view opened
+ * from the Task board would revert to `kind=task` because `setView` ran last
+ * and rebuilt the URL without the `kind` change `setKind` had just made.
+ *
+ * Exported and pure (no state, no `setParams` call) so this can be unit
+ * tested without mounting the page.
+ */
+export function buildKindViewParams(
+  current: URLSearchParams,
+  kind: IssueKind,
+  view: 'board' | 'list' | 'timeline',
+): URLSearchParams {
+  const next = new URLSearchParams(current);
+  if (kind === IssueKind.BUG) next.set('kind', 'bug');
+  else next.delete('kind');
+  if (view === 'board') next.delete('view');
+  else next.set('view', view);
+  return next;
+}
 
 /** The two kinds the board can show, in switch order. */
 const KIND_TABS = [
@@ -217,6 +252,72 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
   const { data: projectsData } = useProjects({ limit: 100 });
   const { data: roadmaps } = useRoadmaps();
 
+  // `?sv=<id>` names a saved view to open. `filters`/`search`/`sort` live in
+  // React state (only `kind` and `view` ride in the URL), so applying a saved
+  // view means writing that state back — there is nothing to restore from the
+  // URL alone.
+  const svId = params.get('sv');
+  const { data: views } = useSavedViews();
+  const activeView = views?.find((v) => v.id === svId);
+
+  // Applies once per `sv` change — deliberately *not* keyed on `filters`,
+  // `sort` etc., or every edit the user makes afterwards would immediately be
+  // pulled back to the saved view.
+  useEffect(() => {
+    if (!svId) return;
+    if (!views) return; // still loading — wait for the list rather than 404 early.
+    if (!activeView) {
+      // Deleted, or not shared with this user: open the default board instead
+      // of a blank one, and say why.
+      toast.error(t('savedViews.cannotOpen'));
+      const next = new URLSearchParams(params);
+      next.delete('sv');
+      setParams(next, { replace: true });
+      return;
+    }
+    // The stored query is never trusted as-is — it may predate a filter-shape
+    // change or come from an older client (`CreateSavedViewDto.query` is only
+    // `@IsObject()`-validated server-side). `sanitizeSavedViewQuery` defends
+    // every field independently so a malformed one degrades to the board's
+    // own default rather than crashing or wedging the filter state.
+    const q = sanitizeSavedViewQuery(activeView);
+    // A deleted project or backlog item must not blank the whole board — drop
+    // just that stale id, keep the rest, and say so. Only these two
+    // categories are checked: `severity` is a closed enum that can't go
+    // stale, and a trustworthy valid set for `status` (team-specific,
+    // depends on the *target* kind we're about to switch to) or `assigneeId`
+    // (only loaded when `isAll && canManageDelivery`, and capped at 100)
+    // isn't cheaply available here. Known gap: a stale `status`/`assigneeId`
+    // filter is left in place — the board just shows no matches for it,
+    // and per `FilterMenu.tsx`, the user's only way to remove a single stale
+    // chip today is "Clear all" (no per-chip remove). `projectsData`/
+    // `roadmaps` are also not yet guaranteed loaded the first time this runs
+    // (they're independent queries fired alongside `views`) — when either is
+    // still `undefined`, that category is simply skipped this pass rather
+    // than treated as "nothing is valid", so a stale id can survive one
+    // apply if its data hasn't arrived yet. This is a real, not hypothetical,
+    // race window; deliberately not covered by `useEffect`'s deps below,
+    // since re-running on every load of `projectsData`/`roadmaps` would risk
+    // the same "pulled back after editing" loop `filters` is kept out for.
+    const { filters: pruned, dropped } = pruneFilters(q.filters, {
+      ...(projectsData ? { projectId: new Set(projectsData.items.map((p) => p.id)) } : {}),
+      ...(roadmaps
+        ? { roadmapItemId: new Set(roadmaps.flatMap((r) => (r.items ?? []).map((i) => i.id))) }
+        : {}),
+    });
+    // `kind` and `view` are set together in one `setParams` call — see
+    // `buildKindViewParams` above for why two separate calls (`setKind` then
+    // `setView`) race and silently drop the kind change.
+    if (q.kind !== kind || q.view !== view) {
+      setParams(buildKindViewParams(params, q.kind, q.view), { replace: true });
+    }
+    setFilters(pruned);
+    setSort(q.sort);
+    setSearch(q.search);
+    if (dropped) toast.warning(t('savedViews.someFiltersDropped'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [svId, views]);
+
   const filterCategories: FilterCategory[] = [
     {
       id: 'status',
@@ -285,14 +386,29 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
       }
       sort={isList ? <SortMenu value={sort} onChange={setSort} /> : undefined}
       filtersEnd={
-        capped ? (
-          <p className="text-xs text-muted-foreground">
-            <span className="tabular-nums">
-              {items.length} / {data?.total}
-            </span>{' '}
-            {t('issues.cappedHint')}
-          </p>
-        ) : undefined
+        <div className="flex flex-wrap items-center gap-2">
+          <SavedViewBar
+            kind={kind}
+            view={view}
+            filters={filters}
+            sort={sort}
+            search={search}
+            activeView={activeView}
+            onSaved={(id) => {
+              const next = new URLSearchParams(params);
+              next.set('sv', id);
+              setParams(next, { replace: true });
+            }}
+          />
+          {capped && (
+            <p className="text-xs text-muted-foreground">
+              <span className="tabular-nums">
+                {items.length} / {data?.total}
+              </span>{' '}
+              {t('issues.cappedHint')}
+            </p>
+          )}
+        </div>
       }
       view={{
         value: view,

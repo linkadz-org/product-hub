@@ -28,6 +28,10 @@ interface DialogProps {
   children: ReactNode;
   footer?: ReactNode;
   className?: string;
+  /** Overrides the body's default `px-6 py-5` padding — e.g. `p-0` for a surface
+   *  (like the command palette) whose input and list need to sit flush to the edge.
+   *  `cn` resolves the Tailwind conflict, so callers don't need `!important`. */
+  bodyClassName?: string;
 }
 
 /**
@@ -43,6 +47,7 @@ export function Dialog({
   children,
   footer,
   className,
+  bodyClassName,
 }: DialogProps) {
   const [full, setFull] = useState<boolean>(
     () => !!fullscreenKey && localStorage.getItem(FULL_KEY_PREFIX + fullscreenKey) === '1',
@@ -112,7 +117,7 @@ export function Dialog({
           ) : (
             <DialogPrimitive.Title className="sr-only">{t('common.dialog')}</DialogPrimitive.Title>
           )}
-          <div className="overflow-y-auto px-6 py-5">{children}</div>
+          <div className={cn('overflow-y-auto px-6 py-5', bodyClassName)}>{children}</div>
           {footer && (
             <div className="flex flex-wrap justify-end gap-2 border-t px-6 py-4">
               {footer}

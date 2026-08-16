@@ -23,6 +23,7 @@ export const ko: Record<I18nKey, string> = {
   'nav.tasks': '내 태스크',
   'nav.myTeam': '내 팀',
   'nav.favourites': '즐겨찾기',
+  'nav.savedViews': '뷰',
   'nav.assignedToMe': '나에게 배정됨',
   'nav.allIssues': '모든 이슈',
   'nav.today': '오늘 및 기한 초과',
@@ -713,6 +714,24 @@ export const ko: Record<I18nKey, string> = {
   'issues.cappedHint': '표시됨 — 검색이나 필터로 범위를 좁히세요.',
   'issues.kindTasks': '태스크',
   'issues.kindBugs': '버그',
+  // Saved views on the issue board — save the current filter/sort/search
+  // combination under a name (`?sv=<id>`), and reapply it later.
+  'savedViews.saveCurrent': '뷰 저장',
+  'savedViews.save': '저장',
+  'savedViews.saveAsNew': '새 뷰로 저장',
+  'savedViews.modified': '수정됨',
+  'savedViews.name': '뷰 이름',
+  'savedViews.share': '워크스페이스와 공유',
+  'savedViews.shareHint': '워크스페이스의 누구나 이 뷰를 열고 사용할 수 있습니다.',
+  // Shown when `?sv=` names a view that's gone (deleted) or not shared with
+  // this user — the board opens with its default filters instead of blank.
+  'savedViews.cannotOpen': '이 뷰는 더 이상 사용할 수 없습니다 — 기본 보드를 표시합니다.',
+  // Shown when applying a saved view drops a filter pointing at something
+  // deleted since it was saved (a project, a backlog item).
+  'savedViews.someFiltersDropped': '이 뷰의 일부 필터가 더 이상 존재하지 않는 항목을 가리켜 건너뛰었습니다.',
+  // Hover delete action on a saved-view sidebar row — shown only when the
+  // viewer owns the view or is an admin (mirrors the backend's own gate).
+  'savedViews.delete': '뷰 삭제',
   // Sort control (list view) — field on top, direction below. `sort.title` also
   // composes into the trigger (`정렬: ID`), so it carries no trailing colon.
   'sort.title': '정렬',
@@ -1639,4 +1658,17 @@ export const ko: Record<I18nKey, string> = {
   'code.pullRequests': '풀 리퀘스트',
   'code.commits': '커밋',
   'code.noKindSelected': '표시할 유형을 선택하세요.',
+
+  // ⌘K 커맨드 팔레트 — 새로 만들기 항목.
+  'palette.createTask': '새 태스크',
+  'palette.createBug': '새 버그',
+  'palette.placeholder': '검색 또는 이동…',
+  'palette.empty': '결과 없음',
+  'palette.searchUnavailable': '지금은 검색을 사용할 수 없습니다 — 아래 항목으로 이동할 수 있습니다.',
+  'palette.groupIssues': '이슈',
+  'palette.groupDocs': '문서',
+  'palette.groupRoadmap': '로드맵',
+  'palette.groupProjects': '프로젝트',
+  'palette.groupReports': '리포트',
+  'palette.groupTestCases': '테스트 케이스',
 };

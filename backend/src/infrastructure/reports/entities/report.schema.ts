@@ -21,6 +21,12 @@ export interface ReportDoc {
   order: number;
   createdAt: Date;
   updatedAt: Date;
+  /** `title`, đã chuẩn hoá. Xem search-text.util.ts. Repository tính field này
+   *  trong `toDocument()`. */
+  searchText: string;
+  /** Nhãn/tiêu đề test case trong `sections`, đã chuẩn hoá. Xem
+   *  search-text.util.ts. Repository tính field này trong `toDocument()`. */
+  casesSearchText: string[];
 }
 
 export const ReportSchema = new Schema<ReportDoc>(
@@ -47,6 +53,8 @@ export const ReportSchema = new Schema<ReportDoc>(
     // field, but that is exactly what it stores.
     sections: { type: [Schema.Types.Mixed], default: [] } as unknown as ReportSection[],
     order: { type: Number, default: 0 },
+    searchText: { type: String, default: '' },
+    casesSearchText: { type: [String], default: [] },
   },
   { timestamps: true },
 );
@@ -54,3 +62,6 @@ export const ReportSchema = new Schema<ReportDoc>(
 ReportSchema.index({ tenantId: 1, projectId: 1, slug: 1 }, { unique: true });
 // Lookups by a test case's shortId (public API + result dropdown).
 ReportSchema.index({ tenantId: 1, projectId: 1, 'sections.cases.shortId': 1 });
+
+ReportSchema.index({ tenantId: 1, searchText: 1 });
+ReportSchema.index({ tenantId: 1, casesSearchText: 1 });

@@ -15,8 +15,9 @@ import {
 import { t } from '@/i18n';
 import { FAVOURITE_KIND_LABEL, FavouriteKind } from '@/types/enums';
 import { useRemoveFavourite } from '@/features/favourites/api';
+import { useDeleteSavedView } from '@/features/saved-views/api';
 import { TeamIconPicker } from '@/features/teams/TeamIconPicker';
-import type { FavouriteDto, TeamDto } from '@/types/dto';
+import type { FavouriteDto, SavedViewDto, TeamDto } from '@/types/dto';
 
 /**
  * Every row the sidebar can render, and the state that remembers what's open.
@@ -980,6 +981,135 @@ export function FavouriteNavItem({
       >
         <X className="size-3.5" aria-hidden />
       </button>
+    </div>
+  );
+}
+
+/** A saved view's icon — its own, falling back to the board's double-tick glyph.
+ *  `SavedViewDto.icon` has no picker in the save dialog yet, so it's almost
+ *  always `''`; an unrecognised name is harmless (the glyph just renders
+ *  empty), so this doesn't validate against `IconName`. Exported (and kept
+ *  pure) so it's unit-testable without a render harness. */
+export function savedViewIcon(view: SavedViewDto): IconName {
+  return (view.icon || 'checks') as IconName;
+}
+
+/**
+ * Whether the live URL is standing on this exact saved view. Every view's row
+ * points at the same pathname (`/issues`), so — unlike a plain nav link — the
+ * `sv` query param is the only thing that tells two rows apart; a `NavLink`'s
+ * default pathname-only match would light every row at once. Pure and
+ * exported for the same reason as `savedViewIcon`.
+ */
+export function isSavedViewActive(pathname: string, search: string, viewId: string): boolean {
+  return pathname === '/issues' && new URLSearchParams(search).get('sv') === viewId;
+}
+
+/**
+ * Whether *this* viewer's row should offer the delete action — mirrors the
+ * backend's own gate (`canMutateSavedView` in
+ * `saved-view.use-cases.ts`: owner or admin, no other exception) exactly, so
+ * the button is only ever shown where clicking it would succeed. A shared
+ * view's row, opened by someone who isn't its owner and isn't an admin, never
+ * gets the button — showing it there would just be a 403 on click. Pure and
+ * exported for the same reason as `savedViewIcon`/`isSavedViewActive`: this
+ * project doesn't render-test components, so the one thing worth getting
+ * wrong here (the permission check) has to be unit-testable on its own.
+ */
+export function canDeleteSavedView(
+  view: Pick<SavedViewDto, 'ownerId'>,
+  actor: { id?: string; isAdmin: boolean },
+): boolean {
+  return view.ownerId === actor.id || actor.isAdmin;
+}
+
+/**
+ * One saved view in the sidebar — a shortcut to the Issues board pre-filtered
+ * by it (`/issues?sv=<id>`, applied by `IssuesPage`). Saved views are per-user
+ * but can be shared, and the list the API returns already reflects that (own +
+ * shared) — this row never filters by ownership, it only marks a shared one
+ * with a small people glyph so it reads as "not just mine".
+ *
+ * Active state is worked out by hand rather than left to `NavLink`: every row
+ * shares the same pathname (`/issues`), so only the `sv` query param tells two
+ * views apart — the same reasoning as `useRowActive` for a `search` row.
+ */
+export function SavedViewNavItem({
+  view,
+  collapsed,
+  onNavigate,
+}: {
+  view: SavedViewDto;
+  /** Classic menu's icon rail. */
+  collapsed?: boolean;
+  onNavigate: () => void;
+}) {
+  const { pathname, search } = useLocation();
+  const { user, isAdmin } = useAuth();
+  const remove = useDeleteSavedView();
+  const active = isSavedViewActive(pathname, search, view.id);
+  const canDelete = !collapsed && canDeleteSavedView(view, { id: user?.id, isAdmin });
+
+  if (collapsed) {
+    return (
+      <Link
+        to={{ pathname: '/issues', search: `?sv=${view.id}` }}
+        onClick={onNavigate}
+        title={view.name}
+        aria-current={active ? 'page' : undefined}
+        className={cn(
+          ROW,
+          active && 'bg-sidebar-accent text-sidebar-accent-foreground',
+          'md:justify-center md:gap-0',
+        )}
+      >
+        <span
+          className={cn(
+            'grid size-5 shrink-0 place-items-center transition-colors',
+            active
+              ? 'text-sidebar-accent-foreground'
+              : 'text-muted-foreground group-hover:text-sidebar-accent-foreground',
+          )}
+        >
+          <Icon name={savedViewIcon(view)} size={18} />
+        </span>
+      </Link>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        ROW,
+        'group/sv',
+        active && 'bg-sidebar-accent text-sidebar-accent-foreground',
+      )}
+    >
+      <span className="grid size-5 shrink-0 place-items-center">
+        <Icon name={savedViewIcon(view)} size={18} />
+      </span>
+      <Link
+        to={{ pathname: '/issues', search: `?sv=${view.id}` }}
+        onClick={onNavigate}
+        aria-current={active ? 'page' : undefined}
+        className="flex min-w-0 flex-1 items-center gap-1"
+      >
+        <span className="min-w-0 flex-1 truncate">{view.name}</span>
+        {view.shared && (
+          <Icon name="people" className="size-3 shrink-0 text-muted-foreground" />
+        )}
+      </Link>
+      {canDelete && (
+        <button
+          type="button"
+          onClick={() => remove.mutate(view.id)}
+          title={t('savedViews.delete')}
+          aria-label={t('savedViews.delete')}
+          className={cn(ACTION, 'group-hover/sv:opacity-100')}
+        >
+          <X className="size-3.5" aria-hidden />
+        </button>
+      )}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { NAV_GROUPS } from '@/layouts/sidebar/classicMenuConfig';
 import { t } from '@/i18n';
 import { useInbox } from '@/features/inbox/api';
 import { useFavourites } from '@/features/favourites/api';
+import { useSavedViews } from '@/features/saved-views/api';
 import { useTeams } from '@/features/teams/api';
 import { CreateTeamDialog } from '@/features/teams/CreateTeamDialog';
 import { ProfileMenu } from '@/layouts/sidebar/ProfileMenu';
@@ -17,6 +18,7 @@ import {
   NavLeafItem,
   NavParentItem,
   ROW,
+  SavedViewNavItem,
   SidebarCreateMenu,
   TeamNavList,
   useNavGroups,
@@ -63,6 +65,7 @@ export function ClassicSidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
   const { data: inbox } = useInbox();
   const unseen = inbox?.unseenCount ?? 0;
   const { data: favourites } = useFavourites();
+  const { data: savedViews } = useSavedViews();
   // Teams are dynamic (QC/Engineering are seeded); archived ones drop out.
   const { pathname } = useLocation();
   const { data: teams } = useTeams();
@@ -152,6 +155,34 @@ export function ClassicSidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
                   <FavouriteNavItem
                     key={`${fav.kind}:${fav.refId}`}
                     fav={fav}
+                    collapsed={collapsed}
+                    onNavigate={onCloseMobile}
+                  />
+                ))}
+            </div>
+            <div className={cn('mx-2 border-t border-sidebar-border', collapsed && 'md:mx-1')} />
+          </>
+        )}
+        {/* Saved views — same source and empty-state rule as Favourites above:
+            a user's own and any shared with the workspace, hidden entirely
+            when there are none. `Sidebar.tsx` (the two-level menu) renders the
+            same list from `NAV_AREAS`' `dynamic: 'savedViews'`; this menu has
+            no such mechanism, so it's drawn by hand here, the same way
+            Favourites is. */}
+        {savedViews && savedViews.length > 0 && (
+          <>
+            <div className="flex flex-col gap-0.5">
+              <NavHeading
+                label={t('nav.savedViews')}
+                open={sectionOpen('savedViews')}
+                onToggle={() => toggleSection('savedViews')}
+                className={cn(collapsed && 'md:hidden')}
+              />
+              {sectionBodyOpen('savedViews') &&
+                savedViews.map((view) => (
+                  <SavedViewNavItem
+                    key={view.id}
+                    view={view}
                     collapsed={collapsed}
                     onNavigate={onCloseMobile}
                   />

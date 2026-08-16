@@ -16,6 +16,9 @@ export interface DocDoc {
   publicToken: string | null;
   createdAt: Date;
   updatedAt: Date;
+  /** `title`, đã chuẩn hoá. Xem search-text.util.ts. Repository tính field này
+   *  trong `toDocument()`. */
+  searchText: string;
 }
 
 export const DocSchema = new Schema<DocDoc>(
@@ -36,6 +39,7 @@ export const DocSchema = new Schema<DocDoc>(
     createdByName: { type: String, default: '' },
     publicEnabled: { type: Boolean, default: false },
     publicToken: { type: String, default: null },
+    searchText: { type: String, default: '' },
   },
   { timestamps: true },
 );
@@ -47,3 +51,5 @@ DocSchema.index(
   { tenantId: 1, ref: 1 },
   { unique: true, partialFilterExpression: { ref: { $type: 'string', $gt: '' } } },
 );
+
+DocSchema.index({ tenantId: 1, searchText: 1 });
