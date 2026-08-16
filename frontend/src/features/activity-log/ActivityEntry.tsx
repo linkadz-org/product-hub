@@ -2,7 +2,7 @@ import { Badge } from '@/components/ui';
 import { t, type I18nKey } from '@/i18n';
 import { timeAgo } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { Avatar } from '@/features/activity/CommentThread';
+import { Avatar } from '@/features/activity/Avatar';
 import { describeEntry, type ActivityEntry as ActivityEntryData } from './entryText';
 
 /** Field-name suffixes `relationLabel` can carry — matches
@@ -23,8 +23,21 @@ function relationLabel(relation: string): string {
  * overflowing it.
  */
 export function ActivityEntry({ entry }: { entry: ActivityEntryData }) {
-  const { subject, verb, from, to, longText } = describeEntry(entry);
-  const hasValues = !longText && (from || to);
+  const { subject, verb, from, to, noValue, valuesBeforeVerb } = describeEntry(entry);
+  const hasValues = !noValue && (from || to);
+
+  const verbEl = <span className="text-muted-foreground">{verb}</span>;
+  const valuesEl = hasValues ? (
+    <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+      <span className="max-w-[12rem] truncate rounded bg-muted px-1.5 py-0.5 text-xs text-foreground">
+        {from}
+      </span>
+      <span aria-hidden>→</span>
+      <span className="max-w-[12rem] truncate rounded bg-muted px-1.5 py-0.5 text-xs text-foreground">
+        {to}
+      </span>
+    </span>
+  ) : null;
 
   return (
     <div className="flex items-start gap-3 text-sm">
@@ -33,21 +46,26 @@ export function ActivityEntry({ entry }: { entry: ActivityEntryData }) {
         <span className={cn('font-semibold', entry.actorType === 'system' && 'italic')}>
           {subject}
         </span>
-        <span className="text-muted-foreground">{verb}</span>
-        {hasValues && (
-          <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
-            <span className="max-w-[12rem] truncate rounded bg-muted px-1.5 py-0.5 text-xs text-foreground">
-              {from}
-            </span>
-            <span aria-hidden>→</span>
-            <span className="max-w-[12rem] truncate rounded bg-muted px-1.5 py-0.5 text-xs text-foreground">
-              {to}
-            </span>
-          </span>
+        {/* Korean is SOV — the values ("상태를 [Backlog] → [Done]") read before
+         *  the verb ("변경함"); English is SVO and reads verb-then-values.
+         *  `valuesBeforeVerb` comes from `describeEntry`, driven by the same
+         *  `activityLog.sentence` locale template `sentence()` already reads,
+         *  so the layout never hardcodes one language's word order. */}
+        {valuesBeforeVerb ? (
+          <>
+            {valuesEl}
+            {verbEl}
+          </>
+        ) : (
+          <>
+            {verbEl}
+            {valuesEl}
+          </>
         )}
         {entry.actorType === 'api' && (
           <Badge variant="muted">{t('activityLog.viaApiKey')}</Badge>
         )}
+        {entry.automated && <Badge variant="muted">{t('activityLog.automated')}</Badge>}
         {entry.relationLabel && (
           <Badge variant="outline">{relationLabel(entry.relationLabel)}</Badge>
         )}

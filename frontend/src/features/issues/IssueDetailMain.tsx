@@ -18,7 +18,8 @@ import { LinkedDocsSection } from '@/features/docs/components/LinkedDocsSection'
 import { CodeLinksSection } from '@/features/integrations/components/CodeLinksSection';
 import type { CommentDto } from '@/types/dto';
 import { type IssueSubject } from '@/features/activity/api';
-import { ActivityHeader, CommentThread, Avatar, type Person } from '@/features/activity/CommentThread';
+import { ActivityHeader, CommentThread, type Person } from '@/features/activity/CommentThread';
+import { Avatar } from '@/features/activity/Avatar';
 
 export interface IssueDetailMainProps {
   /** Which thread the comments belong to — routes + cache keys differ. */

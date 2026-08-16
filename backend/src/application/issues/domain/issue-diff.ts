@@ -23,7 +23,9 @@ export const TRACKED_FIELDS = [
   'estimate',
   'startDate',
   'endDate',
-  'dueDate',
+  // NOT 'dueDate': IssueEntity.applyUpdate keeps endDate/dueDate mirrored for a
+  // task (setting either writes both, see issue.entity.ts ~357-364), so tracking
+  // both would emit two rows with identical timestamps for one deadline edit.
   'projectId',
   'roadmapItemId',
   'reportId',
@@ -33,13 +35,28 @@ export const TRACKED_FIELDS = [
 export type TrackedField = (typeof TRACKED_FIELDS)[number];
 
 /**
- * Fields recorded as "changed" with no values.
+ * Fields recorded as "changed" with no values shown.
  *
- * A 4KB description edited ten times would otherwise produce 80KB of log for one
- * issue, for something almost nobody reads back. Anyone who genuinely needs old
- * content needs a versioning system, not a log line.
+ * Two different reasons land a field here, generalised into one set:
+ *  - long-form text (`title`, `description`): a 4KB description edited ten
+ *    times would otherwise produce 80KB of log for one issue, for something
+ *    almost nobody reads back. Anyone who genuinely needs old content needs a
+ *    versioning system, not a log line.
+ *  - a bare id with no display form (`cycleId`, `parentId`, `projectId`): the
+ *    event is worth recording, but a raw UUID is not worth showing, and
+ *    resolving it to a name would require a repository lookup in this module,
+ *    which is deliberately pure (no I/O). Unlike `roadmapItemId`/`caseId`
+ *    below, these have no label already carried on the entity, so they stay
+ *    value-less rather than costing a read on the write path. Enriching them
+ *    later (e.g. once a related-object assembly step exists) is additive.
  */
-export const LONG_TEXT_FIELDS: readonly string[] = ['title', 'description'];
+export const NO_VALUE_FIELDS: readonly string[] = [
+  'title',
+  'description',
+  'cycleId',
+  'parentId',
+  'projectId',
+];
 
 export interface FieldChange {
   field: string;
@@ -57,9 +74,16 @@ function read(issue: IssueEntity, field: TrackedField): string {
     case 'labelKeys':
       return (issue.labelKeys ?? []).join(', ');
     case 'estimate':
-      return issue.estimate === undefined || issue.estimate === null
-        ? ''
-        : String(issue.estimate);
+      // `estimate` is typed `number` on the entity and defaults to 0 — never
+      // undefined/null, so there is nothing to guard here.
+      return String(issue.estimate);
+    // Both already carry a human label on the entity at zero extra cost —
+    // render that instead of the raw id, same as `assignees`/`labelKeys`
+    // above. See NO_VALUE_FIELDS for the ids that have no such label.
+    case 'roadmapItemId':
+      return issue.roadmapItemLabel ?? '';
+    case 'caseId':
+      return issue.caseLabel ?? '';
     default:
       return String((issue as unknown as Record<string, unknown>)[field] ?? '');
   }
@@ -83,11 +107,11 @@ export function diffIssue(before: IssueSnapshot, after: IssueEntity): FieldChang
   for (const field of TRACKED_FIELDS) {
     const now = read(after, field);
     if (now === before[field]) continue;
-    const isLongText = LONG_TEXT_FIELDS.includes(field);
+    const noValue = NO_VALUE_FIELDS.includes(field);
     changes.push({
       field,
-      oldValue: isLongText ? '' : before[field],
-      newValue: isLongText ? '' : now,
+      oldValue: noValue ? '' : before[field],
+      newValue: noValue ? '' : now,
     });
   }
   return changes;

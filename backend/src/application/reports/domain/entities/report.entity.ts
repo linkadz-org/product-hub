@@ -18,6 +18,10 @@ export interface SetResultOutcome {
   oldValue?: TestResult;
   newValue?: TestResult;
   area?: string;
+  /** The case's own id (`TestCaseData.id`) — the same value `issue.caseId`
+   *  holds once a bug is linked to this case, so a caller can record history
+   *  keyed by the case, not the report it lives in. */
+  caseId?: string;
 }
 
 /**
@@ -225,12 +229,12 @@ export class ReportEntity extends AggregateRoot<ReportProps> {
       const found = section.cases.find((c) => c.shortId === shortId);
       if (found) {
         if (found.result === result) {
-          return { changed: false, oldValue: found.result, area: found.area };
+          return { changed: false, oldValue: found.result, area: found.area, caseId: found.id };
         }
         const oldValue = found.result;
         found.result = result;
         this.touch();
-        return { changed: true, oldValue, newValue: result, area: found.area };
+        return { changed: true, oldValue, newValue: result, area: found.area, caseId: found.id };
       }
     }
     return { changed: false };

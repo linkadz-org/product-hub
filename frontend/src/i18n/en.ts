@@ -357,7 +357,6 @@ export const en = {
   'bugs.templateUiVisualHint': 'What looks wrong, on which screen and size, vs the design',
 
   'activity.title': 'Activity',
-  'activity.empty': 'No comments yet.',
   'activity.placeholder': 'Leave a comment…',
   'activity.comment': 'Comment',
   'activity.reply': 'Leave a reply…',
@@ -373,7 +372,6 @@ export const en = {
   // Activity log — history rows rendered as sentences (entryText.ts). Namespaced
   // `activityLog.*` rather than `activity.*` to avoid colliding with the comment
   // thread's keys above.
-  'activityLog.empty': 'No activity yet.',
   'activityLog.field.status': 'status',
   'activityLog.field.assignees': 'assignee',
   'activityLog.field.severity': 'severity',
@@ -401,6 +399,10 @@ export const en = {
   // entry for why this one differs.
   'activityLog.sentence': '{verb} {field}',
   'activityLog.viaApiKey': 'API key',
+  // FIX 6: Task 18 (cycle rollover) is the first write path to set
+  // `automated: true`; this badge is its rendering path, added now so it
+  // doesn't land on a component with nowhere to show it.
+  'activityLog.automated': 'automatic',
   'activityLog.notSet': 'not set',
   'activityLog.systemActor': 'Automatically',
   'activityLog.relation.subtask': 'subtask',

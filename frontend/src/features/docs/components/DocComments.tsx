@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, CornerDownRight, MessageSquare, RotateCcw, X } from 'lucide-react';
 import { Badge, Button, RichText, RichTextEditor, Spinner } from '@/components/ui';
-import { Avatar, toEditorValue } from '@/features/activity/CommentThread';
+import { toEditorValue } from '@/features/activity/CommentThread';
+import { Avatar } from '@/features/activity/Avatar';
 import { htmlToPlainText, isRichHtml, mentionIdsFromHtml } from '@/lib/editorjs';
 import { timeAgo } from '@/lib/format';
 import { useAuth } from '@/lib/auth';

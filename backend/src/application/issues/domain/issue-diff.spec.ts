@@ -1,4 +1,4 @@
-import { diffIssue, snapshotIssue, LONG_TEXT_FIELDS } from './issue-diff';
+import { diffIssue, snapshotIssue, NO_VALUE_FIELDS, TRACKED_FIELDS } from './issue-diff';
 import { IssueEntity } from './entities/issue.entity';
 import { IssueKind } from './enums/issue.enums';
 
@@ -48,9 +48,52 @@ describe('diffIssue', () => {
     ]);
   });
 
-  it('treats title as long text too', () => {
-    expect(LONG_TEXT_FIELDS).toContain('title');
-    expect(LONG_TEXT_FIELDS).toContain('description');
+  it('treats title as value-less too', () => {
+    expect(NO_VALUE_FIELDS).toContain('title');
+    expect(NO_VALUE_FIELDS).toContain('description');
+  });
+
+  it('does not track dueDate — it mirrors endDate on a task', () => {
+    expect(TRACKED_FIELDS).not.toContain('dueDate');
+  });
+
+  it('a task deadline edit emits exactly one row, not two', () => {
+    const issue = makeIssue({ kind: IssueKind.TASK, endDate: '2026-08-01' });
+    const before = snapshotIssue(issue);
+    issue.applyUpdate({ endDate: '2026-09-01' } as never);
+    // Mirrored dueDate changed too (issue.entity.ts applyUpdate), but only one
+    // tracked field — endDate — should produce a row.
+    expect(issue.dueDate).toBe('2026-09-01');
+    expect(diffIssue(before, issue)).toEqual([
+      { field: 'endDate', oldValue: '2026-08-01', newValue: '2026-09-01' },
+    ]);
+  });
+
+  it('renders cycleId/parentId/projectId as value-less — the event, not the raw id', () => {
+    const issue = makeIssue({ cycleId: 'cyc-1' });
+    const before = snapshotIssue(issue);
+    issue.setCycle('cyc-2');
+    expect(diffIssue(before, issue)).toEqual([
+      { field: 'cycleId', oldValue: '', newValue: '' },
+    ]);
+  });
+
+  it('renders roadmapItemId as its label, not the raw id', () => {
+    const issue = makeIssue();
+    const before = snapshotIssue(issue);
+    issue.applyUpdate({ roadmapItemId: 'ri-1', roadmapItemLabel: 'Search v2' } as never);
+    expect(diffIssue(before, issue)).toEqual([
+      { field: 'roadmapItemId', oldValue: '', newValue: 'Search v2' },
+    ]);
+  });
+
+  it('renders caseId as its label, not the raw id', () => {
+    const issue = makeIssue();
+    const before = snapshotIssue(issue);
+    issue.applyUpdate({ caseId: 'case-1', caseLabel: 'Login — happy path' } as never);
+    expect(diffIssue(before, issue)).toEqual([
+      { field: 'caseId', oldValue: '', newValue: 'Login — happy path' },
+    ]);
   });
 
   it('renders assignees as names, not ids', () => {

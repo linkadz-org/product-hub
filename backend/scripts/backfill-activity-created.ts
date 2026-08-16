@@ -24,6 +24,7 @@
  * A prod run needs an explicit MONGODB_URI (it won't silently hit localhost).
  */
 import { MongoClient, type Document as MongoDocument } from 'mongodb';
+import { v4 as uuid } from 'uuid';
 
 const APPLY = process.argv.includes('--apply');
 const BATCH = 500;
@@ -53,6 +54,11 @@ type Row = Record<string, unknown>;
  */
 export function buildCreatedRow(issue: Row): Row {
   return {
+    // The script writes with the raw driver, bypassing Mongoose, so the
+    // schema's `_id: { type: String, default: () => uuid() }` never runs —
+    // without this the driver would mint an ObjectId into a field the
+    // schema declares `String`. Match what Mongoose would have generated.
+    _id: uuid(),
     tenantId: issue.tenantId,
     projectId: '',
     reportId: '',

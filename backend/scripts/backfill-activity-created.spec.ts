@@ -25,6 +25,9 @@ describe('buildCreatedRow', () => {
       automated: false,
     });
     expect(row.createdAt).toEqual(new Date('2026-08-02T09:14:00Z'));
+    // A uuid, not an ObjectId — the raw driver never runs the schema's default.
+    expect(typeof row._id).toBe('string');
+    expect(row._id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
   });
 
   it('falls back to the id when an issue has no shortId', () => {

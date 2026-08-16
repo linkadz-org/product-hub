@@ -7,6 +7,7 @@ import { timeAgo } from '@/lib/format';
 import { useAuth } from '@/lib/auth';
 import { htmlToPlainText, isRichHtml, mentionIdsFromHtml } from '@/lib/editorjs';
 import type { CommentDto } from '@/types/dto';
+import { Avatar } from '@/features/activity/Avatar';
 import {
   useComments,
   useCreateComment,
@@ -25,21 +26,6 @@ export interface Person {
   name: string;
   /** Optional: lets the `@` menu match on address as well as name. */
   email?: string;
-}
-
-/** Initial-in-a-circle avatar used across the activity timeline. */
-export function Avatar({ name, className }: { name: string; className?: string }) {
-  return (
-    <span
-      className={cn(
-        'grid size-6 shrink-0 place-items-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground',
-        className,
-      )}
-      aria-hidden
-    >
-      {(name || '?').charAt(0).toUpperCase()}
-    </span>
-  );
 }
 
 /** "Activity" section title + the signed-in viewer's own avatar. */

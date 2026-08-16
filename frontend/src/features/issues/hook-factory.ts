@@ -35,7 +35,7 @@ interface HasStatus {
 /** Every cache namespace this factory is bound to, list and detail. They are all
  *  views of the single `issues` collection, so a write through any one of them
  *  can go stale in the others — see {@link makeIssueHooks}'s `useInvalidate`. */
-const ISSUE_CACHE_KEYS = ['issues', 'issue', 'bugs', 'bug', 'tasks', 'task'] as const;
+const ISSUE_CACHE_KEYS = ['issues', 'issue', 'bugs', 'bug', 'tasks', 'task', 'activity'] as const;
 
 export function makeIssueHooks<
   TItem extends HasStatus,

@@ -23,13 +23,24 @@ export interface ActivityEntry {
   relationLabel: string;
 }
 
-/** Pieces a component assembles into a sentence — never raw markup. */
+/** Pieces a component assembles into a sentence — never raw markup.
+ *
+ *  `valuesBeforeVerb` carries the locale's word order (English SVO puts the
+ *  verb first; Korean SOV puts the values first) so the *component* renders
+ *  in whatever order `describeEntry` — driven by the same `activityLog.sentence`
+ *  template `sentence()` already reads — says to, rather than a component
+ *  hardcoding the English layout one level above where `sentence()` already
+ *  solved this. */
 export interface EntryText {
   subject: string;
   verb: string;
   from: string;
   to: string;
-  longText: boolean;
+  /** True when the field's value is deliberately not recorded (long-form text
+   *  like a description, or a bare id with no display form) — the sentence
+   *  reads "edited the X" / "changed cycle", never "from … to …". */
+  noValue: boolean;
+  valuesBeforeVerb: boolean;
 }
 
 /** Tracked fields the backend may record a change against. */
@@ -77,9 +88,18 @@ export const FIELD_LABEL: Record<TrackedField, I18nKey> = {
   description: 'activityLog.field.description',
 };
 
-/** Fields whose values are deliberately stored empty by the backend (they're
- *  long-form text) — the sentence reads "edited the X", never "from … to …". */
+/** Long-form-text fields: the backend never stores their content, so the
+ *  sentence reads "edited the X" — a distinct verb from a plain value change. */
 const LONG_TEXT_FIELDS = new Set<string>(['title', 'description']);
+
+/** Fields whose values are deliberately stored empty by the backend — the
+ *  superset of {@link LONG_TEXT_FIELDS} plus bare ids with no display form
+ *  (`cycleId`, `parentId`, `projectId`; see NO_VALUE_FIELDS in
+ *  backend/src/application/issues/domain/issue-diff.ts for why). Mirrors that
+ *  backend set so the row never shows raw UUIDs; verb choice for the two
+ *  sub-cases still differs (see `describeEntry`), only "don't show values"
+ *  is shared here — that is the concept this generalises. */
+const NO_VALUE_FIELDS = new Set<string>([...LONG_TEXT_FIELDS, 'cycleId', 'parentId', 'projectId']);
 
 function isTrackedField(field: string): field is TrackedField {
   return Object.prototype.hasOwnProperty.call(FIELD_LABEL, field);
@@ -109,31 +129,69 @@ function displayValue(value: string): string {
   return value === '' ? t('activityLog.notSet') : value;
 }
 
+/** Whether the locale's `activityLog.sentence` template puts the field before
+ *  the verb (Korean SOV) rather than after (English SVO) — read from the raw
+ *  template itself so this stays in lockstep with `sentence()` above instead
+ *  of hardcoding a second copy of the word-order decision. */
+function valuesBeforeVerb(): boolean {
+  const template = t('activityLog.sentence');
+  return template.indexOf('{field}') < template.indexOf('{verb}');
+}
+
 /** Turn one activity row into the pieces a component assembles into a
- *  sentence. Pure — no React, never throws on an unrecognised field. */
+ *  sentence. Pure — no React, never throws on an unrecognised field. The
+ *  component renders `subject`/`verb`/values in the order `valuesBeforeVerb`
+ *  says — it must not hardcode English's verb-then-values layout itself,
+ *  the same mistake `sentence()` exists to avoid one level down. */
 export function describeEntry(entry: ActivityEntry): EntryText {
-  const subject =
-    entry.actorType === 'system'
-      ? t('activityLog.systemActor')
-      : entry.actorType === 'api'
-        ? `${entry.actorName} (${t('activityLog.viaApiKey')})`
-        : entry.actorName;
+  // Bare actor name — the "(API key)" / "(automated)" signal is carried by
+  // badges next to it (see ActivityEntry.tsx), not duplicated into the text.
+  const subject = entry.actorType === 'system' ? t('activityLog.systemActor') : entry.actorName;
+  const order = valuesBeforeVerb();
 
   if (entry.field === 'created') {
-    return { subject, verb: t('activityLog.verb.created'), from: '', to: '', longText: false };
+    return {
+      subject,
+      verb: t('activityLog.verb.created'),
+      from: '',
+      to: '',
+      noValue: false,
+      valuesBeforeVerb: order,
+    };
   }
   if (entry.field === 'deleted') {
-    return { subject, verb: t('activityLog.verb.deleted'), from: '', to: '', longText: false };
+    return {
+      subject,
+      verb: t('activityLog.verb.deleted'),
+      from: '',
+      to: '',
+      noValue: false,
+      valuesBeforeVerb: order,
+    };
   }
 
-  const longText = LONG_TEXT_FIELDS.has(entry.field);
-  if (longText) {
+  // Long-form text ("edited the description") and a bare id with no display
+  // form ("changed cycle") are both value-less, but they are not the same
+  // sentence — only "don't show values" is shared (NO_VALUE_FIELDS); the verb
+  // still depends on which sub-case this field is.
+  if (LONG_TEXT_FIELDS.has(entry.field)) {
     return {
       subject,
       verb: sentence(t('activityLog.verb.edited'), fieldLabel(entry.field)),
       from: '',
       to: '',
-      longText: true,
+      noValue: true,
+      valuesBeforeVerb: order,
+    };
+  }
+  if (NO_VALUE_FIELDS.has(entry.field)) {
+    return {
+      subject,
+      verb: sentence(t('activityLog.verb.changed'), fieldLabel(entry.field)),
+      from: '',
+      to: '',
+      noValue: true,
+      valuesBeforeVerb: order,
     };
   }
 
@@ -142,6 +200,7 @@ export function describeEntry(entry: ActivityEntry): EntryText {
     verb: sentence(t('activityLog.verb.changed'), fieldLabel(entry.field)),
     from: displayValue(entry.oldValue),
     to: displayValue(entry.newValue),
-    longText: false,
+    noValue: false,
+    valuesBeforeVerb: order,
   };
 }

@@ -355,7 +355,6 @@ export const ko: Record<I18nKey, string> = {
   'bugs.templateUiVisualHint': '무엇이 어떻게 어긋났는지, 어느 화면·크기에서, 디자인과 비교',
 
   'activity.title': '활동',
-  'activity.empty': '아직 댓글이 없습니다.',
   'activity.placeholder': '댓글을 남겨보세요…',
   'activity.comment': '댓글',
   'activity.reply': '답글을 남겨보세요…',
@@ -368,7 +367,6 @@ export const ko: Record<I18nKey, string> = {
   'activity.attach': '이미지 또는 동영상 첨부',
   'activity.dropHint': '이미지나 동영상을 놓아 첨부하세요',
 
-  'activityLog.empty': '아직 활동 기록이 없습니다.',
   'activityLog.field.status': '상태',
   'activityLog.field.assignees': '담당자',
   'activityLog.field.severity': '심각도',
@@ -394,6 +392,7 @@ export const ko: Record<I18nKey, string> = {
   // English. "상태 변경함" ("status changed"), not "변경함 상태".
   'activityLog.sentence': '{field} {verb}',
   'activityLog.viaApiKey': 'API 키',
+  'activityLog.automated': '자동',
   'activityLog.notSet': '설정 안 됨',
   'activityLog.systemActor': '자동으로',
   'activityLog.relation.subtask': '하위 작업',
