@@ -20,7 +20,10 @@ export class ActivityMapper {
     };
   }
 
-  static toDtoArray(entries: AuditLogEntity[], relationLabel: string): ActivityEntryDto[] {
-    return entries.map((e) => this.toDto(e, relationLabel));
+  static toDtoArray(
+    entries: AuditLogEntity[],
+    labelByEntityId: Record<string, string> = {},
+  ): ActivityEntryDto[] {
+    return entries.map((e) => this.toDto(e, labelByEntityId[e.entityId] ?? ''));
   }
 }
