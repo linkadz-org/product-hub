@@ -4,12 +4,52 @@ import { RoadmapItemData } from './types/roadmap-item.type';
  * Fields whose changes become history rows.
  *
  * Deliberately a fixed, explicit list rather than a walk over every property —
- * see `issue-diff.ts` for the same rationale. `phase` (NOT `column`) is the
- * value stored on the item: `RoadmapColumn` is the board's column
- * *configuration* (`key`/`label`/`color`), `phase` is the item's own field,
- * matching `column.key`.
+ * see `issue-diff.ts` for the same rationale.
+ *
+ * An item has TWO lifecycle-ish fields and both are tracked, because they are
+ * genuinely different things:
+ *  - `phase` (NOT `column`) is the board pool the card sits in. `RoadmapColumn`
+ *    is the board's column *configuration* (`key`/`label`/`color`); `phase` is
+ *    the item's own field, matching `column.key`.
+ *  - `status` is the item's work state (Idea → Planned → In progress → Done).
+ *    It is what `ReplaceRoadmapItemsUseCase` reads to stamp `startedAt` /
+ *    `completedAt`, so marking an item Done is the single most consequential
+ *    thing that happens to it. The spec's §4.3 note once read as "the status
+ *    field is `phase`", and the first implementation tracked only `phase`, so
+ *    marking a backlog item Done produced ZERO rows. Both are tracked now.
+ *
+ * Deliberately NOT tracked, each for a stated reason:
+ *  - `createdAt` / `startedAt` / `completedAt` — server-stamped consequences of
+ *    a `status` change (see the use-case), so logging them would emit a second,
+ *    identical-timestamp row for the one event `status` already records.
+ *  - `shortId` — server-owned and write-once; it can't change by a user action.
+ *  - `imageUrl` — a URL renders as neither a value nor an event worth a row;
+ *    same call as `attachments` on an issue.
+ *  - `milestoneId` / `objectiveId` / `keyResultId` — the three ids move together
+ *    as ONE link change, and `okrLabel` is that same event in readable form, so
+ *    only the label is tracked (matching how `roadmapItemId` on an issue is
+ *    logged through its label rather than its uuid).
  */
-export const TRACKED_FIELDS = ['title', 'phase', 'assignees'] as const;
+export const TRACKED_FIELDS = [
+  'title',
+  'description',
+  'phase',
+  'status',
+  'assignees',
+  'difficulty',
+  'progress',
+  'startDate',
+  'endDate',
+  // RICE inputs. Plain numbers that diff cleanly, and the score derived from
+  // them is what orders the whole backlog — "who dropped confidence to 1?" is a
+  // real question. Four separate rows for a re-score is honest: they are four
+  // separate inputs, and one edit usually moves one of them.
+  'reach',
+  'impact',
+  'confidence',
+  'effort',
+  'okrLabel',
+] as const;
 
 export type TrackedField = (typeof TRACKED_FIELDS)[number];
 
@@ -23,11 +63,11 @@ export type TrackedField = (typeof TRACKED_FIELDS)[number];
  * edited repeatedly) doesn't apply to a short title — the row count is
  * identical either way, only the values shown differ. All three entity types
  * agree: titles carry their values, descriptions do not. Nothing is
- * value-less here today; the set exists (empty) for parity with
- * `issue-diff.ts` / `doc-page-diff.ts`, and so a future long-text field (a
- * `description` on roadmap items, say) has an obvious place to land.
+ * `description` is here for exactly the reason `issue-diff.ts` states: a long
+ * body edited ten times would otherwise store ten copies of it, for something
+ * almost nobody reads back. The event is recorded; the prose is not.
  */
-export const LONG_TEXT_FIELDS: readonly string[] = [];
+export const LONG_TEXT_FIELDS: readonly string[] = ['description'];
 
 /**
  * Bare-id fields with no display form. None today — `phase` already reads as
