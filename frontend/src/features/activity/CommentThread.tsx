@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ArrowUp } from 'lucide-react';
 import { Button, RichText, RichTextEditor, Spinner } from '@/components/ui';
 import { cn } from '@/lib/utils';
-import { t } from '@/i18n';
+import { t, type I18nKey } from '@/i18n';
 import { timeAgo } from '@/lib/format';
 import { useAuth } from '@/lib/auth';
 import { htmlToPlainText, isRichHtml, mentionIdsFromHtml } from '@/lib/editorjs';
@@ -19,7 +19,6 @@ import { useMediaAttachments } from '@/features/uploads/useMediaAttachments';
 import { AttachMediaButton, AttachmentStrip, CommentMedia } from '@/features/activity/CommentMedia';
 import { useActivity } from '@/features/activity-log/api';
 import { ActivityEntry, ActivityTruncatedNote } from '@/features/activity-log/ActivityEntry';
-import { mergeStream } from '@/features/activity-log/mergeStream';
 
 export interface Person {
   id: string;
@@ -39,6 +38,18 @@ export function ActivityHeader() {
   );
 }
 
+/** The section's two tabs. `history` prints as "Activity" — it holds the change
+ *  log only; the conversation is next door under `comments`. */
+type Tab = 'comments' | 'history';
+
+/** Literal keys, never `` t(`activity.tab.${key}`) `` — a constructed key
+ *  defeats the closed `I18nKey` union and turns a typo into a runtime blank.
+ *  Same reasoning as `DocComments`' own tab map. */
+const TAB_LABEL: Record<Tab, I18nKey> = {
+  comments: 'activity.tab.comments',
+  history: 'activity.tab.history',
+};
+
 export interface CommentThreadProps {
   /** Which thread these comments belong to — bug, task, or roadmap item. */
   source: CommentSource;
@@ -50,6 +61,14 @@ export interface CommentThreadProps {
   /** When provided (a public read-only view), render these instead of fetching
    * the authed thread. */
   comments?: CommentDto[];
+  /**
+   * A row the caller owns that opens the change log — issue detail's
+   * "{createdByName} created this task · 3d ago" line. It belongs to the history,
+   * so it lives in the Activity tab rather than above both tabs; it stays the
+   * caller's because a public viewer has no token to read the activity endpoint
+   * with, and that one fact is on the issue itself.
+   */
+  activityLead?: ReactNode;
 }
 
 /**
@@ -57,7 +76,13 @@ export interface CommentThreadProps {
  * by bug, task, and roadmap-item detail so every thread reads and behaves the
  * same; the only difference is the `source` that routes its API calls and keys
  * its cache. Renders as a fragment so the caller controls the surrounding
- * spacing (e.g. the issue timeline places a creation event above it).
+ * spacing.
+ *
+ * Two tabs, not one merged stream: **Comments** (the conversation plus its
+ * composer, and the tab you land on) and **Activity** (the change log, read
+ * only). They used to interleave by time, which meant scrolling past a dozen
+ * status changes to find a reply. The choice is deliberately not in the URL —
+ * reopening an issue is a reading task, and reading starts at the conversation.
  */
 export function CommentThread({
   source,
@@ -66,7 +91,9 @@ export function CommentThread({
   isAdmin,
   currentUserId,
   comments,
+  activityLead,
 }: CommentThreadProps) {
+  const [tab, setTab] = useState<Tab>('comments');
   // A public viewer passes `comments` directly, so skip the authed fetch entirely.
   const { data: fetched } = useComments(source, comments === undefined);
   const thread = comments ?? fetched ?? [];
@@ -110,35 +137,65 @@ export function CommentThread({
     }
   }
 
-  // Events interleave with top-level threads by time; a reply always stays
-  // nested under its own root (below) rather than floating loose in the
-  // stream, so an event landing between a root and its reply can't split
-  // them apart visually.
-  const stream = mergeStream(roots, events);
+  // Replies are counted with the thread they answer, not beside it: "3" next to
+  // Comments means three conversations to read, not three keystrokes someone made.
+  const tabCount: Record<Tab, number> = { comments: roots.length, history: events.length };
 
   return (
     <>
-      {/* Says so when the backend capped the related objects it folded in —
-          a partial history that looks complete is worse than none. */}
-      {history?.relatedTruncated && <ActivityTruncatedNote />}
-      {stream.map((item) =>
-        item.kind === 'event' ? (
-          <ActivityEntry key={`event-${item.id}`} entry={item} />
-        ) : (
-          <CommentThreadCard
-            key={item.id}
-            source={source}
-            root={item}
-            replies={repliesByRoot.get(item.id) ?? []}
-            users={users}
-            canWrite={canWrite}
-            isAdmin={isAdmin}
-            currentUserId={currentUserId}
-          />
-        ),
-      )}
+      {/* Wraps rather than overflowing: on a ~320px screen a label plus its
+          count can lose the line. Pill tabs, matching the docs comments rail. */}
+      <div className="flex flex-wrap gap-1 border-b pb-2">
+        {(['comments', 'history'] as const).map((key) => (
+          <button
+            key={key}
+            type="button"
+            aria-pressed={tab === key}
+            onClick={() => setTab(key)}
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+              tab === key
+                ? 'bg-primary/10 text-primary'
+                : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+            )}
+          >
+            {t(TAB_LABEL[key])}
+            <span className="tabular-nums opacity-70">{tabCount[key]}</span>
+          </button>
+        ))}
+      </div>
 
-      {canWrite && <CommentComposer source={source} users={users} variant="root" />}
+      {tab === 'comments' ? (
+        <>
+          {roots.map((root) => (
+            <CommentThreadCard
+              key={root.id}
+              source={source}
+              root={root}
+              replies={repliesByRoot.get(root.id) ?? []}
+              users={users}
+              canWrite={canWrite}
+              isAdmin={isAdmin}
+              currentUserId={currentUserId}
+            />
+          ))}
+          {canWrite && <CommentComposer source={source} users={users} variant="root" />}
+        </>
+      ) : (
+        <>
+          {/* Says so when the backend capped the related objects it folded in —
+              a partial history that looks complete is worse than none. */}
+          {history?.relatedTruncated && <ActivityTruncatedNote />}
+          {activityLead}
+          {events.map((e) => (
+            <ActivityEntry key={e.id} entry={e} />
+          ))}
+          {!activityLead && events.length === 0 && (
+            <p className="text-sm text-muted-foreground">{t('activityLog.empty')}</p>
+          )}
+        </>
+      )}
     </>
   );
 }

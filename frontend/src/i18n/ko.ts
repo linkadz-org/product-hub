@@ -355,6 +355,8 @@ export const ko: Record<I18nKey, string> = {
   'bugs.templateUiVisualHint': '무엇이 어떻게 어긋났는지, 어느 화면·크기에서, 디자인과 비교',
 
   'activity.title': '활동',
+  'activity.tab.comments': '댓글',
+  'activity.tab.history': '활동',
   'activity.placeholder': '댓글을 남겨보세요…',
   'activity.comment': '댓글',
   'activity.reply': '답글을 남겨보세요…',

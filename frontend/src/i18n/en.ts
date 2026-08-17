@@ -357,6 +357,11 @@ export const en = {
   'bugs.templateUiVisualHint': 'What looks wrong, on which screen and size, vs the design',
 
   'activity.title': 'Activity',
+  // The two tabs the Activity section splits into. `history` is labelled
+  // "Activity" but holds the change log only — the comments live next door, so
+  // the key says which content it names rather than which word it prints.
+  'activity.tab.comments': 'Comments',
+  'activity.tab.history': 'Activity',
   'activity.placeholder': 'Leave a comment…',
   'activity.comment': 'Comment',
   'activity.reply': 'Leave a reply…',
