@@ -12,6 +12,7 @@ import { BurndownIssueRow } from '@application/cycles/domain/cycle-burndown';
 import {
   IssuePaginationResponse,
   IIssueRepository,
+  MovedIssue,
 } from '@application/issues/repositories/issue.repository';
 import { IssueEntity } from '@application/issues/domain/entities/issue.entity';
 import {
@@ -463,6 +464,17 @@ export class IssueRepository
     return this.model.countDocuments({ tenantId, parentId }).exec();
   }
 
+  async findChildren(tenantId: string, parentId: string): Promise<IssueEntity[]> {
+    // No ownerId scoping — same reasoning as countChildren. Callers that care
+    // about per-child visibility (e.g. the related-history assembly in
+    // GetActivityUseCase) run each result through its own `isVisibleTo` guard.
+    const docs = await this.model
+      .find({ tenantId, parentId })
+      .lean<IssueDoc[]>()
+      .exec();
+    return docs.map((d) => this.toDomain(d));
+  }
+
   async cycleRollups(
     tenantId: string,
     cycleIds: string[],
@@ -690,32 +702,55 @@ export class IssueRepository
     fromCycleIds: string[],
     toCycleId: string,
     completedStatusKeys: string[],
-  ): Promise<number> {
-    if (!fromCycleIds.length) return 0;
+  ): Promise<MovedIssue[]> {
+    if (!fromCycleIds.length) return [];
+    const filter = { tenantId, cycleId: { $in: fromCycleIds }, status: { $nin: completedStatusKeys } };
+    // Read the affected issues *before* the bulk write — it's the only way to
+    // capture which cycle each one moved from; the write itself only knows the
+    // filter, not the per-document `cycleId` it matched.
+    const affected = await this.model
+      .find(filter, { _id: 1, shortId: 1, cycleId: 1 })
+      .lean<{ _id: string; shortId?: string; cycleId: string }[]>()
+      .exec();
+    if (!affected.length) return [];
+
     // Rolling into a real next cycle bumps the carry counter (drives the
     // "Carried over ×N" badge). Dropping to no-cycle (rollover off) clears it —
     // a detached issue isn't "carried" anywhere.
     const update = toCycleId
       ? { $set: { cycleId: toCycleId }, $inc: { carryOverCount: 1 } }
       : { $set: { cycleId: toCycleId, carryOverCount: 0 } };
-    const res = await this.model
-      .updateMany(
-        { tenantId, cycleId: { $in: fromCycleIds }, status: { $nin: completedStatusKeys } },
-        update,
-      )
-      .exec();
-    return res.modifiedCount ?? 0;
+    await this.model.updateMany(filter, update).exec();
+
+    return affected.map((d) => ({
+      id: d._id,
+      shortId: d.shortId ?? '',
+      fromCycleId: d.cycleId,
+      toCycleId,
+    }));
   }
 
-  async clearCycleIds(tenantId: string, cycleIds: string[]): Promise<number> {
-    if (!cycleIds.length) return 0;
-    const res = await this.model
-      .updateMany(
-        { tenantId, cycleId: { $in: cycleIds } },
-        { $set: { cycleId: '', carryOverCount: 0 } },
-      )
+  async clearCycleIds(tenantId: string, cycleIds: string[]): Promise<MovedIssue[]> {
+    if (!cycleIds.length) return [];
+    const filter = { tenantId, cycleId: { $in: cycleIds } };
+    // Read the affected issues *before* the bulk write, exactly as
+    // `moveUnfinishedIssues` does: the write only knows the filter, not the
+    // per-document `cycleId` it matched, and afterwards every one of them
+    // reads `''`.
+    const affected = await this.model
+      .find(filter, { _id: 1, shortId: 1, cycleId: 1 })
+      .lean<{ _id: string; shortId?: string; cycleId: string }[]>()
       .exec();
-    return res.modifiedCount ?? 0;
+    if (!affected.length) return [];
+
+    await this.model.updateMany(filter, { $set: { cycleId: '', carryOverCount: 0 } }).exec();
+
+    return affected.map((d) => ({
+      id: d._id,
+      shortId: d.shortId ?? '',
+      fromCycleId: d.cycleId,
+      toCycleId: '',
+    }));
   }
 
   async save(issue: IssueEntity): Promise<void> {

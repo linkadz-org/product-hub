@@ -29,6 +29,10 @@ function useInvalidate() {
   return () => {
     qc.invalidateQueries({ queryKey: ['roadmaps'] });
     qc.invalidateQueries({ queryKey: ['roadmap'] });
+    // Every write here can change an item's history — its own timeline, and the
+    // *related* rows an issue linked to it renders. A prefix invalidation: the
+    // key is ['activity', entity, entityId] (activity-log/api.ts).
+    qc.invalidateQueries({ queryKey: ['activity'] });
   };
 }
 

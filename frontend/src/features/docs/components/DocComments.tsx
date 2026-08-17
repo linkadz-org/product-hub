@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, CornerDownRight, MessageSquare, RotateCcw, X } from 'lucide-react';
 import { Badge, Button, RichText, RichTextEditor, Spinner } from '@/components/ui';
-import { Avatar, toEditorValue } from '@/features/activity/CommentThread';
+import { toEditorValue } from '@/features/activity/CommentThread';
+import { Avatar } from '@/features/activity/Avatar';
 import { htmlToPlainText, isRichHtml, mentionIdsFromHtml } from '@/lib/editorjs';
 import { timeAgo } from '@/lib/format';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
-import { t } from '@/i18n';
+import { t, type I18nKey } from '@/i18n';
 import type { TextAnchor } from '@/lib/textAnchor';
 import type { CommentDto } from '@/types/dto';
+import { useActivity } from '@/features/activity-log/api';
+import { ActivityEntry, ActivityTruncatedNote } from '@/features/activity-log/ActivityEntry';
 import {
   useCreateDocComment,
   useDeleteDocComment,
@@ -34,7 +37,19 @@ export interface DocCommentsProps {
   onClose?: () => void;
 }
 
-type Filter = 'open' | 'resolved';
+/** The rail's three lists. `history` is the page's own change log — the same
+ *  timeline an issue and a roadmap item show, rendered by the same
+ *  `ActivityEntry`; the backend has recorded and guarded doc pages all along,
+ *  this is simply where a reader finally sees it. */
+type Filter = 'open' | 'resolved' | 'history';
+
+/** Literal keys, never `` t(`docs.comments.${key}`) `` — a constructed key
+ *  defeats the closed `I18nKey` union and turns a typo into a runtime blank. */
+const TAB_LABEL: Record<Filter, I18nKey> = {
+  open: 'docs.comments.open',
+  resolved: 'docs.comments.resolved',
+  history: 'docs.comments.history',
+};
 
 /**
  * The comments rail: every thread on this page, read in the order the passages
@@ -82,6 +97,14 @@ export function DocComments({
   const openCount = roots.filter((c) => !c.resolved).length;
   const resolvedCount = roots.length - openCount;
 
+  const { data: history } = useActivity('doc_page', pageId);
+  const events = history?.items ?? [];
+  const tabCount: Record<Filter, number> = {
+    open: openCount,
+    resolved: resolvedCount,
+    history: events.length,
+  };
+
   const shown = useMemo(() => {
     const wanted = roots.filter((c) => (filter === 'open' ? !c.resolved : c.resolved));
     return wanted.sort((a, b) => {
@@ -121,8 +144,10 @@ export function DocComments({
         )}
       </div>
 
-      <div className="flex gap-1 border-b px-3 py-2">
-        {(['open', 'resolved'] as const).map((key) => (
+      {/* Wraps rather than overflowing: three tabs plus their counts don't fit
+          one line in the mobile drawer's narrower rail. */}
+      <div className="flex flex-wrap gap-1 border-b px-3 py-2">
+        {(['open', 'resolved', 'history'] as const).map((key) => (
           <button
             key={key}
             type="button"
@@ -134,10 +159,8 @@ export function DocComments({
                 : 'text-muted-foreground hover:bg-accent hover:text-foreground',
             )}
           >
-            {key === 'open' ? t('docs.comments.open') : t('docs.comments.resolved')}
-            <span className="tabular-nums opacity-70">
-              {key === 'open' ? openCount : resolvedCount}
-            </span>
+            {t(TAB_LABEL[key])}
+            <span className="tabular-nums opacity-70">{tabCount[key]}</span>
           </button>
         ))}
       </div>
@@ -152,7 +175,20 @@ export function DocComments({
           />
         )}
 
-        {shown.length === 0 && !pending ? (
+        {filter === 'history' ? (
+          events.length === 0 ? (
+            <p className="px-1 py-8 text-center text-xs text-muted-foreground">
+              {t('activityLog.empty')}
+            </p>
+          ) : (
+            <>
+              {history?.relatedTruncated && <ActivityTruncatedNote />}
+              {events.map((e) => (
+                <ActivityEntry key={e.id} entry={e} />
+              ))}
+            </>
+          )
+        ) : shown.length === 0 && !pending ? (
           <p className="px-1 py-8 text-center text-xs text-muted-foreground">
             {filter === 'open' ? t('docs.comments.empty') : t('docs.comments.emptyResolved')}
           </p>

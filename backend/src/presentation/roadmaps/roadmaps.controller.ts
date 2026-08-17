@@ -98,7 +98,13 @@ export class RoadmapsController {
     @Param('id') id: string,
     @Body() dto: ReplaceRoadmapItemsDto,
   ): Promise<RoadmapResponseDto> {
-    const result = await this.replaceItems.execute({ id, tenantId: auth.tenantId, dto });
+    const result = await this.replaceItems.execute({
+      id,
+      tenantId: auth.tenantId,
+      dto,
+      requesterId: auth.userId,
+      requesterName: auth.name,
+    });
     if (result.isFailure) throw new EntityNotFoundException(result.error as string);
     return RoadmapMapper.toResponseDto(result.getValue());
   }
@@ -140,7 +146,13 @@ export class RoadmapsController {
     @AuthUser() auth: JwtPayload,
     @Param('id') id: string,
   ): Promise<{ ok: true }> {
-    const result = await this.deleteRoadmap.execute({ id, tenantId: auth.tenantId });
+    const result = await this.deleteRoadmap.execute({
+      id,
+      tenantId: auth.tenantId,
+      // Every item in it gets a `deleted` row attributed to the caller.
+      requesterId: auth.userId,
+      requesterName: auth.name,
+    });
     if (result.isFailure) throw new EntityNotFoundException(result.error as string);
     return { ok: true };
   }

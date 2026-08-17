@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { IUsecaseExecute, Role } from '@core/interfaces';
+import { AuditActor } from '@application/audit-log/domain/enums/audit.enums';
 import { Result } from '@shared/logic/result';
 import { PaginationDto } from '@module-shared/modules/pagination/pagination.dto';
 import { CreateIssueUseCase } from '@application/issues/use-cases/create-issue.use-case';
@@ -152,6 +153,22 @@ const roleOf = (user: UserEntity | null): ActorRole => {
     canDeleteBug: role === Role.ADMIN || role === Role.PRODUCT,
   };
 };
+
+/**
+ * The `actorName` an MCP write records: the key OWNER's name, falling back to
+ * the key's own name when the owner is gone.
+ *
+ * One convention for every MCP write, deliberately. A key that creates an issue
+ * and then closes it must read as ONE actor — recording `keyName` on some rows
+ * and the owner's name on others splits a single bot session into two people in
+ * the timeline. The owner's name is the one that agrees with the rest of the
+ * row: `actorId` is already `actor.userId`, so writing the key's name beside the
+ * owner's id would make the name and the id refer to different people. What
+ * marks the write as a robot's is `actorType: API`, not the name — and the MCP
+ * event log (`userName`) already uses exactly this value, so the two logs agree.
+ */
+export const mcpActorName = (actor: McpActor, user: UserEntity | null): string =>
+  user?.name ?? actor.keyName;
 
 /** Everyone in the workspace, for name-based assignee resolution. A tenant's
  *  user list is small; one page of 100 covers it without a second round-trip. */
@@ -321,7 +338,8 @@ export class McpCreateIssueUseCase
       // Attributed to the key's owner, so the item has a real author in the app's
       // activity trail; the MCP history below records that a robot typed it.
       createdBy: actor.userId,
-      createdByName: actorUser?.name ?? actor.keyName,
+      createdByName: mcpActorName(actor, actorUser),
+      actorType: AuditActor.API,
       dto: {
         kind: dto.kind,
         title: dto.title,
@@ -597,6 +615,9 @@ export class McpUpdateIssueUseCase
       id: issue.id.toString(),
       tenantId: actor.tenantId,
       requesterId: actor.userId,
+      // The key OWNER's name, never the key's own — see `mcpActorName`.
+      requesterName: mcpActorName(actor, actorUser),
+      actorType: AuditActor.API,
       isAdmin,
       dto: update,
     });
@@ -675,6 +696,9 @@ export class McpSetStatusUseCase
       id: issue.id.toString(),
       tenantId: actor.tenantId,
       requesterId: actor.userId,
+      // The key OWNER's name — see `mcpActorName`.
+      requesterName: mcpActorName(actor, actorUser),
+      actorType: AuditActor.API,
       isAdmin,
       status,
     });
@@ -765,6 +789,9 @@ export class McpDeleteIssueUseCase
       id: issueId,
       tenantId: actor.tenantId,
       requesterId: actor.userId,
+      // The key OWNER's name — see `mcpActorName`.
+      requesterName: mcpActorName(actor, actorUser),
+      actorType: AuditActor.API,
       isAdmin,
       canDeleteBug,
     });
@@ -1063,6 +1090,7 @@ export class McpCreateBacklogItemUseCase
       );
     }
 
+    const actorUser = await this.users.findById(actor.userId);
     const added = await this.addItem.execute({
       id: roadmap.id.toString(),
       tenantId: actor.tenantId,
@@ -1079,6 +1107,11 @@ export class McpCreateBacklogItemUseCase
         startDate: dto.startDate,
         endDate: dto.endDate,
       },
+      // Attributed to the key's owner, so the item has a real author in the
+      // app's activity trail; the MCP history below records that a robot typed it.
+      requesterId: actor.userId,
+      requesterName: mcpActorName(actor, actorUser),
+      actorType: AuditActor.API,
     });
     if (added.isFailure) return Result.fail(added.error as string);
 
@@ -1086,7 +1119,6 @@ export class McpCreateBacklogItemUseCase
     const roadmapId = roadmap.id.toString();
     const link = backlogItemLink(roadmapId, item.shortId || item.id);
 
-    const actorUser = await this.users.findById(actor.userId);
     const event = McpEventEntity.create({
       tenantId: actor.tenantId,
       keyId: actor.keyId,
@@ -1142,6 +1174,7 @@ export class McpCreateDocUseCase
     const created = await this.createDoc.execute({
       tenantId: actor.tenantId,
       author,
+      actorType: AuditActor.API,
       dto: { title: dto.title, tags: dto.tags } as CreateDocDto,
     });
     if (created.isFailure) return Result.fail(created.error as string);
@@ -1161,6 +1194,7 @@ export class McpCreateDocUseCase
         pageId,
         tenantId: actor.tenantId,
         author,
+        actorType: AuditActor.API,
         dto: { content } as UpdateDocPageDto,
       });
       if (written.isFailure) return Result.fail(written.error as string);
@@ -1260,6 +1294,7 @@ export class McpUpdateDocUseCase
         pageId,
         tenantId: actor.tenantId,
         author,
+        actorType: AuditActor.API,
         dto: { content } as UpdateDocPageDto,
       });
       if (written.isFailure) return this.partial(changed, written.error as string);
@@ -1273,6 +1308,7 @@ export class McpUpdateDocUseCase
         docId,
         tenantId: actor.tenantId,
         author,
+        actorType: AuditActor.API,
         dto: {
           title: dto.appendPage.title,
           content: stripEchoedTitle(

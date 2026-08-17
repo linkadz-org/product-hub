@@ -1,11 +1,33 @@
 import { Module } from '@nestjs/common';
 import { InfrastructureAuditLogModule } from '@infrastructure/audit-log/audit-log.module';
-import { GetAuditLogUseCase } from './use-cases';
+import { InfrastructureIssuesModule } from '@infrastructure/issues/issues.module';
+import { InfrastructureDocsModule } from '@infrastructure/docs/docs.module';
+import { InfrastructureRoadmapsModule } from '@infrastructure/roadmaps/roadmaps.module';
+import { InfrastructureReportsModule } from '@infrastructure/reports/reports.module';
+import { GetAuditLogUseCase, RecordActivityUseCase, GetActivityUseCase } from './use-cases';
 
 @Module({
-  imports: [InfrastructureAuditLogModule],
-  providers: [GetAuditLogUseCase],
+  // GetActivityUseCase guards issue/doc-page/roadmap-item history behind
+  // IIssueRepository / IDocPageRepository / IRoadmapRepository, so this module
+  // also pulls in each slice's infra directly (not
+  // ApplicationIssuesModule/ApplicationDocsModule/ApplicationRoadmapsModule,
+  // which all import this module — that would be circular). Same reasoning
+  // for InfrastructureReportsModule: an issue's related test case is guarded
+  // via IReportRepository.
+  imports: [
+    InfrastructureAuditLogModule,
+    InfrastructureIssuesModule,
+    InfrastructureDocsModule,
+    InfrastructureRoadmapsModule,
+    InfrastructureReportsModule,
+  ],
+  providers: [GetAuditLogUseCase, RecordActivityUseCase, GetActivityUseCase],
   // Export the infra module too so other slices (reports) can inject the port.
-  exports: [GetAuditLogUseCase, InfrastructureAuditLogModule],
+  exports: [
+    GetAuditLogUseCase,
+    RecordActivityUseCase,
+    GetActivityUseCase,
+    InfrastructureAuditLogModule,
+  ],
 })
 export class ApplicationAuditLogModule {}

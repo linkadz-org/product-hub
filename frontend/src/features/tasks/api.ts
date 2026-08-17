@@ -193,7 +193,7 @@ export function useLinkIssuesByRef() {
       return linked;
     },
     onSuccess: () => {
-      for (const key of ['issues', 'tasks', 'bugs']) {
+      for (const key of ['issues', 'tasks', 'bugs', 'activity']) {
         qc.invalidateQueries({ queryKey: [key] });
       }
     },

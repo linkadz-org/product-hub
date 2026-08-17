@@ -15,6 +15,7 @@ export class AuditLogEntity extends AggregateRoot<AuditLogProps> {
       projectId: string;
       reportId: string;
       entity: AuditEntity;
+      entityId: string;
       entityRef: string;
       field: string;
       oldValue: string;
@@ -22,6 +23,7 @@ export class AuditLogEntity extends AggregateRoot<AuditLogProps> {
       actorType: AuditActor;
       actorId: string;
       actorName: string;
+      automated?: boolean;
       createdAt?: Date;
     },
     id?: UniqueEntityID,
@@ -34,6 +36,7 @@ export class AuditLogEntity extends AggregateRoot<AuditLogProps> {
           projectId: props.projectId,
           reportId: props.reportId,
           entity: props.entity,
+          entityId: props.entityId ?? '',
           entityRef: props.entityRef,
           field: props.field,
           oldValue: props.oldValue,
@@ -41,6 +44,7 @@ export class AuditLogEntity extends AggregateRoot<AuditLogProps> {
           actorType: props.actorType,
           actorId: props.actorId,
           actorName: props.actorName,
+          automated: props.automated ?? false,
           createdAt: props.createdAt || new Date(),
         },
         id,
@@ -63,6 +67,9 @@ export class AuditLogEntity extends AggregateRoot<AuditLogProps> {
   get entity(): AuditEntity {
     return this.props.entity;
   }
+  get entityId(): string {
+    return this.props.entityId;
+  }
   get entityRef(): string {
     return this.props.entityRef;
   }
@@ -83,6 +90,9 @@ export class AuditLogEntity extends AggregateRoot<AuditLogProps> {
   }
   get actorName(): string {
     return this.props.actorName;
+  }
+  get automated(): boolean {
+    return this.props.automated;
   }
   get createdAt(): Date {
     return this.props.createdAt;

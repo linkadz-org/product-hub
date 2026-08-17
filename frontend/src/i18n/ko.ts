@@ -355,7 +355,8 @@ export const ko: Record<I18nKey, string> = {
   'bugs.templateUiVisualHint': '무엇이 어떻게 어긋났는지, 어느 화면·크기에서, 디자인과 비교',
 
   'activity.title': '활동',
-  'activity.empty': '아직 댓글이 없습니다.',
+  'activity.tab.comments': '댓글',
+  'activity.tab.history': '활동',
   'activity.placeholder': '댓글을 남겨보세요…',
   'activity.comment': '댓글',
   'activity.reply': '답글을 남겨보세요…',
@@ -367,6 +368,62 @@ export const ko: Record<I18nKey, string> = {
   'activity.confirmDelete': '이 댓글을 삭제할까요?',
   'activity.attach': '이미지 또는 동영상 첨부',
   'activity.dropHint': '이미지나 동영상을 놓아 첨부하세요',
+
+  'activityLog.field.status': '상태',
+  'activityLog.field.assignees': '담당자',
+  'activityLog.field.severity': '심각도',
+  'activityLog.field.type': '유형',
+  'activityLog.field.labelKeys': '라벨',
+  'activityLog.field.estimate': '추정치',
+  'activityLog.field.cycleId': '사이클',
+  'activityLog.field.parentId': '상위',
+  'activityLog.field.startDate': '시작일',
+  'activityLog.field.endDate': '종료일',
+  'activityLog.field.dueDate': '마감일',
+  'activityLog.field.projectId': '프로젝트',
+  'activityLog.field.roadmapItemId': '로드맵 항목',
+  'activityLog.field.reportId': '리포트',
+  'activityLog.field.caseId': '테스트 케이스',
+  'activityLog.field.title': '제목',
+  'activityLog.field.description': '설명',
+  'activityLog.field.order': '위치',
+  // 로드맵 항목 필드 — `phase`(보드 단계)와 `status`(작업 상태)는 서로 다른 필드로,
+  // 둘 다 기록됩니다.
+  'activityLog.field.phase': '단계',
+  'activityLog.field.difficulty': '난이도',
+  'activityLog.field.progress': '진행률',
+  // RICE 입력값. 로드맵 폼(`roadmaps.*`)과 같은 용어를 씁니다.
+  'activityLog.field.reach': '도달',
+  'activityLog.field.impact': '임팩트',
+  'activityLog.field.confidence': '확신도',
+  'activityLog.field.effort': '노력',
+  // 마일스톤/목표/핵심 결과 연결 — uuid가 아니라 읽을 수 있는 라벨로 기록됩니다.
+  // 'OKR 연결'로 쓰면 조사가 '을'로 자연스럽게 붙습니다.
+  'activityLog.field.okrLabel': 'OKR 연결',
+  // 테스트 케이스 전용 — 이슈 타임라인에는 연관 행으로 나타납니다.
+  'activityLog.field.result': '결과',
+  'activityLog.verb.created': '이 항목을 생성함',
+  'activityLog.verb.deleted': '이 항목을 삭제함',
+  'activityLog.verb.changed': '변경함',
+  'activityLog.verb.edited': '수정함',
+  'activityLog.verb.restored': '이전 버전으로 복원함',
+  // 한국어는 SOV — 목적어(필드와 값)가 동사 앞에 옵니다. 영어와 순서가 반대이고,
+  // 값도 동사 앞에 놓여야 합니다: "Felix 상태를 [Backlog] → [Done] 변경함".
+  // (예전에는 '{field} {verb}'였고 값이 문장 끝으로 밀려
+  //  "Felix [Backlog] → [Done] 상태 변경함"으로 잘못 읽혔습니다.)
+  // `{objectParticle}`은 앞 필드 이름의 받침에 따라 을/를을 붙입니다 —
+  // entryText.ts의 `objectParticle()` 참고. 영어 템플릿에는 이 토큰이 없습니다.
+  'activityLog.sentence': '{field}{objectParticle} {values} {verb}',
+  'activityLog.viaApiKey': 'API 키',
+  'activityLog.automated': '자동',
+  'activityLog.notSet': '설정 안 됨',
+  'activityLog.systemActor': '자동으로',
+  'activityLog.relation.subtask': '하위 작업',
+  'activityLog.relation.doc': '첨부 문서',
+  'activityLog.relation.roadmap_item': '로드맵 항목',
+  'activityLog.relation.testcase': '테스트 케이스',
+  'activityLog.relatedTruncated': '연결된 항목의 기록 일부는 표시되지 않았습니다.',
+  'activityLog.empty': '아직 기록이 없습니다.',
 
   'inbox.title': '알림함',
   'inbox.empty': '알림함이 비어 있습니다.',
@@ -501,6 +558,8 @@ export const ko: Record<I18nKey, string> = {
   'docs.comments.add': '댓글 달기',
   'docs.comments.open': '열림',
   'docs.comments.resolved': '해결됨',
+  // 페이지 변경 기록 — 댓글 레일의 세 번째 탭.
+  'docs.comments.history': '기록',
   'docs.comments.empty': '열린 댓글이 없습니다. 텍스트를 선택해 시작하세요.',
   'docs.comments.emptyResolved': '아직 해결된 댓글이 없습니다.',
   'docs.comments.orphaned': '이 댓글이 가리키던 텍스트가 페이지에 더 이상 없습니다.',

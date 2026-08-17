@@ -55,6 +55,11 @@ export class SetTestCaseResultUseCase
       projectId,
       reportId: report.id.toString(),
       entity: AuditEntity.TESTCASE,
+      // Identify the case, not the report: `outcome.caseId` is the same
+      // `TestCaseData.id` a linked issue stores on `issue.caseId`, so Task 17
+      // can join a bug's history via {entity:'testcase', entityId: caseId}
+      // without pulling in every other case's rows from the same report.
+      entityId: outcome.caseId ?? '',
       entityRef: `${shortId}${outcome.area ? ` · ${outcome.area}` : ''}`,
       field: 'result',
       oldValue: outcome.oldValue ?? '',

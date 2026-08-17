@@ -34,6 +34,7 @@ function build(team: TeamEntity | null) {
     { findById: async () => null, findByTeam: async () => [] } as never,
     { notify: async () => undefined } as never,
     counterStub(() => ++seq),
+    { execute: async () => undefined } as never,
   );
   return { useCase, saved };
 }
@@ -147,6 +148,7 @@ function buildTeams(teams: TeamEntity[], defaultKey: string, cycles: CycleStub =
     { findById: async () => null, findByTeam: async () => cycles.byTeam ?? [] } as never,
     { notify: async () => undefined } as never,
     counterStub(() => ++seq),
+    { execute: async () => undefined } as never,
   );
   return { useCase, saved, calls };
 }
@@ -302,6 +304,7 @@ describe('CreateIssueUseCase against a prefix change mid-create', () => {
         current: async () => seq,
         ensureAtLeast: async () => undefined,
       } as never,
+      { execute: async () => undefined } as never,
     );
 
     const result = await useCase.execute({

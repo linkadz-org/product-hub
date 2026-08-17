@@ -4,6 +4,7 @@ import { InfrastructureUsersModule } from '@infrastructure/users/users.module';
 import { InfrastructureTeamsModule } from '@infrastructure/teams/teams.module';
 import { InfrastructureWebhooksModule } from '@infrastructure/webhooks/webhooks.module';
 import { ApplicationCyclesModule } from '@application/cycles/cycles.module';
+import { ApplicationAuditLogModule } from '@application/audit-log/audit-log.module';
 import {
   CreateIssueUseCase,
   GetIssuesUseCase,
@@ -32,6 +33,7 @@ const useCases = [
     InfrastructureTeamsModule,
     InfrastructureWebhooksModule,
     ApplicationCyclesModule,
+    ApplicationAuditLogModule,
   ],
   providers: [...useCases],
   exports: [...useCases, InfrastructureIssuesModule],

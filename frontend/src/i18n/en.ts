@@ -357,7 +357,11 @@ export const en = {
   'bugs.templateUiVisualHint': 'What looks wrong, on which screen and size, vs the design',
 
   'activity.title': 'Activity',
-  'activity.empty': 'No comments yet.',
+  // The two tabs the Activity section splits into. `history` is labelled
+  // "Activity" but holds the change log only — the comments live next door, so
+  // the key says which content it names rather than which word it prints.
+  'activity.tab.comments': 'Comments',
+  'activity.tab.history': 'Activity',
   'activity.placeholder': 'Leave a comment…',
   'activity.comment': 'Comment',
   'activity.reply': 'Leave a reply…',
@@ -369,6 +373,72 @@ export const en = {
   'activity.confirmDelete': 'Delete this comment?',
   'activity.attach': 'Attach image or video',
   'activity.dropHint': 'Drop an image or video to attach',
+
+  // Activity log — history rows rendered as sentences (entryText.ts). Namespaced
+  // `activityLog.*` rather than `activity.*` to avoid colliding with the comment
+  // thread's keys above.
+  'activityLog.field.status': 'status',
+  'activityLog.field.assignees': 'assignee',
+  'activityLog.field.severity': 'severity',
+  'activityLog.field.type': 'type',
+  'activityLog.field.labelKeys': 'labels',
+  'activityLog.field.estimate': 'estimate',
+  'activityLog.field.cycleId': 'cycle',
+  'activityLog.field.parentId': 'parent',
+  'activityLog.field.startDate': 'start date',
+  'activityLog.field.endDate': 'end date',
+  'activityLog.field.dueDate': 'due date',
+  'activityLog.field.projectId': 'project',
+  'activityLog.field.roadmapItemId': 'roadmap item',
+  'activityLog.field.reportId': 'report',
+  'activityLog.field.caseId': 'test case',
+  'activityLog.field.title': 'title',
+  'activityLog.field.description': 'description',
+  // Doc-page only: a page's rank among its siblings (see NO_VALUE_FIELDS in
+  // entryText.ts) — reads as "changed position", never the raw integer.
+  'activityLog.field.order': 'position',
+  // Roadmap-item fields (roadmap-item-diff.ts). `phase` is the board pool the
+  // card sits in — a different field from `status`, and both are tracked.
+  'activityLog.field.phase': 'phase',
+  'activityLog.field.difficulty': 'difficulty',
+  'activityLog.field.progress': 'progress',
+  // RICE inputs, each logged on its own so "who dropped confidence to 1?" has
+  // an answer. Wording follows the roadmap form's own labels.
+  'activityLog.field.reach': 'reach',
+  'activityLog.field.impact': 'impact',
+  'activityLog.field.confidence': 'confidence',
+  'activityLog.field.effort': 'effort',
+  // The item's milestone/objective/key-result link, logged through its readable
+  // label rather than its three uuids.
+  'activityLog.field.okrLabel': 'linked OKR',
+  // Test-case only: reaches an issue's timeline as a related row.
+  'activityLog.field.result': 'result',
+  'activityLog.verb.created': 'created this',
+  'activityLog.verb.deleted': 'deleted this',
+  'activityLog.verb.changed': 'changed',
+  'activityLog.verb.edited': 'edited the',
+  // Doc pages only (RestoreDocPageVersionUseCase).
+  'activityLog.verb.restored': 'restored an earlier version',
+  // Word order for the whole sentence after the subject. English is SVO, so the
+  // verb leads and the values trail: "Felix changed status [Backlog] → [Done]".
+  // This template IS the ordering decision — `entryText.ts` reads the slots off
+  // it and the component just renders them in that order, so a locale reorders
+  // itself here and nowhere else. See the `ko` entry, which reads the other way.
+  'activityLog.sentence': '{verb} {field} {values}',
+  'activityLog.viaApiKey': 'API key',
+  // FIX 6: Task 18 (cycle rollover) is the first write path to set
+  // `automated: true`; this badge is its rendering path, added now so it
+  // doesn't land on a component with nowhere to show it.
+  'activityLog.automated': 'automatic',
+  'activityLog.notSet': 'not set',
+  'activityLog.systemActor': 'Automatically',
+  'activityLog.relation.subtask': 'subtask',
+  'activityLog.relation.doc': 'attached doc',
+  'activityLog.relation.roadmap_item': 'roadmap item',
+  'activityLog.relation.testcase': 'test case',
+  // The backend caps how many related objects it folds into one timeline.
+  'activityLog.relatedTruncated': 'Some history from linked items isn’t shown.',
+  'activityLog.empty': 'No history yet.',
 
   'inbox.title': 'Inbox',
   'inbox.empty': 'Your inbox is empty.',
@@ -505,6 +575,8 @@ export const en = {
   'docs.comments.add': 'Comment',
   'docs.comments.open': 'Open',
   'docs.comments.resolved': 'Resolved',
+  // The page's own change log (activity-log/ActivityEntry) — third tab of the rail.
+  'docs.comments.history': 'History',
   'docs.comments.empty': 'No open comments. Select any text to start one.',
   'docs.comments.emptyResolved': 'Nothing resolved yet.',
   'docs.comments.orphaned': 'The text this refers to is no longer on the page.',
