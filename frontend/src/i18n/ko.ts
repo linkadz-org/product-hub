@@ -739,6 +739,9 @@ export const ko: Record<I18nKey, string> = {
   'sort.fieldId': 'ID',
   'sort.fieldCreated': '생성일',
   'sort.fieldUpdated': '수정일',
+  // 버그 목록 전용 — 필터·카드 점과 같은 단어(`bugs.severity`)를 써서 두 컨트롤이
+  // 같은 것을 가리키게 한다. 심각도 순서라 내림차순이 가장 심각한 것부터다.
+  'sort.fieldSeverity': '심각도',
   'sort.ascending': '오름차순',
   'sort.descending': '내림차순',
   // Bulk actions — the List-view multi-select toolbar. Count words compose with a

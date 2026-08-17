@@ -9,7 +9,8 @@ import { cn } from '@/lib/utils';
 import { t } from '@/i18n';
 import { BOARD_GUTTER, IssueBoardLayout } from '@/components/IssueBoardLayout';
 import { IssueTimelineView } from '@/features/issues/IssueTimelineView';
-import { NO_ISSUE_SORT, SortMenu, type IssueSort } from '@/features/issues/SortMenu';
+import { SortMenu } from '@/features/issues/SortMenu';
+import { useIssueSort } from '@/features/issues/useIssueSort';
 import { Icon } from '@/components/Icon';
 import { BackLink } from '@/components/BackLink';
 import { BoardCard, BoardCardAge, KanbanBoard, KanbanCardToolbar } from '@/components/KanbanBoard';
@@ -134,8 +135,10 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
   const isList = view === 'list';
   // List-view ordering only (see `SortMenu`), and opt-in: until the user picks
   // one, neither param is sent, so board, timeline and a fresh list all keep the
-  // ordering they have today.
-  const [sort, setSort] = useState<IssueSort | null>(NO_ISSUE_SORT);
+  // ordering they have today. It rides in ?sort=&dir= like `view` above, so a
+  // reload or a shared link keeps it. Severity is a real field here — every row
+  // is a bug — so the URL is allowed to carry it.
+  const [sort, setSort] = useIssueSort({ severity: true });
   // Cycle scope rides in ?cycle= (an id or current/upcoming/none — the API
   // resolves the sentinels against this team, so the sidebar's saved links stay
   // valid as cycles roll). Only meaningful on a team board.
@@ -277,7 +280,10 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
           <FilterMenu size="default" categories={filterCategories} value={filters} onChange={setFilters} />
         </div>
       }
-      sort={isList ? <SortMenu value={sort} onChange={setSort} /> : undefined}
+      // Every row here is a bug, so severity is always a real ordering — and on a
+      // list grouped by status column it orders *within* each column, which is how
+      // the criticals sitting in "Open" surface.
+      sort={isList ? <SortMenu value={sort} onChange={setSort} severity /> : undefined}
       filtersEnd={
         <>
           {/* Insights lives in the cycle bar; that bar only exists when the board

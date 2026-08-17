@@ -772,6 +772,9 @@ export const en = {
   'sort.fieldId': 'ID',
   'sort.fieldCreated': 'Created',
   'sort.fieldUpdated': 'Updated',
+  // Bug lists only — the same word the filter and the card dot use, so the two
+  // controls name one thing. Ordered by the scale, so descending is worst first.
+  'sort.fieldSeverity': 'Severity',
   'sort.ascending': 'Ascending',
   'sort.descending': 'Descending',
   // Bulk actions — the List-view multi-select toolbar. Count words compose with a

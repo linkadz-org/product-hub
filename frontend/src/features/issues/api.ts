@@ -57,8 +57,9 @@ export interface IssueQuery {
 }
 
 /** The API's `sort` values — shared so the task and bug queries (which hit the very
- *  same `/issues` endpoint) and the `SortMenu` all name one set. */
-export type IssueSortField = 'id' | 'created' | 'updated';
+ *  same `/issues` endpoint) and the `SortMenu` all name one set. `severity` orders
+ *  by the bug scale (low → critical), so only a list that can hold bugs offers it. */
+export type IssueSortField = 'id' | 'created' | 'updated' | 'severity';
 /** The API's `dir` values; the server defaults to `desc`. */
 export type IssueSortDir = 'asc' | 'desc';
 
