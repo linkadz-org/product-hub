@@ -7,7 +7,8 @@ import { BoardSkeleton, ListSkeleton, TimelineSkeleton } from '@/components/Skel
 import { BOARD_GUTTER, IssueBoardLayout } from '@/components/IssueBoardLayout';
 import { BoardCard, BoardCardAge, KanbanBoard, KanbanCardToolbar } from '@/components/KanbanBoard';
 import { IssueTimelineView } from '@/features/issues/IssueTimelineView';
-import { NO_ISSUE_SORT, SortMenu, type IssueSort } from '@/features/issues/SortMenu';
+import { SortMenu } from '@/features/issues/SortMenu';
+import { useIssueSort } from '@/features/issues/useIssueSort';
 import { LabelChips } from '@/features/labels/LabelChips';
 import { FilterMenu, type FilterCategory, type FilterSelections } from '@/components/FilterMenu';
 import { issueSharedFilterParams, issueSharedFilters } from '@/features/issues/issueFilters';
@@ -116,8 +117,9 @@ export function MyTasksPage({ teamId, teamName, titleIcon, shareTeam }: MyTasksP
   const [search, setSearch] = useState('');
   // List-view ordering only (see `SortMenu`), and opt-in: until the user picks
   // one, neither param is sent, so board, timeline and a fresh list all keep the
-  // ordering they have today.
-  const [sort, setSort] = useState<IssueSort | null>(NO_ISSUE_SORT);
+  // ordering they have today. It rides in ?sort=&dir= like `view` above, so a
+  // reload or a shared link keeps it. No severity: a task hasn't got one.
+  const [sort, setSort] = useIssueSort();
   const isList = view === 'list';
 
   // Strictly assigned to me — the view is titled "Assigned to me". Tasks I create

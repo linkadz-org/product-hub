@@ -12,7 +12,11 @@ import {
   IIssueRepository,
 } from '@application/issues/repositories/issue.repository';
 import { IssueEntity } from '@application/issues/domain/entities/issue.entity';
-import { BugSeverity, IssueKind } from '@application/issues/domain/enums/issue.enums';
+import {
+  BUG_SEVERITIES,
+  BugSeverity,
+  IssueKind,
+} from '@application/issues/domain/enums/issue.enums';
 import {
   IssueSortDir,
   IssueSortField,
@@ -25,6 +29,31 @@ import {
   RawTrendRow,
 } from '@application/mcp/domain/mcp-bug-stats';
 import { IssueDoc } from '../entities/issue.schema';
+
+/**
+ * Field the severity rank is computed into. Prefixed like `EXACT_RANK_FIELD` so it
+ * can never collide with a real document key, and projected away before the docs
+ * are mapped.
+ */
+export const SEVERITY_RANK_FIELD = '__severityRank';
+
+/**
+ * Position on the bug scale: `low` 0 … `critical` 3, and **-1** for anything not
+ * on it — every task, and any bug stored before severity was required. The -1 is
+ * `$indexOfArray`'s own "not found", not a value we write, and it is what keeps
+ * severity-less rows in one block (below `low` ascending, at the bottom
+ * descending) instead of scattered through the list.
+ */
+export const severityRankExpr = { $indexOfArray: [BUG_SEVERITIES, '$severity'] };
+
+/**
+ * Whether this request's sort key has to be computed per row, which `find()`
+ * cannot sort on — the one thing that decides between `find()` and the
+ * aggregation path, alongside the exact-ref rank.
+ */
+export function needsSeverityRank(sort?: IssueSortField): boolean {
+  return sort === 'severity';
+}
 
 /**
  * The Mongo sort for a list request.
@@ -44,6 +73,11 @@ import { IssueDoc } from '../entities/issue.schema';
  * at the bottom descending) with `createdAt` ordering them inside it. Nothing is
  * ever written to them to achieve this.
  *
+ * The severity sort orders by `SEVERITY_RANK_FIELD` (see `severityRankExpr`), not
+ * by the stored value: `severity` is a string, so Mongo would order it
+ * alphabetically — critical, high, low, medium — which is not the scale anyone
+ * means by "sort by severity".
+ *
  * Every explicit sort ends in `_id`, which is the only field guaranteed unique,
  * so the order is *total*. Without it the legacy block is ordered by `createdAt`
  * alone, and the historical `migrate-issues` script bulk-created rows that share a
@@ -61,6 +95,9 @@ export function issueSortStage(
   const d: 1 | -1 = dir === 'asc' ? 1 : -1;
   if (sort === 'created') return { createdAt: d, _id: d };
   if (sort === 'updated') return { updatedAt: d, _id: d };
+  // Descending — the default, and what this sort is for: worst first, with the
+  // severity-less block (rank -1) at the bottom.
+  if (sort === 'severity') return { [SEVERITY_RANK_FIELD]: d, createdAt: d, _id: d };
   return { refPrefix: d, refSeq: d, createdAt: d, _id: d };
 }
 
@@ -343,33 +380,39 @@ export class IssueRepository
       }
     }
 
-    // Searching a full ref must put that exact ticket first — see
-    // `shouldRankExactRefFirst`. The rank is a computed field, which `find()`
-    // cannot sort on, so this one case runs as an aggregation. Everything else
-    // (including every non-search list) keeps the original `find()` untouched:
-    // the matched set is identical either way, only the order differs.
+    // Two orderings need a key that isn't stored on the document: the exact-ref
+    // rank (searching a full ref puts that ticket first — see
+    // `shouldRankExactRefFirst`) and the severity rank (the bug scale, not the
+    // alphabet — see `severityRankExpr`). `find()` cannot sort on a computed
+    // field, so those cases run as an aggregation; everything else keeps the
+    // original `find()` untouched. The matched set is identical either way, only
+    // the order differs. The two never combine — an explicit sort turns the
+    // exact-ref rank off — but each adds only its own field, so the pipeline is
+    // written once for both.
     const exactRef = exactRefSearch(query.search);
+    const rankExactFirst = shouldRankExactRefFirst(exactRef, query.sort);
+    const rankSeverity = needsSeverityRank(query.sort);
     const sortStage = issueSortStage(query.sort, query.dir);
+    const computed: Record<string, unknown> = {
+      // 0 for the exact ref, 1 for everything else — ascending, so the one row
+      // the user typed the id of leads and the rest keep the order they had.
+      ...(rankExactFirst ? { [EXACT_RANK_FIELD]: { $cond: [{ $eq: ['$shortId', exactRef] }, 0, 1] } } : {}),
+      ...(rankSeverity ? { [SEVERITY_RANK_FIELD]: severityRankExpr } : {}),
+    };
 
     const [docs, total] = await Promise.all([
-      shouldRankExactRefFirst(exactRef, query.sort)
+      rankExactFirst || rankSeverity
         ? this.model
             .aggregate<IssueDoc>([
               { $match: filter as FilterQuery<IssueDoc> },
-              // 0 for the exact ref, 1 for everything else — ascending, so the
-              // one row the user typed the id of leads and the rest keep the
-              // order they already had.
-              {
-                $addFields: {
-                  [EXACT_RANK_FIELD]: {
-                    $cond: [{ $eq: ['$shortId', exactRef] }, 0, 1],
-                  },
-                },
-              },
-              { $sort: { [EXACT_RANK_FIELD]: 1, ...sortStage } },
+              { $addFields: computed },
+              { $sort: rankExactFirst ? { [EXACT_RANK_FIELD]: 1, ...sortStage } : sortStage },
               { $skip: (page - 1) * limit },
               { $limit: limit },
-              { $project: { [EXACT_RANK_FIELD]: 0 } },
+              // Drop both ranks unconditionally — projecting a field the pipeline
+              // never added is a no-op, and it keeps the doc shape identical to
+              // the `find()` branch's.
+              { $project: { [EXACT_RANK_FIELD]: 0, [SEVERITY_RANK_FIELD]: 0 } },
             ])
             .exec()
         : this.model

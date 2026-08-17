@@ -5,10 +5,10 @@ import { PaginationDto } from '@module-shared/modules/pagination/pagination.dto'
 import { TransformQueryArray } from '@module-shared/utils/query-array.util';
 import { BugSeverity, IssueKind } from '../domain/enums/issue.enums';
 
-export type IssueSortField = 'id' | 'created' | 'updated';
+export type IssueSortField = 'id' | 'created' | 'updated' | 'severity';
 export type IssueSortDir = 'asc' | 'desc';
 
-export const ISSUE_SORT_FIELDS: IssueSortField[] = ['id', 'created', 'updated'];
+export const ISSUE_SORT_FIELDS: IssueSortField[] = ['id', 'created', 'updated', 'severity'];
 export const ISSUE_SORT_DIRS: IssueSortDir[] = ['asc', 'desc'];
 
 /** Multi-value filters accept `?x=a`, `?x=a,b` or `?x=a&x=b` — see
@@ -135,7 +135,9 @@ export class QueryIssueDto extends PaginationDto {
 
   @ApiPropertyOptional({
     description:
-      'Sort field. Omit to keep the board ordering (manual drag position, then newest first).',
+      'Sort field. Omit to keep the board ordering (manual drag position, then newest first). ' +
+      '`severity` orders by the bug scale (low → critical), not alphabetically; an issue with ' +
+      'no severity (every task) sorts below `low`.',
     enum: ISSUE_SORT_FIELDS,
   })
   @IsOptional()

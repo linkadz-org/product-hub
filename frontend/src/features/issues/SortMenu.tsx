@@ -11,19 +11,25 @@ import {
 } from '@/components/ui';
 import { t } from '@/i18n';
 import type { IssueSortDir, IssueSortField } from './api';
+import type { IssueSort } from './useIssueSort';
 
-/** What the list can be ordered by. Mirrors the API's `sort` values, in menu order. */
+/** What any list can be ordered by. Mirrors the API's `sort` values, in menu order. */
 const SORT_FIELDS = [
   { field: 'id', labelKey: 'sort.fieldId' },
   { field: 'created', labelKey: 'sort.fieldCreated' },
   { field: 'updated', labelKey: 'sort.fieldUpdated' },
 ] as const;
 
-/** The picked ordering — exactly the API's `sort` + `dir` pair. */
-export interface IssueSort {
-  field: IssueSortField;
-  dir: IssueSortDir;
-}
+/**
+ * Severity, offered only to a list that can hold bugs (`severity` prop).
+ *
+ * It ranks the bug scale — low, medium, high, critical — so descending is "worst
+ * first", which is the whole reason to reach for it. A task has no severity at
+ * all, so on a task board the row would be a control that silently does nothing;
+ * it is a separate entry rather than a fourth `SORT_FIELDS` row so that can't
+ * happen by omission.
+ */
+const SEVERITY_FIELD = { field: 'severity', labelKey: 'sort.fieldSeverity' } as const;
 
 /**
  * The radio value that means "no sort" — not an API value, so it never leaves
@@ -34,18 +40,6 @@ export interface IssueSort {
 const UNSORTED = 'none';
 
 /**
- * What a list starts on: **nothing**. Sorting is an ability the user reaches for,
- * not a default the page applies for them.
- *
- * This is load-bearing, not a preference. A page is capped at 100 rows with no
- * pagination, and the API's ID sort leads on `refPrefix` — so a default ID sort on
- * a workspace with teams ENG/QC/WEB and 500 issues returns 100 *WEB* issues and
- * nothing else. Sending neither param is what keeps the first screen a slice of
- * the whole workspace, exactly as it was before ID sorting existed.
- */
-export const NO_ISSUE_SORT: IssueSort | null = null;
-
-/**
  * Sort control for the list view — field on top, direction below, in one menu.
  * Built on the same `DropdownMenu` primitive as `FilterMenu` (the Filter control
  * beside it), so the two triggers are the same button and open the same surface;
@@ -53,6 +47,10 @@ export const NO_ISSUE_SORT: IssueSort | null = null;
  * and an arrow for the direction, so the current ordering is readable without
  * opening it — and on a narrow screen the field word drops away, leaving the icon
  * (the toolbar cluster wraps, so it never pushes anything off the edge).
+ *
+ * Stateless by design: the ordering lives in the URL (`useIssueSort`), so this is
+ * only the control that reads and writes it — a reload or a shared link keeps the
+ * list the user was actually looking at.
  *
  * `null` is the honest resting state and reads as such: the trigger says
  * "Sort: Default order" over a neutral two-way arrow, so an unsorted list never
@@ -64,16 +62,23 @@ export const NO_ISSUE_SORT: IssueSort | null = null;
  * sort would silently overwrite (the API drops `order` the moment `sort` is sent).
  * Shared by every issue-backed list (`/issues`, `/tasks`, `/bugs`, the Personal
  * board) — one control, one set of `sort.*` keys, so they all order and read
- * identically.
+ * identically. The one variation is the `severity` field, which a bug list opts
+ * into (see `SEVERITY_FIELD`); a caller that turns it on must also make sure a
+ * severity sort can't outlive the bug rows it was picked for — see how
+ * `IssuesPage` drops it when the Kind switch flips to tasks.
  */
 export function SortMenu({
   value,
   onChange,
+  severity = false,
 }: {
   value: IssueSort | null;
   onChange: (next: IssueSort | null) => void;
+  /** Offer "Severity" — only true where every row can carry one (a bug list). */
+  severity?: boolean;
 }) {
-  const active = value ? SORT_FIELDS.find((f) => f.field === value.field) : undefined;
+  const fields = severity ? [...SORT_FIELDS, SEVERITY_FIELD] : SORT_FIELDS;
+  const active = value ? fields.find((f) => f.field === value.field) : undefined;
   const isAsc = value?.dir === 'asc';
   const DirIcon = !value ? ArrowUpDown : isAsc ? ArrowUpNarrowWide : ArrowDownNarrowWide;
   const fieldLabel = active ? t(active.labelKey) : t('sort.fieldDefault');
@@ -109,7 +114,7 @@ export function SortMenu({
           }
         >
           <DropdownMenuRadioItem value={UNSORTED}>{t('sort.fieldDefault')}</DropdownMenuRadioItem>
-          {SORT_FIELDS.map((f) => (
+          {fields.map((f) => (
             <DropdownMenuRadioItem key={f.field} value={f.field}>
               {t(f.labelKey)}
             </DropdownMenuRadioItem>

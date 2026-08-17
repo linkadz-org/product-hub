@@ -8,7 +8,8 @@ import { BOARD_GUTTER, IssueBoardLayout } from '@/components/IssueBoardLayout';
 import { KanbanBoard, KanbanCardToolbar } from '@/components/KanbanBoard';
 import { Icon } from '@/components/Icon';
 import { IssueTimelineView } from '@/features/issues/IssueTimelineView';
-import { NO_ISSUE_SORT, SortMenu, type IssueSort } from '@/features/issues/SortMenu';
+import { SortMenu } from '@/features/issues/SortMenu';
+import { applyIssueSort, useIssueSort } from '@/features/issues/useIssueSort';
 import { LabelChips } from '@/features/labels/LabelChips';
 import { FilterMenu, type FilterCategory, type FilterSelections } from '@/components/FilterMenu';
 import { issueSharedFilterParams, issueSharedFilters } from '@/features/issues/issueFilters';
@@ -126,8 +127,11 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
   const [search, setSearch] = useState('');
   // List-view ordering only (see `SortMenu`), and opt-in: until the user picks
   // one, neither param is sent and the list is exactly the page the API returns
-  // by default. The board keeps its drag order the same way.
-  const [sort, setSort] = useState<IssueSort | null>(NO_ISSUE_SORT);
+  // by default. The board keeps its drag order the same way. Held in ?sort=&dir=
+  // beside ?kind= and ?view=, so a reload or a shared link keeps it — and the
+  // severity gate follows the Kind switch, so a bug link's `?sort=severity`
+  // simply doesn't apply if the same URL is later flipped to tasks.
+  const [sort, setSort] = useIssueSort({ severity: isBug });
 
   // Switching kind rides in the URL (shareable) and clears the filters — severity
   // is bug-only, backlog item is task-only, and the status columns differ, so
@@ -137,6 +141,11 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
     const p = new URLSearchParams(params);
     if (next === IssueKind.BUG) p.set('kind', 'bug');
     else p.delete('kind');
+    // Severity is bug-only for the *sort* too, so it leaves with the kind rather
+    // than lingering in the URL as a param the task list would ignore. Written
+    // into the same `p` as the kind — one navigation, so neither can clobber the
+    // other. Every other field means the same on both kinds and is left alone.
+    if (next !== IssueKind.BUG && sort?.field === 'severity') applyIssueSort(p, null);
     setParams(p, { replace: true });
     setFilters({});
   };
@@ -283,7 +292,9 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
           <FilterMenu size="default" categories={filterCategories} value={filters} onChange={setFilters} />
         </div>
       }
-      sort={isList ? <SortMenu value={sort} onChange={setSort} /> : undefined}
+      // One kind at a time, so severity is a real ordering exactly when the Kind
+      // switch is on Bugs (`setKind` clears it on the way back to tasks).
+      sort={isList ? <SortMenu value={sort} onChange={setSort} severity={isBug} /> : undefined}
       filtersEnd={
         capped ? (
           <p className="text-xs text-muted-foreground">
