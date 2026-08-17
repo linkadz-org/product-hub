@@ -18,7 +18,7 @@ import {
 import { useMediaAttachments } from '@/features/uploads/useMediaAttachments';
 import { AttachMediaButton, AttachmentStrip, CommentMedia } from '@/features/activity/CommentMedia';
 import { useActivity } from '@/features/activity-log/api';
-import { ActivityEntry } from '@/features/activity-log/ActivityEntry';
+import { ActivityEntry, ActivityTruncatedNote } from '@/features/activity-log/ActivityEntry';
 import { mergeStream } from '@/features/activity-log/mergeStream';
 
 export interface Person {
@@ -71,20 +71,27 @@ export function CommentThread({
   const { data: fetched } = useComments(source, comments === undefined);
   const thread = comments ?? fetched ?? [];
 
-  // System events (status changes, edits, …) only exist for a bug/task's own
-  // issue history today — a roadmap-item thread has no history endpoint yet
-  // (Phase 5), and a public viewer has no token to read an authed one with.
-  // `useActivity` disables itself on an empty id, so this just means "don't fetch".
+  // System events (status changes, edits, …). The backend records and guards
+  // all three entity kinds, so a roadmap item's own history renders here too —
+  // it is the same timeline, not a second renderer. A public viewer passes
+  // `comments` and has no token for an authed request, so it fetches nothing;
+  // `useActivity` disables itself on an empty id.
   const isIssueSource = source.kind === 'bug' || source.kind === 'task';
-  const historyId = isIssueSource && comments === undefined ? source.id : '';
+  const entity = isIssueSource ? 'issue' : 'roadmap_item';
+  const historyId = comments === undefined ? source.id : '';
   // `undefined` on both loading and error — defaulting to `[]` here (rather
   // than guarding the whole component) is what keeps a failed history fetch
   // from blanking comments that already loaded fine.
-  const { data: history } = useActivity('issue', historyId);
-  // The issue's own creation is already shown as its own timeline row above
-  // this thread (`IssueDetailMain`'s "{createdByName} {createdLabel}" line) —
-  // drop it here so it isn't rendered twice.
-  const events = (history ?? []).filter((e) => e.field !== 'created');
+  const { data: history } = useActivity(entity, historyId);
+  // An issue's own creation is already shown as a timeline row above this
+  // thread (`IssueDetailMain`'s "{createdByName} {createdLabel}" line), so drop
+  // that ONE row — matched by entity id, so a *related* object's creation (a
+  // subtask being added) still shows, which a blanket `field !== 'created'`
+  // filter silently swallowed. A roadmap item has no such opening line, so its
+  // own creation row is the only place that fact appears and stays.
+  const events = (history?.items ?? []).filter(
+    (e) => !(isIssueSource && e.field === 'created' && e.entityId === source.id),
+  );
 
   // Fold the flat list into one-level threads: each top-level comment plus the
   // replies pointing at it. A reply whose parent isn't a known top-level comment
@@ -111,6 +118,9 @@ export function CommentThread({
 
   return (
     <>
+      {/* Says so when the backend capped the related objects it folded in —
+          a partial history that looks complete is worse than none. */}
+      {history?.relatedTruncated && <ActivityTruncatedNote />}
       {stream.map((item) =>
         item.kind === 'event' ? (
           <ActivityEntry key={`event-${item.id}`} entry={item} />

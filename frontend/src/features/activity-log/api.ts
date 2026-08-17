@@ -17,19 +17,28 @@ interface ActivityPage {
   page: number;
   limit: number;
   totalPages: number;
+  /** The backend caps how many *related* objects (subtasks, linked docs, …) it
+   *  folds into one timeline (`MAX_RELATED`). True means some were left out, so
+   *  the list is honestly partial and must say so rather than look complete. */
+  relatedTruncated: boolean;
 }
 
+/** The entity kinds `GET /v1/activity` guards and serves — `AuditEntity` in
+ *  backend/src/application/audit-log/domain/enums/audit.enums.ts. A closed
+ *  union so a call site can't invent a kind the endpoint would 404 on. */
+export type ActivityEntityKind = 'issue' | 'doc_page' | 'roadmap_item';
+
 /**
- * One object's change history. `entityId` empty means "nothing to fetch" —
- * e.g. a public read-only view, or an entity kind the backend doesn't guard
- * yet (v1 only knows `'issue'`) — so the query stays disabled rather than
- * firing a request that would just 404.
+ * One object's change history — an issue, a doc page or a roadmap item, all
+ * three of which the backend records and guards. `entityId` empty means
+ * "nothing to fetch" (a public read-only view has no token for an authed
+ * request), so the query stays disabled rather than firing one that would fail.
  */
-export function useActivity(entity: string, entityId: string) {
+export function useActivity(entity: ActivityEntityKind, entityId: string) {
   return useQuery({
     queryKey: activityKeys.entity(entity, entityId),
     queryFn: () => apiGet<ActivityPage>('/activity', { entity, entityId, limit: 100 }),
     enabled: Boolean(entityId),
-    select: (page) => page.items,
+    select: (page) => ({ items: page.items, relatedTruncated: page.relatedTruncated }),
   });
 }

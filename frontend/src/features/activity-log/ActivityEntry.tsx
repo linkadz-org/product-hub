@@ -30,6 +30,17 @@ function relationLabel(relation: string): string {
 }
 
 /**
+ * Shown when the backend had to leave related objects out of a timeline
+ * (`relatedTruncated`). Without it a capped history looks like a complete one,
+ * which is the one thing a change log must never do.
+ */
+export function ActivityTruncatedNote() {
+  return (
+    <p className="text-xs italic text-muted-foreground">{t('activityLog.relatedTruncated')}</p>
+  );
+}
+
+/**
  * One system-event row in the merged Activity stream — a status change, a
  * field edit, and so on. Sits beside `CommentItem` in the same timeline, so
  * it matches its avatar-then-text layout, but reads as a log line rather than

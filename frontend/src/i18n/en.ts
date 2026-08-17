@@ -431,6 +431,9 @@ export const en = {
   'activityLog.relation.doc': 'attached doc',
   'activityLog.relation.roadmap_item': 'roadmap item',
   'activityLog.relation.testcase': 'test case',
+  // The backend caps how many related objects it folds into one timeline.
+  'activityLog.relatedTruncated': 'Some history from linked items isn’t shown.',
+  'activityLog.empty': 'No history yet.',
 
   'inbox.title': 'Inbox',
   'inbox.empty': 'Your inbox is empty.',
@@ -567,6 +570,8 @@ export const en = {
   'docs.comments.add': 'Comment',
   'docs.comments.open': 'Open',
   'docs.comments.resolved': 'Resolved',
+  // The page's own change log (activity-log/ActivityEntry) — third tab of the rail.
+  'docs.comments.history': 'History',
   'docs.comments.empty': 'No open comments. Select any text to start one.',
   'docs.comments.emptyResolved': 'Nothing resolved yet.',
   'docs.comments.orphaned': 'The text this refers to is no longer on the page.',

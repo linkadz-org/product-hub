@@ -420,6 +420,8 @@ export const ko: Record<I18nKey, string> = {
   'activityLog.relation.doc': '첨부 문서',
   'activityLog.relation.roadmap_item': '로드맵 항목',
   'activityLog.relation.testcase': '테스트 케이스',
+  'activityLog.relatedTruncated': '연결된 항목의 기록 일부는 표시되지 않았습니다.',
+  'activityLog.empty': '아직 기록이 없습니다.',
 
   'inbox.title': '알림함',
   'inbox.empty': '알림함이 비어 있습니다.',
@@ -554,6 +556,8 @@ export const ko: Record<I18nKey, string> = {
   'docs.comments.add': '댓글 달기',
   'docs.comments.open': '열림',
   'docs.comments.resolved': '해결됨',
+  // 페이지 변경 기록 — 댓글 레일의 세 번째 탭.
+  'docs.comments.history': '기록',
   'docs.comments.empty': '열린 댓글이 없습니다. 텍스트를 선택해 시작하세요.',
   'docs.comments.emptyResolved': '아직 해결된 댓글이 없습니다.',
   'docs.comments.orphaned': '이 댓글이 가리키던 텍스트가 페이지에 더 이상 없습니다.',
