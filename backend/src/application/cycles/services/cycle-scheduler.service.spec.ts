@@ -96,7 +96,7 @@ describe('CycleSchedulerService', () => {
     issues = {
       cycleRollups: jest.fn().mockResolvedValue({}),
       moveUnfinishedIssues: jest.fn().mockResolvedValue([]),
-      clearCycleIds: jest.fn().mockResolvedValue(0),
+      clearCycleIds: jest.fn().mockResolvedValue([]),
     };
     scheduler = new CycleSchedulerService(
       cycles,
