@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Button, Dialog, Field, Input, Label, Switch } from '@/components/ui';
 import { t } from '@/i18n';
 import type { FilterSelections } from '@/components/FilterMenu';
-import type { IssueSort } from '@/features/issues/SortMenu';
+import type { IssueSort } from '@/features/issues/useIssueSort';
 import type { SavedViewDto } from '@/types/dto';
 import type { IssueKind } from '@/types/enums';
 import { buildSavedViewQuery, useCreateSavedView, useUpdateSavedView } from './api';

@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { CalendarRange, LayoutGrid, List } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { Button, Checkbox } from '@/components/ui';
@@ -385,7 +385,8 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
             columns={columns}
             labelsFor={labelsFor}
             cycleFor={cycleFor}
-            onOpen={(b) => navigate(`/issues/${b.shortId || b.id}`)}
+            // No `onOpen`: rows are `<Link>`s, so a row opens in a new tab on
+            // ⌘/middle-click instead of being swallowed by a click handler.
             selection={bulkEnabled ? selection : undefined}
           />
         </div>
@@ -424,7 +425,10 @@ export function BugList({
   /** Row → its cycle (`useCycleLookup`). Optional so the public board, which has
    *  no `/teams` access, simply renders rows without a cycle chip. */
   cycleFor?: (cycleId: string | undefined) => CycleDto | undefined;
-  onOpen: (bug: BugDto) => void;
+  /** Overrides the row's default `<Link>` with a callback — the public board
+   *  opens a dialog, because `/issues/:ref` is behind auth there. Leave it off
+   *  and rows are real links (see `BugRow`). */
+  onOpen?: (bug: BugDto) => void;
   /** When present, each row gets a checkbox and each column a select-all. */
   selection?: IssueSelection;
 }) {
@@ -456,61 +460,90 @@ export function BugList({
             </div>
             <div className="rounded-xl border bg-card p-2 text-card-foreground shadow-sm">
               {list.map((bug) => (
-                <div
+                <BugRow
                   key={bug.id}
-                  className="flex items-center gap-1 [&:not(:last-child)]:border-b"
-                >
-                  {selection && (
-                    <span className="pl-2">
-                      <Checkbox
-                        checked={selection.isSelected(bug.id)}
-                        onCheckedChange={(v) => selection.set(bug.id, v === true)}
-                        aria-label={t('bulk.selectRow')}
-                      />
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => onOpen(bug)}
-                    className={cn(
-                      'flex min-w-0 flex-1 items-center gap-3 rounded-md px-4 py-3 text-left text-foreground transition-colors hover:bg-accent',
-                      selection?.isSelected(bug.id) && 'bg-accent',
-                    )}
-                  >
-                    <span
-                      className={cn('size-2 shrink-0 rounded-full', SEVERITY_DOT[bug.severity])}
-                      title={BUG_SEVERITY_LABEL[bug.severity]}
-                    />
-                    <span className="min-w-0 flex-1 truncate text-sm">{bug.title}</span>
-                    {/* Hidden on mobile, like the labels beside it — a row has
-                        room for the title and the assignee first. */}
-                    <IssueCycleChip
-                      cycle={cycleFor?.(bug.cycleId)}
-                      className="hidden shrink-0 sm:flex"
-                    />
-                    <LabelChips
-                      keys={bug.labelKeys}
-                      labels={labelsFor(bug.teamId)}
-                      max={3}
-                      className="hidden shrink-0 sm:flex"
-                    />
-                    {bug.shortId && (
-                      <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
-                        {bug.shortId}
-                      </span>
-                    )}
-                    <AssigneeBadge
-                      assignees={bug.assignees}
-                      unassignedLabel={t('bugs.unassigned')}
-                      className="max-w-[35%] shrink-0"
-                    />
-                  </button>
-                </div>
+                  bug={bug}
+                  labels={labelsFor(bug.teamId)}
+                  cycle={cycleFor?.(bug.cycleId)}
+                  onOpen={onOpen}
+                  selection={selection}
+                />
               ))}
             </div>
           </section>
         );
       })}
+    </div>
+  );
+}
+
+/** One bug row. A real `<Link>` unless the caller overrides it — so the row can be
+ * middle-clicked, ⌘/Ctrl-clicked into a new tab, or copied as a URL, which a
+ * `<button onClick={navigate}>` silently swallows. Mirrors `TaskRow` exactly, and
+ * for the same reason: the two lists must stay siblings. */
+function BugRow({
+  bug,
+  labels,
+  cycle,
+  onOpen,
+  selection,
+}: {
+  bug: BugDto;
+  labels: TaskLabelConfig[];
+  cycle?: CycleDto;
+  onOpen?: (bug: BugDto) => void;
+  selection?: IssueSelection;
+}) {
+  const content = (
+    <>
+      <span
+        className={cn('size-2 shrink-0 rounded-full', SEVERITY_DOT[bug.severity])}
+        title={BUG_SEVERITY_LABEL[bug.severity]}
+      />
+      <span className="min-w-0 flex-1 truncate text-sm">{bug.title}</span>
+      {/* Hidden on mobile, like the labels beside it — a row has room for the
+          title and the assignee first. */}
+      <IssueCycleChip cycle={cycle} className="hidden shrink-0 sm:flex" />
+      <LabelChips keys={bug.labelKeys} labels={labels} max={3} className="hidden shrink-0 sm:flex" />
+      {bug.shortId && (
+        <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{bug.shortId}</span>
+      )}
+      <AssigneeBadge
+        assignees={bug.assignees}
+        unassignedLabel={t('bugs.unassigned')}
+        className="max-w-[35%] shrink-0"
+      />
+    </>
+  );
+  // The click target keeps its own rounding/hover; the separator + selected tint
+  // live on the wrapper so the checkbox sits outside the highlight and can't
+  // trigger navigation.
+  const className = cn(
+    'flex min-w-0 flex-1 items-center gap-3 rounded-md px-4 py-3 text-left text-foreground transition-colors hover:bg-accent',
+    selection?.isSelected(bug.id) && 'bg-accent',
+  );
+  const clickable = onOpen ? (
+    <button type="button" onClick={() => onOpen(bug)} className={className}>
+      {content}
+    </button>
+  ) : (
+    <Link to={`/issues/${bug.shortId || bug.id}`} className={className}>
+      {content}
+    </Link>
+  );
+
+  return (
+    <div className="flex items-center gap-1 [&:not(:last-child)]:border-b">
+      {selection && (
+        <span className="pl-2">
+          <Checkbox
+            checked={selection.isSelected(bug.id)}
+            onCheckedChange={(v) => selection.set(bug.id, v === true)}
+            aria-label={t('bulk.selectRow')}
+          />
+        </span>
+      )}
+      {clickable}
     </div>
   );
 }

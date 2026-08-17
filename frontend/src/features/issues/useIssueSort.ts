@@ -28,6 +28,12 @@ export const DIR_PARAM = 'dir';
 /** Every `sort` value the API accepts. Anything else in the URL is not a sort. */
 const VALID_FIELDS: IssueSortField[] = ['id', 'created', 'updated', 'severity'];
 
+/** Is this one of the API's sort fields? The guard for anything that reaches the
+ *  board from outside the code — a URL, or a saved view's stored query. */
+export function isIssueSortField(value: unknown): value is IssueSortField {
+  return VALID_FIELDS.includes(value as IssueSortField);
+}
+
 /**
  * Read the ordering out of a URL. Anything unrecognised reads as **no sort** —
  * a query string is user-editable and outlives the code that wrote it, so a
@@ -43,8 +49,8 @@ export function readIssueSort(
   params: URLSearchParams,
   opts: { severity?: boolean } = {},
 ): IssueSort | null {
-  const field = params.get(SORT_PARAM) as IssueSortField | null;
-  if (!field || !VALID_FIELDS.includes(field)) return NO_ISSUE_SORT;
+  const field = params.get(SORT_PARAM);
+  if (!isIssueSortField(field)) return NO_ISSUE_SORT;
   if (field === 'severity' && !opts.severity) return NO_ISSUE_SORT;
   // The API defaults to `desc` and so does the menu's first pick; only an
   // explicit `asc` flips it.

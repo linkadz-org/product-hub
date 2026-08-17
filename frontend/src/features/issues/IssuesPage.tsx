@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { CalendarRange, LayoutGrid, List } from 'lucide-react';
 import { Button } from '@/components/ui';
@@ -261,10 +261,10 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
   const { data: projectsData } = useProjects({ limit: 100 });
   const { data: roadmaps } = useRoadmaps();
 
-  // `?sv=<id>` names a saved view to open. `filters`/`search`/`sort` live in
-  // React state (only `kind` and `view` ride in the URL), so applying a saved
-  // view means writing that state back — there is nothing to restore from the
-  // URL alone.
+  // `?sv=<id>` names a saved view to open. `filters` and `search` live in React
+  // state (`kind`, `view` and the ordering ride in the URL), so applying a saved
+  // view means writing both back — there is nothing to restore from the URL
+  // alone.
   const svId = params.get('sv');
   const { data: views } = useSavedViews();
   const activeView = views?.find((v) => v.id === svId);
@@ -314,14 +314,22 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
         ? { roadmapItemId: new Set(roadmaps.flatMap((r) => (r.items ?? []).map((i) => i.id))) }
         : {}),
     });
-    // `kind` and `view` are set together in one `setParams` call — see
-    // `buildKindViewParams` above for why two separate calls (`setKind` then
-    // `setView`) race and silently drop the kind change.
-    if (q.kind !== kind || q.view !== view) {
-      setParams(buildKindViewParams(params, q.kind, q.view), { replace: true });
-    }
+    // `kind`, `view` **and the ordering** are set together in one `setParams`
+    // call — see `buildKindViewParams` above for why two separate calls race and
+    // silently drop the first one's change. The sort rides in the URL now
+    // (`useIssueSort`), so calling `setSort` here would be exactly that losing
+    // second call. Written unconditionally: a saved view can differ in the sort
+    // alone, so there is nothing to guard on.
+    const next = buildKindViewParams(params, q.kind, q.view);
+    // Severity only means something on a bug list, and a saved view carries its
+    // own kind — so a view saved on bugs and re-saved as tasks can't leave a
+    // dead `?sort=severity` behind.
+    applyIssueSort(
+      next,
+      q.sort?.field === 'severity' && q.kind !== IssueKind.BUG ? null : q.sort,
+    );
+    setParams(next, { replace: true });
     setFilters(pruned);
-    setSort(q.sort);
     setSearch(q.search);
     if (dropped) toast.warning(t('savedViews.someFiltersDropped'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -510,7 +518,6 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
             labelsFor={labelsFor}
             cycleFor={cycleFor}
             isBug={isBug}
-            onOpen={openIssue}
           />
         </div>
       ) : (
@@ -523,21 +530,21 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
 }
 
 /** List view — grouped by status column, mirroring the task/bug lists so all
- * three read as siblings. Leads with the bug's severity dot or a task glyph. */
+ * three read as siblings. Leads with the bug's severity dot or a task glyph.
+ * Rows are real `<Link>`s like those lists', so ⌘/middle-click opens an issue in
+ * a new tab and the row's URL can be copied. */
 function IssueList({
   items,
   columns,
   labelsFor,
   cycleFor,
   isBug,
-  onOpen,
 }: {
   items: IssueDto[];
   columns: TeamStatusConfig[];
   labelsFor: (teamId: string | undefined) => TaskLabelConfig[];
   cycleFor: (cycleId: string | undefined) => CycleDto | undefined;
   isBug: boolean;
-  onOpen: (item: IssueDto) => void;
 }) {
   return (
     <div className="flex flex-col gap-6">
@@ -553,10 +560,9 @@ function IssueList({
             </div>
             <div className="rounded-xl border bg-card p-2 text-card-foreground shadow-sm">
               {list.map((it) => (
-                <button
+                <Link
                   key={it.id}
-                  type="button"
-                  onClick={() => onOpen(it)}
+                  to={`/issues/${it.shortId || it.id}`}
                   className="flex w-full items-center gap-3 rounded-md px-4 py-3 text-left text-foreground transition-colors hover:bg-accent [&:not(:last-child)]:border-b"
                 >
                   {isBug && it.severity ? (
@@ -589,7 +595,7 @@ function IssueList({
                     unassignedLabel={t('tasks.unassigned')}
                     className="max-w-[35%] shrink-0"
                   />
-                </button>
+                </Link>
               ))}
             </div>
           </section>

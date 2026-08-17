@@ -3,7 +3,7 @@ import { apiDelete, apiGet, apiPatch, apiPost } from '@/lib/api';
 import type { SavedViewDto } from '@/types/dto';
 import { IssueKind } from '@/types/enums';
 import type { FilterSelections } from '@/components/FilterMenu';
-import type { IssueSort } from '@/features/issues/SortMenu';
+import { isIssueSortField, type IssueSort } from '@/features/issues/useIssueSort';
 
 /** The board snapshot sent to `POST`/`PATCH /v1/saved-views` — the nested
  *  shape `CreateSavedViewDto.query` / `UpdateSavedViewDto.query` expects on
@@ -100,7 +100,10 @@ function isFilterSelections(value: unknown): value is FilterSelections {
 function isIssueSort(value: unknown): value is IssueSort {
   if (!value || typeof value !== 'object') return false;
   const s = value as Record<string, unknown>;
-  return typeof s.field === 'string' && (s.dir === 'asc' || s.dir === 'desc');
+  // The field is checked against the API's own list, not just `typeof string`:
+  // a view saved by an older client can name a field that no longer exists, and
+  // applying it would put a `?sort=` in the URL that the API rejects.
+  return isIssueSortField(s.field) && (s.dir === 'asc' || s.dir === 'desc');
 }
 
 /**
