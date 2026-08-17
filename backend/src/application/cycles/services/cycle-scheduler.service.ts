@@ -1,7 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { TeamEntity } from '@application/teams/domain/entities/team.entity';
-import { IIssueRepository } from '@application/issues/repositories/issue.repository';
+import { IIssueRepository, MovedIssue } from '@application/issues/repositories/issue.repository';
+import { AuditActor } from '@application/audit-log/domain/enums/audit.enums';
+import { RecordActivityUseCase } from '@application/audit-log/use-cases/record-activity.use-case';
 import { CycleEntity } from '../domain/entities/cycle.entity';
+import { recordCycleIdChanges } from '../domain/cycle-activity';
 import {
   CYCLE_FILTER_CURRENT,
   CYCLE_FILTER_NONE,
@@ -37,6 +40,7 @@ export class CycleSchedulerService {
   constructor(
     @Inject(ICycleRepository) private readonly cycles: ICycleRepository,
     @Inject(IIssueRepository) private readonly issues: IIssueRepository,
+    private readonly activity: RecordActivityUseCase,
   ) {}
 
   /**
@@ -182,7 +186,10 @@ export class CycleSchedulerService {
       target ? target.id.toString() : '',
       doneKeys,
     );
-    return due.length > 0 || moved > 0;
+    // One timestamp for the whole rollover, computed once, so the UI can group
+    // every moved issue's row into a single "N issues moved" entry.
+    await recordRolloverActivity(this.activity, team.tenantId, new Date(), moved);
+    return due.length > 0 || moved.length > 0;
   }
 
   /**
@@ -209,4 +216,29 @@ export class CycleSchedulerService {
     );
     return next ? next.id.toString() : CYCLE_FILTER_NO_MATCH;
   }
+}
+
+/**
+ * Log a rollover. Exported so it can be tested without standing up the scheduler.
+ *
+ * These rows are SYSTEM, not the reader who happened to trigger the lazy rollover —
+ * see the note on this task. This is the ONLY caller that may use SYSTEM: a
+ * rollover is driven by the calendar, so nobody acted. The admin-triggered
+ * sweeps in `cycle.use-cases.ts` share the same row shape (via
+ * {@link recordCycleIdChanges}) but keep the admin's real identity.
+ */
+export async function recordRolloverActivity(
+  activity: RecordActivityUseCase,
+  tenantId: string,
+  at: Date,
+  moved: MovedIssue[],
+): Promise<void> {
+  await recordCycleIdChanges(
+    activity,
+    tenantId,
+    at,
+    moved,
+    { type: AuditActor.SYSTEM, id: '', name: '' },
+    true,
+  );
 }

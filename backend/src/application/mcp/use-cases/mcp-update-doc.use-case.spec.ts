@@ -1,6 +1,7 @@
 import { Result } from '@shared/logic/result';
 import { McpUpdateDocUseCase, type McpActor } from './mcp.use-cases';
 import { ApiKeyScope } from '@application/api-keys/domain/api-key.enums';
+import { AuditActor } from '@application/audit-log/domain/enums/audit.enums';
 
 /**
  * Pure unit test for the MCP update-doc wrapper. Every collaborator is a
@@ -123,5 +124,30 @@ describe('McpUpdateDocUseCase', () => {
     const { useCase } = buildDeps();
     const result = await useCase.execute({ actor, dto: { doc: DOC_REF } });
     expect(result.isFailure).toBe(true);
+  });
+
+  // An MCP-originated doc structural event must read as a bot, not a person —
+  // distinguishing the two is the whole point of actor-typing.
+  it('marks a page content edit as an API actor', async () => {
+    const { useCase, updatePage } = buildDeps();
+
+    await useCase.execute({ actor, dto: { doc: DOC_REF, content: 'Just text' } });
+
+    expect(updatePage.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ actorType: AuditActor.API }),
+    );
+  });
+
+  it('marks an appended page as an API actor', async () => {
+    const { useCase, createPage } = buildDeps();
+
+    await useCase.execute({
+      actor,
+      dto: { doc: DOC_REF, appendPage: { title: 'New page', content: 'text' } },
+    });
+
+    expect(createPage.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ actorType: AuditActor.API }),
+    );
   });
 });

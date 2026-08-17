@@ -6,6 +6,7 @@ import { BaseRepository } from '@core/infrastructure/database/mongoose/base';
 import {
   IRoadmapRepository,
   RoadmapItemLocation,
+  RoadmapItemOwner,
 } from '@application/roadmaps/repositories/roadmap.repository';
 import { RoadmapEntity } from '@application/roadmaps/domain/entities/roadmap.entity';
 import { buildSearchText } from '@module-shared/utils/search-text.util';
@@ -69,6 +70,21 @@ export class RoadmapRepository
       .lean<RoadmapDoc>()
       .exec();
     return doc ? this.toDomain(doc) : null;
+  }
+
+  async findByItemId(tenantId: string, itemId: string): Promise<RoadmapItemOwner | null> {
+    if (!itemId) return null;
+    // Two scalars only, same discipline as `findItemByRef` below: this runs on
+    // every roadmap-item activity read and every issue read that links one, and
+    // a roadmap document can hold hundreds of items with long descriptions.
+    // `RoadmapSchema.index({ tenantId: 1, 'items.id': 1 })` is what keeps it
+    // from scanning every roadmap in the tenant to get here.
+    const doc = await this.model
+      .findOne({ tenantId, 'items.id': itemId })
+      .select('tenantId updatedAt')
+      .lean<{ tenantId: string; updatedAt: Date }>()
+      .exec();
+    return doc ? { tenantId: doc.tenantId, updatedAt: doc.updatedAt } : null;
   }
 
   async findItemByRef(tenantId: string, ref: string): Promise<RoadmapItemLocation | null> {

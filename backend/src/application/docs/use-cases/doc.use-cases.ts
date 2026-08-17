@@ -6,6 +6,8 @@ import { keepOrUpgradeShareToken } from '@module-shared/utils/short-id.util';
 import { sequentialRef } from '@module-shared/utils/sequential-ref.util';
 import { CounterService } from '@module-shared/services/counter.service';
 import { ICommentRepository } from '@application/activity/repositories/comment.repository';
+import { AuditActor, AuditEntity } from '@application/audit-log/domain/enums/audit.enums';
+import { RecordActivityUseCase } from '@application/audit-log/use-cases/record-activity.use-case';
 import { CreateDocDto, DuplicateDocDto, UpdateDocDto } from '../dtos/doc.dtos';
 import { DOC_REF_PREFIX } from '../domain/entities/doc.props';
 import { DocEntity } from '../domain/entities/doc.entity';
@@ -52,15 +54,19 @@ export class CreateDocUseCase
     @Inject(IDocRepository) private readonly docs: IDocRepository,
     @Inject(IDocPageRepository) private readonly pages: IDocPageRepository,
     private readonly counters: CounterService,
+    private readonly activity: RecordActivityUseCase,
   ) {}
 
   async execute({
     tenantId,
     author,
+    actorType,
     dto,
   }: {
     tenantId: string;
     author: { userId: string; name: string };
+    /** Defaults to USER. MCP passes API so a bot is distinguishable from a person. */
+    actorType?: AuditActor;
     dto: CreateDocDto;
   }): Promise<Result<DocWithPages>> {
     // `sequentialRef` throws if it cannot find a free number; this use-case's
@@ -106,6 +112,19 @@ export class CreateDocUseCase
     const page = firstPage.getValue();
     await this.pages.save(page);
 
+    // The same `created` row CreateDocPageUseCase writes for page 2 onward.
+    // Without it a brand-new doc opened on a page with an empty timeline while
+    // every page added afterwards had one — which reads as broken, not as "no
+    // history yet".
+    await this.activity.execute({
+      tenantId,
+      entity: AuditEntity.DOC_PAGE,
+      entityId: page.id.toString(),
+      entityRef: page.title,
+      actor: { type: actorType ?? AuditActor.USER, id: author.userId, name: author.name },
+      changes: [{ field: 'created', oldValue: '', newValue: '' }],
+    });
+
     return Result.ok({ doc, pages: [page] });
   }
 }
@@ -138,6 +157,7 @@ export class DuplicateDocUseCase
     @Inject(IDocRepository) private readonly docs: IDocRepository,
     @Inject(IDocPageRepository) private readonly pages: IDocPageRepository,
     private readonly counters: CounterService,
+    private readonly activity: RecordActivityUseCase,
   ) {}
 
   async execute({
@@ -236,6 +256,24 @@ export class DuplicateDocUseCase
     // a doc that briefly holds no pages just reads as empty.
     await this.docs.save(doc);
     await this.pages.saveMany(copies);
+
+    // A copy starts with a clean history — but "clean" still has to mean one
+    // `created` row per page, the same as any other new page. One shared
+    // timestamp so the whole duplication groups as one action. The rows are
+    // `automated` because the user asked for a doc, not for N pages.
+    const at = new Date();
+    for (const copy of copies) {
+      await this.activity.execute({
+        tenantId,
+        entity: AuditEntity.DOC_PAGE,
+        entityId: copy.id.toString(),
+        entityRef: copy.title,
+        actor: { type: AuditActor.USER, id: author.userId, name: author.name },
+        automated: true,
+        at,
+        changes: [{ field: 'created', oldValue: '', newValue: '' }],
+      });
+    }
     // Version history and comment threads stay with the pages they were written
     // against — a copy starts with a clean history and no open threads. So does
     // its collaborative session: a new page id is a new room, which seeds itself
@@ -311,25 +349,65 @@ export class UpdateDocUseCase
 
 @Injectable()
 export class DeleteDocUseCase
-  implements IUsecaseExecute<{ id: string; tenantId: string }, Result<void>>
+  implements
+    IUsecaseExecute<
+      { id: string; tenantId: string; author: { userId: string; name: string } },
+      Result<void>
+    >
 {
   constructor(
     @Inject(IDocRepository) private readonly docs: IDocRepository,
     @Inject(IDocPageRepository) private readonly pages: IDocPageRepository,
     @Inject(IDocPageVersionRepository) private readonly versions: IDocPageVersionRepository,
     @Inject(ICommentRepository) private readonly comments: ICommentRepository,
+    private readonly activity: RecordActivityUseCase,
   ) {}
 
-  async execute({ id, tenantId }: { id: string; tenantId: string }): Promise<Result<void>> {
+  async execute({
+    id,
+    tenantId,
+    author,
+  }: {
+    id: string;
+    tenantId: string;
+    author: { userId: string; name: string };
+  }): Promise<Result<void>> {
     const doc = await this.docs.findByIdOrRef(tenantId, id);
     if (!doc || doc.tenantId !== tenantId) return Result.fail('Doc not found');
     // Everything below is keyed by the uuid, never the ref.
     const docId = doc.id.toString();
+    // Snapshot BEFORE the delete: the rows have to outlive the pages, and after
+    // `deleteByDoc` there is nothing left to name them with.
+    const doomed = (await this.pages.findByDoc(docId)).map((p) => ({
+      id: p.id.toString(),
+      title: p.title,
+    }));
     // Pages first: a doc without pages is recoverable noise, orphan pages are not.
     await this.pages.deleteByDoc(docId);
     await this.versions.deleteByDoc(docId);
     await this.comments.deleteByDoc(tenantId, docId);
     await this.docs.delete(docId);
+
+    // A page is a tracked entity; the doc that holds it is not. So unlike
+    // DeleteDocPageUseCase — which logs the page acted on and lets its
+    // descendants ride along on that row — there is no container row to hang
+    // this on, and logging nothing would end every page's timeline mid-
+    // sentence. One `deleted` row per page, sharing a timestamp, marked
+    // `automated`: the user deleted a doc, not N pages.
+    const at = new Date();
+    for (const page of doomed) {
+      await this.activity.execute({
+        tenantId,
+        entity: AuditEntity.DOC_PAGE,
+        entityId: page.id,
+        entityRef: page.title,
+        actor: { type: AuditActor.USER, id: author.userId, name: author.name },
+        automated: true,
+        at,
+        changes: [{ field: 'deleted', oldValue: '', newValue: '' }],
+      });
+    }
+
     return Result.ok();
   }
 }

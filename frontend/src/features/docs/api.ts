@@ -76,6 +76,10 @@ function useInvalidate() {
   return () => {
     qc.invalidateQueries({ queryKey: ['docs'] });
     qc.invalidateQueries({ queryKey: ['doc'] });
+    // A page write shows up in that page's own timeline (the rail's History tab)
+    // and as a related row on any issue that links it. A prefix invalidation:
+    // the key is ['activity', entity, entityId] (activity-log/api.ts).
+    qc.invalidateQueries({ queryKey: ['activity'] });
   };
 }
 
@@ -210,6 +214,8 @@ export function useUpdateDocPage() {
       qc.invalidateQueries({ queryKey: ['doc'] });
       qc.invalidateQueries({ queryKey: ['docs'] });
       qc.invalidateQueries({ queryKey: ['doc-links'] });
+      // A title / parent / order change is a history row — see `useInvalidate`.
+      qc.invalidateQueries({ queryKey: ['activity'] });
     },
   });
 }
@@ -325,6 +331,8 @@ export function useRestoreDocPageVersion() {
       // Prefix — see the note on `useDoc`: the cache key may be the doc's ref.
       qc.invalidateQueries({ queryKey: ['doc'] });
       qc.invalidateQueries({ queryKey: ['docs'] });
+      // A restore writes its own `version_restored` history row.
+      qc.invalidateQueries({ queryKey: ['activity'] });
     },
   });
 }

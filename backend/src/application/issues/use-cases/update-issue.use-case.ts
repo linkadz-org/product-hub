@@ -5,16 +5,23 @@ import { IUserRepository } from '@application/users/repositories/user.repository
 import { ICycleRepository } from '@application/cycles/repositories/cycle.repository';
 import { CycleStatus } from '@application/cycles/domain/enums/cycle.enums';
 import { todayISO } from '@application/cycles/domain/cycle-dates';
+import { RecordActivityUseCase } from '@application/audit-log/use-cases';
+import { AuditActor, AuditEntity } from '@application/audit-log/domain/enums/audit.enums';
 import { UpdateIssueDto } from '../dtos/update-issue.dto';
 import { IssueEntity } from '../domain/entities/issue.entity';
 import { IIssueRepository } from '../repositories/issue.repository';
 import { resolveIssueAssignees } from './resolve-assignees';
+import { snapshotIssue, diffIssue } from '../domain/issue-diff';
 
 export interface UpdateIssueRequest {
   id: string;
   tenantId: string;
   /** The caller — a personal task is only editable by its owner or an admin. */
   requesterId: string;
+  /** Display name of the caller — recorded on history rows. */
+  requesterName: string;
+  /** Defaults to USER. MCP passes API so a bot is distinguishable from a person. */
+  actorType?: AuditActor;
   isAdmin: boolean;
   dto: UpdateIssueDto;
 }
@@ -27,13 +34,26 @@ export class UpdateIssueUseCase
     @Inject(IIssueRepository) private readonly issues: IIssueRepository,
     @Inject(IUserRepository) private readonly users: IUserRepository,
     @Inject(ICycleRepository) private readonly cycles: ICycleRepository,
+    private readonly activity: RecordActivityUseCase,
   ) {}
 
-  async execute({ id, tenantId, requesterId, isAdmin, dto }: UpdateIssueRequest): Promise<Result<IssueEntity>> {
+  async execute({
+    id,
+    tenantId,
+    requesterId,
+    requesterName,
+    actorType,
+    isAdmin,
+    dto,
+  }: UpdateIssueRequest): Promise<Result<IssueEntity>> {
     const issue = await this.issues.findById(id);
     if (!issue || issue.tenantId !== tenantId) return Result.fail('Issue not found');
     // A personal task can only be edited by its owner (or an admin).
     if (!issue.isVisibleTo(requesterId, isAdmin)) return Result.fail('Issue not found');
+
+    // Before ANY mutation. setAssignees / setCycle / applyUpdate below all mutate
+    // in place, so a snapshot taken later would diff the entity against itself.
+    const before = snapshotIssue(issue);
 
     // Either shape replaces the whole list: `assigneeIds` is the list itself,
     // `assigneeId` the one-person shorthand ('' unassigns) that the bulk bar, MCP
@@ -98,6 +118,16 @@ export class UpdateIssueUseCase
     });
 
     await this.issues.update(issue);
+
+    await this.activity.execute({
+      tenantId,
+      entity: AuditEntity.ISSUE,
+      entityId: issue.id.toString(),
+      entityRef: issue.shortId || issue.id.toString(),
+      actor: { type: actorType ?? AuditActor.USER, id: requesterId, name: requesterName },
+      changes: diffIssue(before, issue),
+    });
+
     return Result.ok(issue);
   }
 

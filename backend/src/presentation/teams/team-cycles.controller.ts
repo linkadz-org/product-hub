@@ -126,7 +126,15 @@ export class TeamCyclesController {
     @Param('teamId') teamId: string,
     @Param('cycleId') cycleId: string,
   ): Promise<{ ok: true }> {
-    const result = await this.deleteCycle.execute({ tenantId: auth.tenantId, teamId, cycleId });
+    const result = await this.deleteCycle.execute({
+      tenantId: auth.tenantId,
+      teamId,
+      cycleId,
+      // The issues that fall out of the deleted cycle get a history row each,
+      // attributed to whoever deleted it.
+      requesterId: auth.userId,
+      requesterName: auth.name,
+    });
     if (result.isFailure) {
       const msg = result.error as string;
       if (msg === TEAM_NOT_FOUND || msg === CYCLE_NOT_FOUND) throw new EntityNotFoundException(msg);
@@ -145,7 +153,15 @@ export class TeamCyclesController {
     @Param('teamId') teamId: string,
     @Body() dto: UpdateTeamCycleConfigDto,
   ): Promise<TeamResponseDto> {
-    const result = await this.updateConfig.execute({ tenantId: auth.tenantId, teamId, dto });
+    const result = await this.updateConfig.execute({
+      tenantId: auth.tenantId,
+      teamId,
+      dto,
+      // A rhythm change or a disable detaches issues wholesale — same rows,
+      // same author.
+      requesterId: auth.userId,
+      requesterName: auth.name,
+    });
     if (result.isFailure) {
       const msg = result.error as string;
       if (msg === TEAM_NOT_FOUND) throw new EntityNotFoundException(msg);

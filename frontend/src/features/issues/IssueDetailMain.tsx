@@ -18,7 +18,8 @@ import { LinkedDocsSection } from '@/features/docs/components/LinkedDocsSection'
 import { CodeLinksSection } from '@/features/integrations/components/CodeLinksSection';
 import type { CommentDto } from '@/types/dto';
 import { type IssueSubject } from '@/features/activity/api';
-import { ActivityHeader, CommentThread, Avatar, type Person } from '@/features/activity/CommentThread';
+import { ActivityHeader, CommentThread, type Person } from '@/features/activity/CommentThread';
+import { Avatar } from '@/features/activity/Avatar';
 
 export interface IssueDetailMainProps {
   /** Which thread the comments belong to — routes + cache keys differ. */
@@ -260,17 +261,6 @@ export function IssueDetailMain({
         <ActivityHeader />
 
         <div className="flex flex-col gap-5">
-          {/* System event — the issue's creation opens the timeline. */}
-          <div className="flex items-center gap-3 text-sm">
-            <Avatar name={createdByName} />
-            <span className="text-muted-foreground">
-              <span className="font-medium text-foreground">
-                {createdByName || t('tasks.someone')}
-              </span>{' '}
-              {createdLabel} · {timeAgo(createdAt)}
-            </span>
-          </div>
-
           <CommentThread
             source={subject === 'bug' ? { kind: 'bug', id: issueId } : { kind: 'task', id: issueId }}
             users={users}
@@ -278,6 +268,21 @@ export function IssueDetailMain({
             isAdmin={isAdmin}
             currentUserId={currentUserId}
             comments={comments}
+            // The issue's creation opens the change log, so it lives in the
+            // Activity tab — not above both tabs, where it would sit on top of a
+            // conversation it isn't part of. Rendered here rather than read from
+            // the activity feed because a public viewer can't fetch that feed.
+            activityLead={
+              <div className="flex items-center gap-3 text-sm">
+                <Avatar name={createdByName} />
+                <span className="text-muted-foreground">
+                  <span className="font-medium text-foreground">
+                    {createdByName || t('tasks.someone')}
+                  </span>{' '}
+                  {createdLabel} · {timeAgo(createdAt)}
+                </span>
+              </div>
+            }
           />
         </div>
       </section>

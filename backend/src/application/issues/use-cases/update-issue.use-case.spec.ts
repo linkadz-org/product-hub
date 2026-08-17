@@ -22,14 +22,20 @@ const build = (byId: Record<string, IssueEntity>) => {
   };
   const users = { findByIds: jest.fn(() => Promise.resolve([])) };
   const cycles = { findById: jest.fn(() => Promise.resolve(null)) };
+  const activity = { execute: jest.fn(() => Promise.resolve()) };
   return {
-    useCase: new UpdateIssueUseCase(issues as never, users as never, cycles as never),
+    useCase: new UpdateIssueUseCase(
+      issues as never,
+      users as never,
+      cycles as never,
+      activity as never,
+    ),
     issues,
   };
 };
 
 describe('UpdateIssueUseCase parent guard', () => {
-  const scope = { tenantId: 't1', requesterId: 'u1', isAdmin: false };
+  const scope = { tenantId: 't1', requesterId: 'u1', requesterName: 'Alice', isAdmin: false };
 
   /** Give an entity a stable id, since `create` mints its own. */
   const withId = (issue: IssueEntity, id: string) => {

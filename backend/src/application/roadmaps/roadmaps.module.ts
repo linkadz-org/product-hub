@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { InfrastructureRoadmapsModule } from '@infrastructure/roadmaps/roadmaps.module';
+import { ApplicationAuditLogModule } from '@application/audit-log/audit-log.module';
 import {
   CreateRoadmapUseCase,
   GetRoadmapsUseCase,
@@ -27,7 +28,7 @@ const useCases = [
 ];
 
 @Module({
-  imports: [InfrastructureRoadmapsModule],
+  imports: [InfrastructureRoadmapsModule, ApplicationAuditLogModule],
   providers: [...useCases],
   exports: [...useCases],
 })

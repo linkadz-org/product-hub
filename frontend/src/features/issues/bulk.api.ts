@@ -70,7 +70,17 @@ async function runPooled(
  * reuse it if it composes its own follow-up writes.
  */
 export function invalidateAllIssueCaches(qc: QueryClient) {
-  for (const key of ['issues', 'tasks', 'bugs', 'issue', 'task', 'bug', 'cycles', 'cycle-burndown']) {
+  for (const key of [
+    'issues',
+    'tasks',
+    'bugs',
+    'issue',
+    'task',
+    'bug',
+    'cycles',
+    'cycle-burndown',
+    'activity',
+  ]) {
     qc.invalidateQueries({ queryKey: [key] });
   }
 }
