@@ -392,17 +392,34 @@ export const en = {
   // Doc-page only: a page's rank among its siblings (see NO_VALUE_FIELDS in
   // entryText.ts) — reads as "changed position", never the raw integer.
   'activityLog.field.order': 'position',
+  // Roadmap-item fields (roadmap-item-diff.ts). `phase` is the board pool the
+  // card sits in — a different field from `status`, and both are tracked.
+  'activityLog.field.phase': 'phase',
+  'activityLog.field.difficulty': 'difficulty',
+  'activityLog.field.progress': 'progress',
+  // RICE inputs, each logged on its own so "who dropped confidence to 1?" has
+  // an answer. Wording follows the roadmap form's own labels.
+  'activityLog.field.reach': 'reach',
+  'activityLog.field.impact': 'impact',
+  'activityLog.field.confidence': 'confidence',
+  'activityLog.field.effort': 'effort',
+  // The item's milestone/objective/key-result link, logged through its readable
+  // label rather than its three uuids.
+  'activityLog.field.okrLabel': 'linked OKR',
+  // Test-case only: reaches an issue's timeline as a related row.
+  'activityLog.field.result': 'result',
   'activityLog.verb.created': 'created this',
   'activityLog.verb.deleted': 'deleted this',
   'activityLog.verb.changed': 'changed',
   'activityLog.verb.edited': 'edited the',
   // Doc pages only (RestoreDocPageVersionUseCase).
   'activityLog.verb.restored': 'restored an earlier version',
-  // Word order for "{verb} {field}" — English is SVO (verb before object), so
-  // the verb comes first. Kept as its own key (not a hardcoded join) so `ko`
-  // can flip the order without either locale reading backwards. See the `ko`
-  // entry for why this one differs.
-  'activityLog.sentence': '{verb} {field}',
+  // Word order for the whole sentence after the subject. English is SVO, so the
+  // verb leads and the values trail: "Felix changed status [Backlog] → [Done]".
+  // This template IS the ordering decision — `entryText.ts` reads the slots off
+  // it and the component just renders them in that order, so a locale reorders
+  // itself here and nowhere else. See the `ko` entry, which reads the other way.
+  'activityLog.sentence': '{verb} {field} {values}',
   'activityLog.viaApiKey': 'API key',
   // FIX 6: Task 18 (cycle rollover) is the first write path to set
   // `automated: true`; this badge is its rendering path, added now so it

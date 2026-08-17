@@ -1,18 +1,32 @@
+import { Fragment, type ReactNode } from 'react';
 import { Badge } from '@/components/ui';
 import { t, type I18nKey } from '@/i18n';
 import { timeAgo } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { Avatar } from '@/features/activity/Avatar';
-import { describeEntry, type ActivityEntry as ActivityEntryData } from './entryText';
+import {
+  describeEntry,
+  type ActivityEntry as ActivityEntryData,
+  type SentenceSlot,
+} from './entryText';
 
-/** Field-name suffixes `relationLabel` can carry — matches
- *  `activityLog.relation.*` in `en.ts`/`ko.ts`. An unrecognised value (a
- *  future relation kind the frontend doesn't know yet) falls back to the raw
- *  string rather than a blank badge. */
+/** The `relationLabel` values the backend emits (`get-activity.use-case.ts`),
+ *  mapped to their i18n keys. A literal map rather than a constructed
+ *  `` `activityLog.relation.${relation}` `` key: the constructed form defeats
+ *  the closed `I18nKey` union, so a renamed backend label would degrade to a
+ *  raw English token at runtime instead of failing the typecheck here. */
+const RELATION_LABEL: Record<string, I18nKey> = {
+  subtask: 'activityLog.relation.subtask',
+  doc: 'activityLog.relation.doc',
+  roadmap_item: 'activityLog.relation.roadmap_item',
+  testcase: 'activityLog.relation.testcase',
+};
+
+/** An unrecognised relation (a future kind the frontend doesn't know yet) falls
+ *  back to the raw string rather than a blank badge. */
 function relationLabel(relation: string): string {
-  const key = `activityLog.relation.${relation}` as I18nKey;
-  const translated = t(key);
-  return translated === key ? relation : translated;
+  const key = RELATION_LABEL[relation];
+  return key ? t(key) : relation;
 }
 
 /**
@@ -23,49 +37,58 @@ function relationLabel(relation: string): string {
  * overflowing it.
  */
 export function ActivityEntry({ entry }: { entry: ActivityEntryData }) {
-  const { subject, verb, from, to, noValue, valuesBeforeVerb } = describeEntry(entry);
-  const hasValues = !noValue && (from || to);
+  const { subject, field, verb, from, to, order } = describeEntry(entry);
 
-  const verbEl = <span className="text-muted-foreground">{verb}</span>;
-  const valuesEl = hasValues ? (
-    <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
-      <span className="max-w-[12rem] truncate rounded bg-muted px-1.5 py-0.5 text-xs text-foreground">
-        {from}
+  // The three orderable slots. `order` — read off this locale's own
+  // `activityLog.sentence` template — decides which appear and in what
+  // sequence; this component must not have an opinion. English reads
+  // "changed status [Backlog] → [Done]", Korean "상태를 [Backlog] → [Done] 변경함".
+  const slots: Record<SentenceSlot, ReactNode> = {
+    field: <span className="min-w-0 truncate text-muted-foreground">{field}</span>,
+    verb: <span className="text-muted-foreground">{verb}</span>,
+    // Wraps internally: at ~320px two value chips plus the arrow can't share a
+    // line, and the arrow must stay between them rather than stranding at the
+    // end of the row.
+    values: (
+      <span className="flex min-w-0 flex-wrap items-center gap-1.5 text-muted-foreground">
+        <span className="max-w-[8rem] truncate rounded bg-muted px-1.5 py-0.5 text-xs text-foreground sm:max-w-[12rem]">
+          {from}
+        </span>
+        <span aria-hidden>→</span>
+        <span className="max-w-[8rem] truncate rounded bg-muted px-1.5 py-0.5 text-xs text-foreground sm:max-w-[12rem]">
+          {to}
+        </span>
       </span>
-      <span aria-hidden>→</span>
-      <span className="max-w-[12rem] truncate rounded bg-muted px-1.5 py-0.5 text-xs text-foreground">
-        {to}
-      </span>
-    </span>
-  ) : null;
+    ),
+  };
 
   return (
     <div className="flex items-start gap-3 text-sm">
       <Avatar name={entry.actorType === 'system' ? '' : entry.actorName} />
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-1">
-        <span className={cn('font-semibold', entry.actorType === 'system' && 'italic')}>
+        {/* An unbroken actor name (an API key's, say) must not push the row
+            wider than its column. */}
+        <span
+          className={cn(
+            'min-w-0 max-w-full truncate font-semibold',
+            entry.actorType === 'system' && 'italic',
+          )}
+        >
           {subject}
         </span>
-        {/* Korean is SOV — the values ("상태를 [Backlog] → [Done]") read before
-         *  the verb ("변경함"); English is SVO and reads verb-then-values.
-         *  `valuesBeforeVerb` comes from `describeEntry`, driven by the same
-         *  `activityLog.sentence` locale template `sentence()` already reads,
-         *  so the layout never hardcodes one language's word order. */}
-        {valuesBeforeVerb ? (
-          <>
-            {valuesEl}
-            {verbEl}
-          </>
-        ) : (
-          <>
-            {verbEl}
-            {valuesEl}
-          </>
-        )}
+        {order.map((slot) => (
+          <Fragment key={slot}>{slots[slot]}</Fragment>
+        ))}
         {entry.actorType === 'api' && (
           <Badge variant="muted">{t('activityLog.viaApiKey')}</Badge>
         )}
-        {entry.automated && <Badge variant="muted">{t('activityLog.automated')}</Badge>}
+        {/* A system actor already reads as "Automatically" in the subject — the
+            badge would be the same fact twice. It still shows for the automated
+            writes that carry a real person's name (a cycle rebuild detaching
+            issues, a doc duplicate/delete cascading to its pages). */}
+        {entry.automated && entry.actorType !== 'system' && (
+          <Badge variant="muted">{t('activityLog.automated')}</Badge>
+        )}
         {entry.relationLabel && (
           <Badge variant="outline">{relationLabel(entry.relationLabel)}</Badge>
         )}

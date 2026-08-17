@@ -385,14 +385,33 @@ export const ko: Record<I18nKey, string> = {
   'activityLog.field.title': '제목',
   'activityLog.field.description': '설명',
   'activityLog.field.order': '위치',
+  // 로드맵 항목 필드 — `phase`(보드 단계)와 `status`(작업 상태)는 서로 다른 필드로,
+  // 둘 다 기록됩니다.
+  'activityLog.field.phase': '단계',
+  'activityLog.field.difficulty': '난이도',
+  'activityLog.field.progress': '진행률',
+  // RICE 입력값. 로드맵 폼(`roadmaps.*`)과 같은 용어를 씁니다.
+  'activityLog.field.reach': '도달',
+  'activityLog.field.impact': '임팩트',
+  'activityLog.field.confidence': '확신도',
+  'activityLog.field.effort': '노력',
+  // 마일스톤/목표/핵심 결과 연결 — uuid가 아니라 읽을 수 있는 라벨로 기록됩니다.
+  // 'OKR 연결'로 쓰면 조사가 '을'로 자연스럽게 붙습니다.
+  'activityLog.field.okrLabel': 'OKR 연결',
+  // 테스트 케이스 전용 — 이슈 타임라인에는 연관 행으로 나타납니다.
+  'activityLog.field.result': '결과',
   'activityLog.verb.created': '이 항목을 생성함',
   'activityLog.verb.deleted': '이 항목을 삭제함',
   'activityLog.verb.changed': '변경함',
   'activityLog.verb.edited': '수정함',
   'activityLog.verb.restored': '이전 버전으로 복원함',
-  // Korean is SOV — the object (field) comes before the verb, the reverse of
-  // English. "상태 변경함" ("status changed"), not "변경함 상태".
-  'activityLog.sentence': '{field} {verb}',
+  // 한국어는 SOV — 목적어(필드와 값)가 동사 앞에 옵니다. 영어와 순서가 반대이고,
+  // 값도 동사 앞에 놓여야 합니다: "Felix 상태를 [Backlog] → [Done] 변경함".
+  // (예전에는 '{field} {verb}'였고 값이 문장 끝으로 밀려
+  //  "Felix [Backlog] → [Done] 상태 변경함"으로 잘못 읽혔습니다.)
+  // `{objectParticle}`은 앞 필드 이름의 받침에 따라 을/를을 붙입니다 —
+  // entryText.ts의 `objectParticle()` 참고. 영어 템플릿에는 이 토큰이 없습니다.
+  'activityLog.sentence': '{field}{objectParticle} {values} {verb}',
   'activityLog.viaApiKey': 'API 키',
   'activityLog.automated': '자동',
   'activityLog.notSet': '설정 안 됨',

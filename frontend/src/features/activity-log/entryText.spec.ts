@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { describeEntry } from './entryText';
+import { t, type I18nKey } from '@/i18n';
+import { describeEntry, FIELD_LABEL } from './entryText';
 
 const base = {
   id: 'a1',
@@ -142,8 +143,49 @@ describe('describeEntry', () => {
     expect(r.to).toBe('Search v2');
   });
 
-  it('exposes the locale word order for the component to render values before or after the verb', () => {
+  // Replaces a test that asserted `typeof r.valuesBeforeVerb === 'boolean'` —
+  // which passed against `true`, against `false`, and against the shipped bug.
+  // The assembled-sentence tests live in ActivityEntry.spec.ts; these pin the
+  // slot list `describeEntry` hands the component.
+  it('orders the slots verb · field · values under the default (en) locale', () => {
     const r = describeEntry({ ...base, field: 'status', oldValue: 'Backlog', newValue: 'Done' } as never);
-    expect(typeof r.valuesBeforeVerb).toBe('boolean');
+    expect(r.order).toEqual(['verb', 'field', 'values']);
+    expect(r.field).toBe('status');
+    expect(r.verb).toBe('changed');
+  });
+
+  it('omits the values slot on a value-less row, and the field slot on a whole-sentence event', () => {
+    const noValue = describeEntry({ ...base, field: 'cycleId', oldValue: '', newValue: '' } as never);
+    expect(noValue.order).toEqual(['verb', 'field']);
+
+    const created = describeEntry({ ...base, field: 'created', oldValue: '', newValue: '' } as never);
+    expect(created.order).toEqual(['verb']);
+    expect(created.field).toBe('');
+  });
+
+  // Every field the backend diffs must have a label — a missing one renders the
+  // raw wire name ("phase 변경함"), an English token inside a Korean sentence.
+  // Sources: issue-diff.ts, doc-page-diff.ts, roadmap-item-diff.ts and
+  // set-test-case-result.use-case.ts.
+  it('labels every field the backend can emit — no raw wire names', () => {
+    const emitted = [
+      // issue-diff.ts
+      'status', 'assignees', 'severity', 'type', 'labelKeys', 'estimate', 'cycleId',
+      'parentId', 'startDate', 'endDate', 'projectId', 'roadmapItemId', 'reportId',
+      'caseId', 'title', 'description',
+      // doc-page-diff.ts
+      'order',
+      // roadmap-item-diff.ts
+      'phase', 'difficulty', 'progress', 'reach', 'impact', 'confidence', 'effort', 'okrLabel',
+      // set-test-case-result.use-case.ts
+      'result',
+    ];
+    for (const field of emitted) {
+      const key = (FIELD_LABEL as Record<string, I18nKey>)[field];
+      expect(key, `${field} has no FIELD_LABEL entry`).toBeDefined();
+      // `t()` returns the key itself on a miss, so this catches a mapped field
+      // whose key was never added to the dictionaries.
+      expect(t(key), `${key} is missing from en.ts`).not.toBe(key);
+    }
   });
 });
