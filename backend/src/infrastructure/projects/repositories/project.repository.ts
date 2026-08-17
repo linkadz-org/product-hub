@@ -10,6 +10,7 @@ import {
 import { ProjectEntity } from '@application/projects/domain/entities/project.entity';
 import { Environment } from '@application/projects/domain/enums/environment.enum';
 import { QueryProjectDto } from '@application/projects/dtos/query-project.dto';
+import { buildSearchText } from '@module-shared/utils/search-text.util';
 import { ProjectDoc } from '../entities/project.schema';
 
 @Injectable()
@@ -62,6 +63,7 @@ export class ProjectRepository
       deletedAt: project.deletedAt,
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
+      searchText: buildSearchText(project.title, project.subtitle),
     };
   }
 

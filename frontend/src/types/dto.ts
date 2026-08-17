@@ -1101,3 +1101,49 @@ export interface GitHubConnectionDto {
 export interface ConnectedGitHubDto extends GitHubConnectionDto {
   secret: string;
 }
+
+/** One row of a `GET /v1/search` group. Flat per the API-response rule — the
+ *  backend already resolves `url`/`icon` per hit, so the palette never has to
+ *  know how to route a `SearchType` itself. */
+export interface SearchHitDto {
+  id: string;
+  ref: string;
+  title: string;
+  subtitle: string;
+  url: string;
+  icon: string;
+  score: number;
+  updatedAt: string;
+}
+
+/** One `GET /v1/search` result group — every hit of one `SearchType`, plus
+ *  `total` (which can exceed `items.length` once the server caps a group). */
+export interface SearchGroupDto {
+  type: 'issue' | 'doc' | 'roadmap-item' | 'project' | 'report' | 'testcase';
+  total: number;
+  items: SearchHitDto[];
+}
+
+/** A saved issue-board view — a name over a captured filter/sort/search
+ *  combination. Flat per the API-response rule: the board snapshot
+ *  (`kind`/`view`/`filters`/`sort`/`search`) is returned inline rather than
+ *  nested under a `query` object, mirroring `SavedViewMapper.toDto` on the
+ *  backend. `filters`/`sort` are stored as-is from `FilterMenu`/`SortMenu` —
+ *  a date range is one resolved `"<start>..<end>"` entry, never a preset. */
+export interface SavedViewDto {
+  id: string;
+  ownerId: string;
+  name: string;
+  icon: string;
+  color: string | null;
+  scope: string;
+  shared: boolean;
+  kind: 'task' | 'bug';
+  view: 'board' | 'list' | 'timeline';
+  filters: Record<string, string[]>;
+  sort: { field: string; dir: 'asc' | 'desc' } | null;
+  search: string;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+}

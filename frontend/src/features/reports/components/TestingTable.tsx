@@ -314,6 +314,7 @@ export function TestingTable({
                 return (
                   <Fragment key={c.id}>
                     <TableRow
+                      id={c.shortId}
                       className={cn(
                         'transition-colors hover:bg-muted/40',
                         isOver && 'border-t-2 border-t-primary',

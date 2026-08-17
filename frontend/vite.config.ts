@@ -67,4 +67,9 @@ export default defineConfig({
     port: 3001,
     host: true,
   },
+  test: {
+    environment: 'happy-dom',
+    include: ['src/**/*.spec.ts'],
+    setupFiles: ['./src/test/setup.ts'],
+  },
 });

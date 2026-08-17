@@ -29,6 +29,7 @@
     "backfill:issue-resolved-at": "node -r ts-node/register/transpile-only -r tsconfig-paths/register scripts/backfill-issue-resolved-at.ts",
     "backfill:team-ref-prefix": "node -r ts-node/register/transpile-only -r tsconfig-paths/register scripts/backfill-team-ref-prefix.ts",
     "backfill:team-ref-prefix:apply": "node -r ts-node/register/transpile-only -r tsconfig-paths/register scripts/backfill-team-ref-prefix.ts --apply",
+    "backfill:search-text": "node -r ts-node/register/transpile-only -r tsconfig-paths/register scripts/backfill-search-text.ts",
     "seed:platform": "node -r ts-node/register/transpile-only -r tsconfig-paths/register scripts/seed-platform.ts",
     "lint": "eslint \"{src,libs,test}/**/*.ts\" --fix",
     "test": "jest",

@@ -5,6 +5,8 @@ import { UniqueEntityID } from '@core/domain';
 import { BaseRepository } from '@core/infrastructure/database/mongoose/base';
 import { IDocPageRepository } from '@application/docs/repositories/doc-page.repository';
 import { DocPageEntity } from '@application/docs/domain/entities/doc-page.entity';
+import { buildSearchText } from '@module-shared/utils/search-text.util';
+import { computeSearchBody } from '@module-shared/utils/search-body.util';
 import { DocPageDoc } from '../entities/doc-page.schema';
 
 @Injectable()
@@ -81,6 +83,13 @@ export class DocPageRepository
       updatedByName: page.updatedByName,
       createdAt: page.createdAt,
       updatedAt: page.updatedAt,
+      searchText: buildSearchText(page.title),
+      // The collab server also writes `searchBody` (via the raw Mongo driver,
+      // bypassing Mongoose entirely — see collab/src/mirror.ts), but that path
+      // only fires on live co-editing. `saveMany`/`updateMany` here duplicate or
+      // reorder pages without ever touching collab, so this write path must
+      // compute `searchBody` too or a duplicated tree's pages go unsearchable.
+      searchBody: computeSearchBody(page.content ?? ''),
     };
   }
 

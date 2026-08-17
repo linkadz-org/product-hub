@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { CommandPalette } from '@/components/CommandPalette/CommandPalette';
 import { useNavStyle } from '@/lib/navStyle';
 import { Sidebar } from '@/layouts/sidebar/Sidebar';
 import { ClassicSidebar } from '@/layouts/sidebar/ClassicSidebar';
@@ -35,6 +36,7 @@ export function AppLayout() {
 
   return (
     <PageTitleManager>
+      <CommandPalette />
       <div className="flex min-h-[100dvh] sm:h-[100dvh] sm:overflow-hidden">
         {navStyle === 'classic' ? (
           <ClassicSidebar mobileOpen={mobileOpen} onCloseMobile={() => setMobileOpen(false)} />

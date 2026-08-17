@@ -33,6 +33,11 @@ interface Shared {
 const SHARED: Shared[] = [
   { from: '../../frontend/src/lib/editorjs.ts', to: '../src/editorjs.ts' },
   { from: '../../frontend/src/features/docs/collab/blockDoc.ts', to: '../src/blockDoc.ts' },
+  // Search: mirror.ts must compute `searchBody` with the exact function the
+  // backend uses on write, otherwise a doc edited via realtime normalizes
+  // differently than one edited via the API.
+  { from: '../../backend/src/shared/utils/search-text.util.ts', to: '../src/searchText.ts' },
+  { from: '../../backend/src/shared/utils/plain-text.util.ts', to: '../src/plainText.ts' },
 ];
 
 const banner = (from: string): string =>

@@ -73,3 +73,60 @@ export async function reportIndexBuildFailures(connection: Connection): Promise<
   }
   indexLogger.error(`${failures.length} of ${names.length} model(s) failed to build their indexes`);
 }
+
+const searchLogger = new Logger('SearchBackfill');
+
+/**
+ * Deploy-order hazard, made loud instead of just commented: the issue board's
+ * search and MCP's `search_issues` both read `searchText`, which only exists
+ * on an issue once `backend/scripts/backfill-search-text.ts` has run against
+ * it (every *new* issue gets it for free from `IssueRepository.toDocument()`,
+ * but nothing backfills old rows automatically). Deploy this feature before
+ * running that script and every pre-existing issue silently loses
+ * title/shortId matching — the `description`/`_id` fallback branches still
+ * match *something*, so it reads as flaky search rather than the systematic
+ * regression it actually is.
+ *
+ * One indexed `countDocuments` (`{tenantId:1, searchText:1}` on `issues`, see
+ * below) at boot, next to `reportIndexBuildFailures` — the app's other
+ * "boot, then verify before opening traffic" check, same non-fatal shape: a
+ * missing backfill degrades search, not the whole API, so this reports loudly
+ * rather than refusing to start.
+ *
+ * Advisory, never fatal, under every failure mode — same rule
+ * `reportIndexBuildFailures` follows via `Promise.allSettled`. The query is
+ * wrapped in its own `try/catch` (a network blip, a replica-set election, or
+ * a locked `issues` collection during the very deploy window this runs in
+ * must not fail `bootstrap()` — `main.ts` calls it as a bare `bootstrap();`
+ * with no `.catch()`, so an unhandled rejection here would stop `app.listen()`
+ * from ever being reached) and bounded with `maxTimeMS` so a slow collection
+ * can degrade this check instead of hanging boot.
+ */
+export async function reportSearchTextBackfillHazard(connection: Connection): Promise<void> {
+  const Issue = connection.models['Issue'];
+  if (!Issue) return; // Not every process registers the Issue model (e.g. collab).
+
+  let missing: number;
+  try {
+    missing = await Issue.countDocuments({ searchText: '', title: { $ne: '' } })
+      .maxTimeMS(5000)
+      .exec();
+  } catch (err) {
+    searchLogger.error(
+      'searchText backfill check failed to run (DB unavailable or too slow) — skipping, ' +
+        'not blocking boot. Re-check manually once the DB is healthy.',
+      err instanceof Error ? err.stack : String(err),
+    );
+    return;
+  }
+
+  if (missing === 0) {
+    searchLogger.log('searchText backfill: no gap found on issues');
+    return;
+  }
+  searchLogger.error(
+    `${missing} issue(s) have a title but no searchText — they will not match by ` +
+      'title/shortId in ⌘K or MCP search_issues until ' +
+      '`npm run backfill:search-text -- --apply` (backend/scripts/backfill-search-text.ts) is run.',
+  );
+}

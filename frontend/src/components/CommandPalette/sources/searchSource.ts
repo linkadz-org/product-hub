@@ -1,0 +1,40 @@
+import type { IconName } from '@/components/Icon';
+import type { SearchGroupDto } from '@/types/dto';
+import { t, type I18nKey } from '@/i18n';
+import type { CommandItem } from '../types';
+
+const GROUP_LABEL: Record<SearchGroupDto['type'], I18nKey> = {
+  issue: 'palette.groupIssues',
+  doc: 'palette.groupDocs',
+  'roadmap-item': 'palette.groupRoadmap',
+  project: 'palette.groupProjects',
+  report: 'palette.groupReports',
+  testcase: 'palette.groupTestCases',
+};
+
+/**
+ * Backend đã trả sẵn `url` và `icon` cho từng dòng, nên chỗ này không phải biết
+ * đường dẫn hay icon của bất kỳ loại nào — chỉ ghép chúng thành `CommandItem`.
+ *
+ * Một `type` lạ (server thêm loại mới trước khi FE kịp cập nhật `GROUP_LABEL`)
+ * không làm vỡ dòng: `GROUP_LABEL[g.type]` trả `undefined`, `t()` không được
+ * gọi tới (xem dưới), và `.filter(Boolean)` lặng lẽ bỏ đoạn nhãn nhóm khỏi
+ * subtitle thay vì literal "undefined".
+ */
+export function searchSource(groups: SearchGroupDto[]): CommandItem[] {
+  return groups.flatMap((g) =>
+    g.items.map((hit) => ({
+      id: `${g.type}:${hit.id}`,
+      group: 'result' as const,
+      title: hit.title,
+      subtitle: [hit.ref, hit.subtitle, groupLabel(g.type)].filter(Boolean).join(' · '),
+      icon: hit.icon as IconName,
+      run: { to: hit.url },
+    })),
+  );
+}
+
+function groupLabel(type: SearchGroupDto['type']): string {
+  const key = GROUP_LABEL[type];
+  return key ? t(key) : '';
+}
