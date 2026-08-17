@@ -418,24 +418,50 @@ describe('Activity (e2e)', () => {
     const titleRow = res.body.items.find((r: any) => r.field === 'title');
     expect(titleRow).toMatchObject({
       actorType: 'api',
-      // The key's name, so a bot edit is never mistaken for the key owner
-      // typing it themselves (`update_issue` passes `requesterName: keyName`).
-      actorName: KEY_NAME,
       oldValue: 'MCP written',
       newValue: 'MCP written (edited)',
     });
-    // The write is attributed to the key's *owner* as the actor id — the row
-    // says a robot did it on that person's behalf, not that the key is a user.
+    // The write is attributed to the key's *owner* — id AND name. `actorType:
+    // api` is what says a robot did it on that person's behalf; the name has to
+    // agree with the id, or the row names one person and points at another.
     expect(titleRow.actorId).toBe(adminId);
+    expect(titleRow.actorName).toBe(ADMIN_NAME);
 
-    // The `created` row is also `api`, but carries the key owner's display name
-    // rather than the key's: `create_issue` passes
-    // `createdByName: actorUser?.name ?? actor.keyName` (mcp.use-cases.ts:325)
-    // where `update_issue` passes `actor.keyName` outright (:602). Asserted as
-    // it actually behaves; see the report for the inconsistency.
+    // …and the `created` row from the SAME key says the same thing. This used
+    // to differ — `create_issue` recorded the owner's name while `update_issue`
+    // recorded `KEY_NAME` — so one bot session read as two different people in
+    // the timeline, both `actorType: api`. All five MCP writes now go through
+    // `mcpActorName`.
     const createdRow = res.body.items.find((r: any) => r.field === 'created');
     expect(createdRow.actorType).toBe('api');
     expect(createdRow.actorName).toBe(ADMIN_NAME);
+    expect(createdRow.actorName).toBe(titleRow.actorName);
+    expect(createdRow.actorName).not.toBe(KEY_NAME);
+  });
+
+  it('gives every refusal an identical body — no existence oracle', async () => {
+    // The controller puts `result.error` in the response body, so a refusal that
+    // named the object ("Issue not found") would let a stranger tell "exists but
+    // hidden" from "does not exist". Every 404 from this endpoint must read the
+    // same, whatever the reason.
+    const foreign = await call(
+      'POST',
+      '/v1/issues',
+      { kind: 'task', title: 'Foreign' },
+      asUser(otherToken),
+    );
+    expect(foreign.status).toBeLessThan(300);
+
+    const missing = await activity('00000000-0000-4000-8000-000000000000', adminToken);
+    const foreignTenant = await activity(foreign.body.id, adminToken);
+    const unguardedKind = await activity(issueId, adminToken, 'report');
+
+    for (const res of [missing, foreignTenant, unguardedKind]) {
+      expect(res.status).toBe(404);
+    }
+    const messages = [missing, foreignTenant, unguardedKind].map((r) => r.body?.message);
+    expect(new Set(messages).size).toBe(1);
+    expect(String(messages[0]).toLowerCase()).not.toContain('issue');
   });
 
   // ── Deletion ───────────────────────────────────────────────────────────────

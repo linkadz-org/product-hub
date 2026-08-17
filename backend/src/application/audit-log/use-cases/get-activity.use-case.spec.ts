@@ -146,4 +146,58 @@ describe('GetActivityUseCase', () => {
       expect(calls).toHaveLength(0);
     });
   });
+
+  /**
+   * The anti-oracle property, and the whole reason every refusal is the same
+   * literal string.
+   *
+   * The controller propagates `result.error` into the exception message, so the
+   * message reaches the response BODY. If any one exit said "Issue not found"
+   * — the string `get-issue.use-case.ts` uses, and the natural thing to write
+   * when copying it — a stranger could tell "this id exists but you can't see
+   * it" from "this id doesn't exist", just by reading the body. Every other
+   * test here asserts only `isFailure`, so that change would leave the suite
+   * entirely green.
+   *
+   * This pins the property itself: all five refusals, one message. It does not
+   * assert WHICH message, because the requirement is uniformity, not wording.
+   */
+  it('refuses every failure case with one identical message — no existence oracle', async () => {
+    const errors = await Promise.all([
+      // missing issue
+      build(null).uc.execute(req),
+      // issue in another tenant
+      build({ ...visibleIssue, tenantId: 't2' }).uc.execute(req),
+      // issue the caller cannot see
+      build(hiddenIssue).uc.execute(req),
+      // missing doc page / doc page in another tenant
+      build(null, null).uc.execute({ ...req, entity: AuditEntity.DOC_PAGE, entityId: 'p1' }),
+      build(null, { tenantId: 't2' }).uc.execute({
+        ...req,
+        entity: AuditEntity.DOC_PAGE,
+        entityId: 'p1',
+      }),
+      // missing roadmap item / item whose roadmap is in another tenant
+      build(null, null, null).uc.execute({
+        ...req,
+        entity: AuditEntity.ROADMAP_ITEM,
+        entityId: 'it1',
+      }),
+      build(null, null, { tenantId: 't2' }).uc.execute({
+        ...req,
+        entity: AuditEntity.ROADMAP_ITEM,
+        entityId: 'it1',
+      }),
+      // an entity kind with no guard at all
+      build(visibleIssue).uc.execute({ ...req, entity: 'nonsense' as AuditEntity }),
+    ]);
+
+    expect(errors.every((r) => r.isFailure)).toBe(true);
+    expect(new Set(errors.map((r) => r.error)).size).toBe(1);
+    // …and it names nothing about the object that was asked for.
+    const [message] = errors.map((r) => String(r.error));
+    expect(message.toLowerCase()).not.toContain('issue');
+    expect(message.toLowerCase()).not.toContain('page');
+    expect(message.toLowerCase()).not.toContain('roadmap');
+  });
 });

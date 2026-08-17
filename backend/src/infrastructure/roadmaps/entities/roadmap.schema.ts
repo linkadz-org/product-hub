@@ -42,5 +42,10 @@ export const RoadmapSchema = new Schema<RoadmapDoc>(
   { timestamps: true },
 );
 
+// Items are embedded, so reaching one by its own id is a query on the parent.
+// Multikey, mirroring `IssueSchema.index({ tenantId: 1, 'assignees.id': 1 })`.
+// Without it `findByItemId` scans every roadmap document in the tenant — on a
+// path that runs for every roadmap-item activity read.
+RoadmapSchema.index({ tenantId: 1, 'items.id': 1 });
 RoadmapSchema.index({ tenantId: 1, searchText: 1 });
 RoadmapSchema.index({ tenantId: 1, itemsSearchText: 1 });
