@@ -185,7 +185,12 @@ export class DocsController {
   @Roles(Role.ADMIN, Role.PRODUCT)
   @ApiOperation({ summary: 'Delete a doc and all its pages (admin/product)' })
   async remove(@AuthUser() auth: JwtPayload, @Param('id') id: string): Promise<{ ok: true }> {
-    const result = await this.deleteDoc.execute({ id, tenantId: auth.tenantId });
+    const result = await this.deleteDoc.execute({
+      id,
+      tenantId: auth.tenantId,
+      // Each page gets a `deleted` row attributed to whoever deleted the doc.
+      author: { userId: auth.userId, name: auth.name },
+    });
     if (result.isFailure) throw new EntityNotFoundException(result.error as string);
     return { ok: true };
   }

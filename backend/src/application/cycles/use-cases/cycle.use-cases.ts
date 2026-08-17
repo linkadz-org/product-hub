@@ -4,7 +4,9 @@ import { Result } from '@shared/logic/result';
 import { ITeamRepository } from '@application/teams/repositories/team.repository';
 import { TeamEntity } from '@application/teams/domain/entities/team.entity';
 import { TEAM_NOT_FOUND } from '@application/teams/use-cases/team.use-cases';
-import { IIssueRepository } from '@application/issues/repositories/issue.repository';
+import { IIssueRepository, MovedIssue } from '@application/issues/repositories/issue.repository';
+import { AuditActor } from '@application/audit-log/domain/enums/audit.enums';
+import { RecordActivityUseCase } from '@application/audit-log/use-cases/record-activity.use-case';
 import {
   CreateCycleDto,
   CycleBurndownResponseDto,
@@ -17,6 +19,7 @@ import { CycleMapper } from '../mappers/cycle.mapper';
 import { completedStatusKeysFor } from '../domain/enums/cycle.enums';
 import { buildBurndown } from '../domain/cycle-burndown';
 import { todayISO } from '../domain/cycle-dates';
+import { recordCycleIdChanges } from '../domain/cycle-activity';
 import { ICycleRepository } from '../repositories/cycle.repository';
 import { CycleSchedulerService } from '../services/cycle-scheduler.service';
 
@@ -316,26 +319,38 @@ export class UpdateCycleUseCase
  * that history exists nowhere else. Numbers aren't reused; the next cycle
  * continues from the highest ever used, so a gap in the numbering is normal.
  */
+/** Who asked — recorded on the history rows for the issues that fall out. */
+export interface CycleActor {
+  requesterId: string;
+  requesterName: string;
+}
+
 @Injectable()
 export class DeleteCycleUseCase
   implements
-    IUsecaseExecute<{ tenantId: string; teamId: string; cycleId: string }, Result<void>>
+    IUsecaseExecute<
+      { tenantId: string; teamId: string; cycleId: string } & CycleActor,
+      Result<void>
+    >
 {
   constructor(
     @Inject(ITeamRepository) private readonly teams: ITeamRepository,
     @Inject(ICycleRepository) private readonly cycles: ICycleRepository,
     @Inject(IIssueRepository) private readonly issues: IIssueRepository,
+    private readonly activity: RecordActivityUseCase,
   ) {}
 
   async execute({
     tenantId,
     teamId,
     cycleId,
+    requesterId,
+    requesterName,
   }: {
     tenantId: string;
     teamId: string;
     cycleId: string;
-  }): Promise<Result<void>> {
+  } & CycleActor): Promise<Result<void>> {
     const team = await this.teams.findById(tenantId, teamId);
     if (!team) return Result.fail(TEAM_NOT_FOUND);
     if (!team.cyclesManual) return Result.fail(CYCLES_NOT_MANUAL);
@@ -348,7 +363,18 @@ export class DeleteCycleUseCase
     // Detach after the delete: if this half fails the issues point at a cycle
     // that's gone, which reads as no-cycle anyway — the reverse order would
     // orphan them from a cycle that still exists.
-    await this.issues.clearCycleIds(tenantId, [cycleId]);
+    const detached = await this.issues.clearCycleIds(tenantId, [cycleId]);
+    // The admin who deleted the cycle owns these rows — SYSTEM is reserved for
+    // the date-driven rollover, where nobody acted. `automated` marks them as a
+    // consequence of one action rather than N separate edits.
+    await recordCycleIdChanges(
+      this.activity,
+      tenantId,
+      new Date(),
+      detached,
+      { type: AuditActor.USER, id: requesterId, name: requesterName },
+      true,
+    );
 
     return Result.ok();
   }
@@ -367,7 +393,7 @@ export class DeleteCycleUseCase
 export class UpdateTeamCycleConfigUseCase
   implements
     IUsecaseExecute<
-      { tenantId: string; teamId: string; dto: UpdateTeamCycleConfigDto },
+      { tenantId: string; teamId: string; dto: UpdateTeamCycleConfigDto } & CycleActor,
       Result<TeamEntity>
     >
 {
@@ -376,17 +402,20 @@ export class UpdateTeamCycleConfigUseCase
     @Inject(ICycleRepository) private readonly cycles: ICycleRepository,
     @Inject(IIssueRepository) private readonly issues: IIssueRepository,
     private readonly scheduler: CycleSchedulerService,
+    private readonly activity: RecordActivityUseCase,
   ) {}
 
   async execute({
     tenantId,
     teamId,
     dto,
+    requesterId,
+    requesterName,
   }: {
     tenantId: string;
     teamId: string;
     dto: UpdateTeamCycleConfigDto;
-  }): Promise<Result<TeamEntity>> {
+  } & CycleActor): Promise<Result<TeamEntity>> {
     const team = await this.teams.findById(tenantId, teamId);
     if (!team) return Result.fail(TEAM_NOT_FOUND);
 
@@ -421,13 +450,25 @@ export class UpdateTeamCycleConfigUseCase
     // cycles go, so past cycles stay readable. Either way the detached issues
     // fall back to no-cycle.
     const staysAuto = wasAuto && !team.cyclesManual;
+    let detached: MovedIssue[] = [];
     if (wasEnabled && team.cyclesEnabled && staysAuto && rhythmChanged) {
       const deleted = await this.cycles.deleteAllForTeam(tenantId, teamId);
-      if (deleted.length) await this.issues.clearCycleIds(tenantId, deleted);
+      if (deleted.length) detached = await this.issues.clearCycleIds(tenantId, deleted);
     } else if (wasEnabled && !team.cyclesEnabled) {
       const deleted = await this.cycles.deleteUpcoming(tenantId, teamId, today);
-      if (deleted.length) await this.issues.clearCycleIds(tenantId, deleted);
+      if (deleted.length) detached = await this.issues.clearCycleIds(tenantId, deleted);
     }
+    // The admin who changed the rhythm owns these rows — not SYSTEM, which is
+    // only for the calendar-driven rollover. One shared timestamp, so a rebuild
+    // that detaches 200 issues groups into one entry.
+    await recordCycleIdChanges(
+      this.activity,
+      tenantId,
+      new Date(),
+      detached,
+      { type: AuditActor.USER, id: requesterId, name: requesterName },
+      true,
+    );
 
     if (team.cyclesEnabled) await this.scheduler.ensureCyclesCurrent(team, today);
 

@@ -74,8 +74,12 @@ export abstract class IIssueRepository {
     toCycleId: string,
     completedStatusKeys: string[],
   ) => Promise<MovedIssue[]>;
-  /** Detach every issue pointing at these cycles (deleted upcoming cycles). */
-  clearCycleIds: (tenantId: string, cycleIds: string[]) => Promise<number>;
+  /** Detach every issue pointing at these cycles (deleted upcoming cycles).
+   *  Returns the issues detached (with the cycle each came from), so the caller
+   *  can log it — same contract as {@link moveUnfinishedIssues}, because an
+   *  issue leaving a cycle by an admin action deserves the same row as one
+   *  leaving it by rollover. */
+  clearCycleIds: (tenantId: string, cycleIds: string[]) => Promise<MovedIssue[]>;
   /** Phân bố bug, gom nhóm nhiều chiều trong một lần aggregation. Chỉ chiều
    *  được xin mới dựng vào `$facet`. `trend` thêm hai nhánh mở/đóng theo mốc
    *  thời gian; bỏ trống thì không tính. Trả về hàng thô — mọi luật về trần và

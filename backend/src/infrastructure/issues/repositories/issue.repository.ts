@@ -687,15 +687,27 @@ export class IssueRepository
     }));
   }
 
-  async clearCycleIds(tenantId: string, cycleIds: string[]): Promise<number> {
-    if (!cycleIds.length) return 0;
-    const res = await this.model
-      .updateMany(
-        { tenantId, cycleId: { $in: cycleIds } },
-        { $set: { cycleId: '', carryOverCount: 0 } },
-      )
+  async clearCycleIds(tenantId: string, cycleIds: string[]): Promise<MovedIssue[]> {
+    if (!cycleIds.length) return [];
+    const filter = { tenantId, cycleId: { $in: cycleIds } };
+    // Read the affected issues *before* the bulk write, exactly as
+    // `moveUnfinishedIssues` does: the write only knows the filter, not the
+    // per-document `cycleId` it matched, and afterwards every one of them
+    // reads `''`.
+    const affected = await this.model
+      .find(filter, { _id: 1, shortId: 1, cycleId: 1 })
+      .lean<{ _id: string; shortId?: string; cycleId: string }[]>()
       .exec();
-    return res.modifiedCount ?? 0;
+    if (!affected.length) return [];
+
+    await this.model.updateMany(filter, { $set: { cycleId: '', carryOverCount: 0 } }).exec();
+
+    return affected.map((d) => ({
+      id: d._id,
+      shortId: d.shortId ?? '',
+      fromCycleId: d.cycleId,
+      toCycleId: '',
+    }));
   }
 
   async save(issue: IssueEntity): Promise<void> {

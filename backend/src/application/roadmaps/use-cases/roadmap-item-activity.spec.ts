@@ -1,4 +1,8 @@
-import { ReplaceRoadmapItemsUseCase, AddRoadmapItemUseCase } from './roadmap.use-cases';
+import {
+  AddRoadmapItemUseCase,
+  DeleteRoadmapUseCase,
+  ReplaceRoadmapItemsUseCase,
+} from './roadmap.use-cases';
 import { RoadmapEntity } from '../domain/entities/roadmap.entity';
 import { RoadmapDifficulty, RoadmapItemStatus, RoadmapPhase } from '../domain/enums/roadmap.enums';
 import { RoadmapItemData } from '../domain/types/roadmap-item.type';
@@ -144,5 +148,79 @@ describe('roadmap item activity', () => {
     expect(recorded).toHaveLength(1);
     expect(recorded[0].changes).toEqual([{ field: 'created', oldValue: '', newValue: '' }]);
     expect(recorded[0].actor).toEqual({ type: AuditActor.API, id: 'owner-1', name: 'qa-runner' });
+  });
+});
+
+/**
+ * Dropping the whole roadmap has to say the same thing `diffRoadmapItems` says
+ * when one item disappears through `replaceItems` — otherwise an item's
+ * timeline just stops. Before the hook existed, DeleteRoadmapUseCase recorded
+ * nothing at all, so both assertions below failed.
+ */
+describe('DeleteRoadmapUseCase activity', () => {
+  function buildDelete(items: RoadmapItemData[]) {
+    const roadmap = roadmapWith(items);
+    const recorded: Record<string, unknown>[] = [];
+    let deleted = false;
+    const roadmaps = {
+      findById: async () => roadmap,
+      // After the delete there is nothing left to name the items with: a
+      // snapshot taken afterwards would record zero rows, silently.
+      delete: async () => {
+        deleted = true;
+        roadmap.replaceItems([]);
+      },
+    };
+    const activity = {
+      execute: async (req: Record<string, unknown>) => {
+        recorded.push(req);
+      },
+    };
+    const useCase = new DeleteRoadmapUseCase(roadmaps as never, activity as never);
+    return { useCase, roadmap, recorded, wasDeleted: () => deleted };
+  }
+
+  it('records a deleted event for every item it drops', async () => {
+    const { useCase, roadmap, recorded, wasDeleted } = buildDelete([
+      item({ id: 'a', shortId: 'RM-1' }),
+      item({ id: 'b' }), // no ref yet — falls back to the uuid
+    ]);
+
+    const result = await useCase.execute({
+      id: roadmap.id.toString(),
+      tenantId: 't1',
+      requesterId: 'u1',
+      requesterName: 'Lucas',
+    });
+
+    expect(result.isSuccess).toBe(true);
+    expect(wasDeleted()).toBe(true);
+    expect(recorded).toHaveLength(2);
+    expect(recorded[0]).toEqual(
+      expect.objectContaining({
+        entity: AuditEntity.ROADMAP_ITEM,
+        entityId: 'a',
+        entityRef: 'RM-1',
+        automated: true,
+        changes: [{ field: 'deleted', oldValue: '', newValue: '' }],
+      }),
+    );
+    expect(recorded[0].actor).toEqual({ type: AuditActor.USER, id: 'u1', name: 'Lucas' });
+    expect(recorded[1].entityRef).toBe('b');
+    // One shared timestamp — the user deleted a roadmap, not N items.
+    expect(recorded[1].at).toBe(recorded[0].at);
+  });
+
+  it('records nothing for another tenant, and does not delete', async () => {
+    const { useCase, roadmap, recorded, wasDeleted } = buildDelete([item({ id: 'a' })]);
+    const result = await useCase.execute({
+      id: roadmap.id.toString(),
+      tenantId: 'other',
+      requesterId: 'u1',
+      requesterName: 'Lucas',
+    });
+    expect(result.isFailure).toBe(true);
+    expect(wasDeleted()).toBe(false);
+    expect(recorded).toHaveLength(0);
   });
 });

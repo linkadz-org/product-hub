@@ -146,7 +146,13 @@ export class RoadmapsController {
     @AuthUser() auth: JwtPayload,
     @Param('id') id: string,
   ): Promise<{ ok: true }> {
-    const result = await this.deleteRoadmap.execute({ id, tenantId: auth.tenantId });
+    const result = await this.deleteRoadmap.execute({
+      id,
+      tenantId: auth.tenantId,
+      // Every item in it gets a `deleted` row attributed to the caller.
+      requesterId: auth.userId,
+      requesterName: auth.name,
+    });
     if (result.isFailure) throw new EntityNotFoundException(result.error as string);
     return { ok: true };
   }

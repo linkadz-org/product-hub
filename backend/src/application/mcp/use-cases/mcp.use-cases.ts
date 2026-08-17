@@ -1174,6 +1174,7 @@ export class McpCreateDocUseCase
     const created = await this.createDoc.execute({
       tenantId: actor.tenantId,
       author,
+      actorType: AuditActor.API,
       dto: { title: dto.title, tags: dto.tags } as CreateDocDto,
     });
     if (created.isFailure) return Result.fail(created.error as string);

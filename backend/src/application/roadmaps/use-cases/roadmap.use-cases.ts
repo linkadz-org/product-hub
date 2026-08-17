@@ -362,15 +362,55 @@ export class ReplaceRoadmapColumnsUseCase
   }
 }
 
+export interface DeleteRoadmapRequest {
+  id: string;
+  tenantId: string;
+  /** The caller — recorded on the items' `deleted` rows. */
+  requesterId: string;
+  requesterName: string;
+}
+
 @Injectable()
-export class DeleteRoadmapUseCase
-  implements IUsecaseExecute<{ id: string; tenantId: string }, Result<void>>
-{
-  constructor(@Inject(IRoadmapRepository) private readonly roadmaps: IRoadmapRepository) {}
-  async execute({ id, tenantId }: { id: string; tenantId: string }): Promise<Result<void>> {
+export class DeleteRoadmapUseCase implements IUsecaseExecute<DeleteRoadmapRequest, Result<void>> {
+  constructor(
+    @Inject(IRoadmapRepository) private readonly roadmaps: IRoadmapRepository,
+    private readonly activity: RecordActivityUseCase,
+  ) {}
+  async execute({
+    id,
+    tenantId,
+    requesterId,
+    requesterName,
+  }: DeleteRoadmapRequest): Promise<Result<void>> {
     const roadmap = await this.roadmaps.findById(id);
     if (!roadmap || roadmap.tenantId !== tenantId) return Result.fail('Roadmap not found');
+    // Snapshot BEFORE the delete — the items live inside the document that is
+    // about to go, so nothing can name them afterwards.
+    const doomed = roadmap.items.map((item) => ({
+      id: item.id,
+      ref: item.shortId || item.id,
+    }));
     await this.roadmaps.delete(id);
+
+    // `diffRoadmapItems` emits `deleted` faithfully when an item disappears
+    // through `replaceItems`; dropping the whole roadmap has to say the same
+    // thing, or an item's timeline just stops. The item is the tracked entity
+    // — the roadmap is only its container, and has no timeline of its own to
+    // record this on. `automated`: the user deleted a roadmap, not N items.
+    const at = new Date();
+    for (const item of doomed) {
+      await this.activity.execute({
+        tenantId,
+        entity: AuditEntity.ROADMAP_ITEM,
+        entityId: item.id,
+        entityRef: item.ref,
+        actor: { type: AuditActor.USER, id: requesterId, name: requesterName },
+        automated: true,
+        at,
+        changes: [{ field: 'deleted', oldValue: '', newValue: '' }],
+      });
+    }
+
     return Result.ok();
   }
 }

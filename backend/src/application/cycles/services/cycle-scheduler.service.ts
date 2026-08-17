@@ -1,9 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { TeamEntity } from '@application/teams/domain/entities/team.entity';
 import { IIssueRepository, MovedIssue } from '@application/issues/repositories/issue.repository';
-import { AuditActor, AuditEntity } from '@application/audit-log/domain/enums/audit.enums';
+import { AuditActor } from '@application/audit-log/domain/enums/audit.enums';
 import { RecordActivityUseCase } from '@application/audit-log/use-cases/record-activity.use-case';
 import { CycleEntity } from '../domain/entities/cycle.entity';
+import { recordCycleIdChanges } from '../domain/cycle-activity';
 import {
   CYCLE_FILTER_CURRENT,
   CYCLE_FILTER_NONE,
@@ -221,7 +222,10 @@ export class CycleSchedulerService {
  * Log a rollover. Exported so it can be tested without standing up the scheduler.
  *
  * These rows are SYSTEM, not the reader who happened to trigger the lazy rollover —
- * see the note on this task. One shared `at` lets the UI group them.
+ * see the note on this task. This is the ONLY caller that may use SYSTEM: a
+ * rollover is driven by the calendar, so nobody acted. The admin-triggered
+ * sweeps in `cycle.use-cases.ts` share the same row shape (via
+ * {@link recordCycleIdChanges}) but keep the admin's real identity.
  */
 export async function recordRolloverActivity(
   activity: RecordActivityUseCase,
@@ -229,16 +233,12 @@ export async function recordRolloverActivity(
   at: Date,
   moved: MovedIssue[],
 ): Promise<void> {
-  for (const m of moved) {
-    await activity.execute({
-      tenantId,
-      entity: AuditEntity.ISSUE,
-      entityId: m.id,
-      entityRef: m.shortId || m.id,
-      actor: { type: AuditActor.SYSTEM, id: '', name: '' },
-      automated: true,
-      at,
-      changes: [{ field: 'cycleId', oldValue: m.fromCycleId, newValue: m.toCycleId }],
-    });
-  }
+  await recordCycleIdChanges(
+    activity,
+    tenantId,
+    at,
+    moved,
+    { type: AuditActor.SYSTEM, id: '', name: '' },
+    true,
+  );
 }
