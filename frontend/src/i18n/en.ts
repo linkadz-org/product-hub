@@ -1190,6 +1190,13 @@ export const en = {
   'uploads.attachments': 'Attachments',
   'uploads.none': 'No attachments yet.',
   'uploads.onlyMedia': 'Only images and videos can be attached.',
+  'uploads.uploading': 'Uploading',
+  'uploads.queued': 'Waiting…',
+  // The bytes are all sent and the server is storing the file — a full bar with
+  // nothing happening otherwise looks stuck at the very last moment.
+  'uploads.finishing': 'Finishing…',
+  'uploads.failed': 'Failed',
+  'uploads.dismiss': 'Dismiss',
   'settings.webhooksHint': 'Send notifications to a channel for the events you choose below.',
   'settings.addWebhook': 'Add webhook',
   'settings.webhookName': 'Name',
@@ -1587,6 +1594,7 @@ export const en = {
   'editor.insertLineAbove': 'Add a line above',
   'editor.uploading': 'Uploading…',
   'editor.uploadFailed': 'Upload failed — click to retry',
+  'editor.uploadRetry': 'Choose another file',
   'editor.resizeImage': 'Resize image',
   'editor.dragToResize': 'Drag to resize',
   'editor.zoomImage': 'View full size',

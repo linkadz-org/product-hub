@@ -64,7 +64,11 @@ export function CustomFields({ fields, values, canWrite, onChange }: CustomField
         const missing = isMissing(field, value);
         const label = field.required ? `${field.name} *` : field.name;
         return (
-          <PropField key={field.id} label={label} icon={fieldIcon(field.type)}>
+          // Stacked, so the field's *name* is drawn above its control. A custom
+          // field is named by whoever defined it — a type glyph alone ("Type",
+          // "Hash") can't tell "Root cause" from "Customer" — so this is the one
+          // row in the sidebar that can't survive on an icon.
+          <PropField key={field.id} label={label} icon={fieldIcon(field.type)} align="stack">
             {canWrite ? (
               <div className="space-y-1">
                 <FieldControl

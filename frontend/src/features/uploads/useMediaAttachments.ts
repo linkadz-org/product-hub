@@ -1,7 +1,8 @@
 import { useCallback, useRef, useState, type ClipboardEvent, type DragEvent } from 'react';
 import { toast } from 'sonner';
 import { t } from '@/i18n';
-import { uploadMedia, type UploadedMedia } from './api';
+import type { UploadedMedia } from './api';
+import { useUploadQueue } from './useUploadQueue';
 
 /**
  * Video file extensions we render with a <video> player. The upload key keeps
@@ -27,39 +28,37 @@ function isMediaFile(file: File): boolean {
  */
 export function useMediaAttachments() {
   const [items, setItems] = useState<UploadedMedia[]>([]);
-  const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   // Depth counter so hovering over child nodes doesn't flicker the drop hint.
   const dragDepth = useRef(0);
+  // The upload loop, its progress, and its failures — shared with every other
+  // media surface (see `useUploadQueue`), so a comment's attachment behaves like
+  // a doc's.
+  const queue = useUploadQueue();
+  const { upload } = queue;
 
-  const addFiles = useCallback(async (files: FileList | File[] | null | undefined) => {
-    const all = files ? Array.from(files) : [];
-    const media = all.filter(isMediaFile);
-    if (all.length > 0 && media.length === 0) {
-      toast.error(t('uploads.onlyMedia'));
-      return;
-    }
-    if (media.length === 0) return;
-    setBusy(true);
-    try {
-      for (const file of media) {
-        try {
-          const uploaded = await uploadMedia(file);
-          setItems((prev) => [...prev, uploaded]);
-        } catch (e) {
-          toast.error((e as Error).message);
-        }
+  const addFiles = useCallback(
+    async (files: FileList | File[] | null | undefined) => {
+      const all = files ? Array.from(files) : [];
+      const media = all.filter(isMediaFile);
+      if (all.length > 0 && media.length === 0) {
+        toast.error(t('uploads.onlyMedia'));
+        return;
       }
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+      if (media.length === 0) return;
+      await upload(media, (uploaded) => setItems((prev) => [...prev, uploaded]));
+    },
+    [upload],
+  );
 
   const remove = useCallback((index: number) => {
     setItems((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
-  const clear = useCallback(() => setItems([]), []);
+  const clear = useCallback(() => {
+    setItems([]);
+    queue.clearErrors();
+  }, [queue]);
 
   const hasFiles = (e: DragEvent) => e.dataTransfer.types.includes('Files');
 
@@ -97,7 +96,10 @@ export function useMediaAttachments() {
   return {
     items,
     urls: items.map((i) => i.url),
-    busy,
+    busy: queue.busy,
+    /** Live per-file rows — feed to <UploadProgressList>. */
+    tasks: queue.tasks,
+    dismissUpload: queue.dismiss,
     dragging,
     addFiles,
     remove,

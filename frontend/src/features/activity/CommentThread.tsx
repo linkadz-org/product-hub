@@ -375,8 +375,9 @@ function CommentComposer({
         </div>
         <AttachmentStrip
           items={media.items}
-          busy={media.busy}
+          tasks={media.tasks}
           onRemove={media.remove}
+          onDismissTask={media.dismissUpload}
           className="mt-2 pl-9"
         />
         {open && (
@@ -405,7 +406,13 @@ function CommentComposer({
       {...media.dropHandlers}
     >
       {editor}
-      <AttachmentStrip items={media.items} busy={media.busy} onRemove={media.remove} className="mt-2" />
+      <AttachmentStrip
+        items={media.items}
+        tasks={media.tasks}
+        onRemove={media.remove}
+        onDismissTask={media.dismissUpload}
+        className="mt-2"
+      />
       <div className="mt-1 flex items-center justify-end gap-1">
         {media.dragging && (
           <span className="mr-auto truncate text-xs text-muted-foreground">{t('activity.dropHint')}</span>

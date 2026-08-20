@@ -9,12 +9,12 @@ import {
   Presentation,
   X,
 } from 'lucide-react';
-import { toast } from 'sonner';
 import { MediaUploader } from '@/components/MediaUploader';
 import { cn } from '@/lib/utils';
 import { t } from '@/i18n';
 import { formatFileSize } from '@/lib/format';
-import { uploadMedia } from '@/features/uploads/api';
+import { useUploadQueue } from '@/features/uploads/useUploadQueue';
+import { UploadProgressList } from '@/features/uploads/UploadProgressList';
 import type { DocAttachment } from '@/types/dto';
 
 interface DocAttachmentsProps {
@@ -61,10 +61,12 @@ function glyphFor(contentType: string, name: string) {
  * competes with the editor's own drag handling for images.
  */
 export function DocAttachments({ items, canWrite, onChange, className }: DocAttachmentsProps) {
-  const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   // Depth counter so dragging across the chips inside doesn't flicker the hint.
   const depth = useRef(0);
+  // Dropped files go through the same queue the pick-a-file button does, so a
+  // drop reports its progress instead of being the one silent path in.
+  const queue = useUploadQueue();
 
   // Nothing attached and nothing to attach with — don't leave an empty rule
   // across the page (this is how it renders on the public view).
@@ -73,22 +75,10 @@ export function DocAttachments({ items, canWrite, onChange, className }: DocAtta
   async function uploadAll(files: FileList | File[]) {
     const list = Array.from(files);
     if (!list.length) return;
-    setBusy(true);
-    // Accumulated locally: `items` is captured from this render, so appending one
+    // Appended as one batch: `items` is captured from this render, so adding one
     // at a time would make every file overwrite the one before it.
-    const added: DocAttachment[] = [];
-    try {
-      for (const file of list) {
-        try {
-          added.push(await uploadMedia(file));
-        } catch (e) {
-          toast.error((e as Error).message);
-        }
-      }
-    } finally {
-      setBusy(false);
-      if (added.length) onChange?.([...items, ...added]);
-    }
+    const added = await queue.upload(list);
+    if (added.length) onChange?.([...items, ...added]);
   }
 
   const hasFiles = (e: DragEvent) => e.dataTransfer.types.includes('Files');
@@ -171,7 +161,11 @@ export function DocAttachments({ items, canWrite, onChange, className }: DocAtta
             variant="ghost"
             label={t('docs.addFile')}
             className="h-7 gap-1.5 text-xs text-muted-foreground"
-            disabled={busy}
+            // One queue for both ways in (button and drop), and one list of rows
+            // for it — drawn below the chips rather than as a column wedged into
+            // this wrapping row.
+            queue={queue}
+            progress="none"
             // The batch callback, not the per-file one: picking four files at
             // once has to append four, not overwrite three (see MediaUploader).
             onUploadedAll={(files) => onChange?.([...items, ...files])}
@@ -182,6 +176,7 @@ export function DocAttachments({ items, canWrite, onChange, className }: DocAtta
               <Paperclip className="size-3" aria-hidden /> {t('docs.filesHint')}
             </span>
           )}
+          <UploadProgressList tasks={queue.tasks} onDismiss={queue.dismiss} className="basis-full" />
         </>
       )}
     </div>

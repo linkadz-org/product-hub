@@ -1,10 +1,11 @@
 import { useRef } from 'react';
-import { Paperclip, X } from 'lucide-react';
+import { AlertCircle, Paperclip, X } from 'lucide-react';
 import { Spinner, useLightbox } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { t } from '@/i18n';
 import { isVideoUrl } from '@/features/uploads/useMediaAttachments';
 import type { UploadedMedia } from '@/features/uploads/api';
+import type { UploadTask } from '@/features/uploads/useUploadQueue';
 
 /**
  * The media a posted comment carries — read-only. Images open in a lightbox
@@ -50,20 +51,29 @@ export function CommentMedia({ urls, className }: { urls: string[]; className?: 
 
 /**
  * The pending attachments inside a composer — thumbnails a user can remove
- * before posting, plus a placeholder tile while an upload is in flight.
+ * before posting, and beside them one tile per file still going up.
+ *
+ * An in-flight tile counts its own percentage over a fill that rises to match, so
+ * a 20MB video reads as *moving* rather than as the same spinner it was thirty
+ * seconds ago. A rejected file keeps its tile, in red, with the API's reason on
+ * hover — the toast that used to be the only word on it was gone long before
+ * anyone noticed the attachment wasn't there.
  */
 export function AttachmentStrip({
   items,
-  busy,
+  tasks = [],
   onRemove,
+  onDismissTask,
   className,
 }: {
   items: UploadedMedia[];
-  busy?: boolean;
+  /** Live uploads from `useMediaAttachments().tasks`. */
+  tasks?: UploadTask[];
   onRemove: (index: number) => void;
+  onDismissTask?: (id: string) => void;
   className?: string;
 }) {
-  if (items.length === 0 && !busy) return null;
+  if (items.length === 0 && tasks.length === 0) return null;
   return (
     <div className={cn('flex flex-wrap gap-2 px-1', className)}>
       {items.map((m, i) => (
@@ -83,11 +93,47 @@ export function AttachmentStrip({
           </button>
         </div>
       ))}
-      {busy && (
-        <div className="grid size-16 place-items-center rounded-md border border-dashed">
-          <Spinner className="size-4" />
-        </div>
-      )}
+      {tasks.map((task) => {
+        const failed = task.status === 'error';
+        return (
+          <div
+            key={task.id}
+            title={failed ? `${task.name} — ${task.error}` : `${task.name} · ${task.percent}%`}
+            className={cn(
+              'relative size-16 overflow-hidden rounded-md border border-dashed',
+              failed && 'border-solid border-destructive/50 bg-destructive/5',
+            )}
+          >
+            {/* The fill *is* the progress — a bar under a 64px tile would be a
+                line nobody can read, so the tile itself fills from the bottom. */}
+            {!failed && (
+              <div
+                className="absolute inset-x-0 bottom-0 bg-primary/15 transition-[height]"
+                style={{ height: `${task.percent}%` }}
+              />
+            )}
+            <div className="relative grid size-full place-items-center gap-0.5 text-center">
+              {failed ? (
+                <AlertCircle className="size-4 text-destructive" />
+              ) : task.status === 'queued' ? (
+                <Spinner className="size-4" />
+              ) : (
+                <span className="text-xs font-medium tabular-nums">{task.percent}%</span>
+              )}
+            </div>
+            {onDismissTask && (
+              <button
+                type="button"
+                aria-label={failed ? t('uploads.dismiss') : t('common.cancel')}
+                className="absolute -right-1.5 -top-1.5 grid size-5 place-items-center rounded-full border bg-card text-muted-foreground shadow-sm hover:text-destructive"
+                onClick={() => onDismissTask(task.id)}
+              >
+                <X className="size-3" />
+              </button>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

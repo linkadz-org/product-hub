@@ -21,6 +21,20 @@ function LabelTooltip({ label, children }: { label: string; children: ReactNode 
 }
 
 /**
+ * The one style every Properties field label is drawn in — small, muted, and
+ * sitting directly above its control. Exported so a field that builds its own row
+ * rather than going through {@link PropField} (a custom field's editor, say)
+ * labels itself identically instead of inventing a second size.
+ */
+export function PropLabel({ children }: { children: ReactNode }) {
+  return (
+    <span className="truncate text-[11px] font-medium leading-none text-muted-foreground">
+      {children}
+    </span>
+  );
+}
+
+/**
  * One row in the Properties sidebar, Linear-style: a leading **icon** in the left
  * gutter and the value/control on the right of the same row — the label itself is
  * not drawn, it rides along as a hover tooltip on the row + screen-reader text (so
@@ -31,6 +45,13 @@ function LabelTooltip({ label, children }: { label: string; children: ReactNode 
  * pass `align="stack"` to drop the control below the head — and there the label
  * *is* drawn (icon + text), since a full-width control has no inline value beside
  * the icon to explain it, so a lone glyph would read as orphaned.
+ *
+ * A {@link PropField bare} row draws its label **above** the control. It used to
+ * hide it behind a hover tooltip, on the theory that the control's own inset glyph
+ * names the field — but a sidebar of eight glyph-led boxes reads as eight
+ * identical boxes: "Resolved / Medium / Me" says nothing about which field is
+ * which until you hover each one in turn. The label is one 11px muted line and
+ * costs no horizontal room, so the control keeps the full 260px for its value.
  */
 export function PropField({
   label,
@@ -56,12 +77,10 @@ export function PropField({
 }) {
   if (bare) {
     return (
-      <LabelTooltip label={label}>
-        <div className={cn(align === 'stack' ? 'py-1' : 'py-0.5')}>
-          <span className="sr-only">{label}</span>
-          {children}
-        </div>
-      </LabelTooltip>
+      <div className={cn('flex flex-col gap-1', align === 'stack' ? 'py-1' : 'py-0.5')}>
+        <PropLabel>{label}</PropLabel>
+        {children}
+      </div>
     );
   }
 
@@ -95,13 +114,13 @@ export function PropField({
         {/* Stacked rows keep a *visible* label (icon + text): the control below is
             full-width with no inline value beside the icon, so a lone glyph would
             read as orphaned. */}
-        <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+        <span className="flex items-center gap-1.5">
           {icon && (
             <span className="grid size-3.5 shrink-0 place-items-center text-muted-foreground/70 [&>svg]:size-3.5">
               {icon}
             </span>
           )}
-          <span className="truncate">{label}</span>
+          <PropLabel>{label}</PropLabel>
         </span>
         <div className="min-w-0">{children}</div>
       </div>
@@ -177,7 +196,10 @@ export function PropSection({
       )}
       <div
         className={cn(
-          grid ? 'grid grid-cols-2 items-start gap-x-2.5 gap-y-1 [&>*]:min-w-0' : 'flex flex-col',
+          // Each row now carries its own label line, so the rows need a touch more
+          // air between them than when they were bare boxes — otherwise a row's
+          // label crowds the control above it and reads as belonging to *it*.
+          grid ? 'grid grid-cols-2 items-start gap-x-2.5 gap-y-2 [&>*]:min-w-0' : 'flex flex-col gap-1',
         )}
       >
         {children}
