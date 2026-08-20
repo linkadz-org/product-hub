@@ -723,7 +723,12 @@ export class SlashMenu {
         false,
       );
       try {
-        const url = await toUrl(file);
+        // The placeholder counts up in place — it's an inline mark in a line of
+        // text, so there's no room for a bar, but a number that moves is still
+        // the difference between "working" and "stuck".
+        const url = await toUrl(file, (percent) => {
+          if (mark) mark.textContent = `${t('editor.uploading')} ${percent}%`;
+        });
         const img = document.createElement('img');
         img.src = url;
         img.alt = file.name;

@@ -10,8 +10,9 @@
 // Added: the resize handle and an "Add border" tune. Caption editing was
 // removed from the UI — any caption already stored is preserved on save.
 import type { API, BlockAPI } from '@editorjs/editorjs';
-import { uploadMedia } from '@/features/uploads/api';
+import { uploadMedia, type UploadProgressFn } from '@/features/uploads/api';
 import { compressImageFile } from '@/lib/compressImage';
+import { createUploadProgressBar } from '@/lib/editor/uploadProgressBar';
 import { t } from '@/i18n';
 
 /** Block data — the shape `lib/editorjs.ts` already reads and writes. */
@@ -40,9 +41,9 @@ const clampPct = (pct: number) => Math.max(MIN_PCT, Math.min(MAX_PCT, Math.round
  * when none is set up (or the upload fails) — mirrors the old uploader so images
  * keep working with zero storage config.
  */
-export async function toUrl(file: File): Promise<string> {
+export async function toUrl(file: File, onProgress?: UploadProgressFn): Promise<string> {
   try {
-    return (await uploadMedia(file)).url;
+    return (await uploadMedia(file, onProgress)).url;
   } catch {
     return compressImageFile(file);
   }
@@ -113,19 +114,39 @@ export class ResizableImageTool {
     input.accept = 'image/*';
     input.hidden = true;
     btn.addEventListener('click', () => input.click());
-    input.addEventListener('change', async () => {
+    input.addEventListener('change', () => {
       const file = input.files?.[0];
-      if (!file) return;
-      btn.disabled = true;
-      btn.textContent = t('editor.uploading');
-      try {
-        await this.setUrl(await toUrl(file));
-      } catch (e) {
-        btn.disabled = false;
-        btn.textContent = (e as Error)?.message || t('editor.uploadFailed');
-      }
+      if (file) void this.upload(file);
     });
     this.wrapper.append(btn, input);
+  }
+
+  /**
+   * Swap the block for a live progress bar, upload, then swap in the image.
+   *
+   * The bar replaces the picker rather than sitting beside it: a block mid-upload
+   * has nothing to pick any more, and leaving an enabled-looking button there is
+   * how you get the same file uploaded twice.
+   */
+  private async upload(file: File) {
+    const bar = createUploadProgressBar(file.name);
+    this.wrapper.innerHTML = '';
+    this.wrapper.append(bar.el);
+    try {
+      await this.setUrl(await toUrl(file, (percent) => bar.set(percent)));
+    } catch (e) {
+      // Both the upload *and* the local data-URL fallback failed — the block has
+      // no image to show, so the reason stays on screen with a way back to the
+      // picker rather than vanishing into a toast.
+      bar.fail((e as Error)?.message || t('editor.uploadFailed'));
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.className = 'rte-image__picker';
+      retry.style.marginTop = '8px';
+      retry.textContent = t('editor.uploadRetry');
+      retry.addEventListener('click', () => this.renderPicker());
+      this.wrapper.append(retry);
+    }
   }
 
   private async setUrl(url: string) {
@@ -231,8 +252,9 @@ export class ResizableImageTool {
       return;
     }
     if (event.type === 'file' && event.detail.file) {
-      const file = event.detail.file;
-      void toUrl(file).then((url) => this.setUrl(url)).catch(() => {});
+      // Same path as the picker, so a pasted screenshot gets the same bar a
+      // chosen file does — this is how most images actually arrive.
+      void this.upload(event.detail.file);
     }
   }
 

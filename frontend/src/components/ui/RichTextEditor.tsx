@@ -22,6 +22,7 @@ import { bindInlineShortcuts } from '@/lib/editor/inlineShortcuts';
 import { bindInsertLine } from '@/lib/editor/insertLine';
 import { bindBlockInputRules } from '@/lib/editor/inputRules';
 import { CommentTool } from '@/lib/editor/CommentTool';
+import { createUploadProgressBar } from '@/lib/editor/uploadProgressBar';
 import { uploadMedia } from '@/features/uploads/api';
 import { useUsers } from '@/features/users/api';
 import type { SlashPerson } from '@/lib/editor/SlashMenu';
@@ -154,6 +155,7 @@ class VideoTool {
   }
 
   private renderPicker(wrapper: HTMLElement) {
+    wrapper.innerHTML = '';
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.textContent = t('editor.selectVideo');
@@ -167,15 +169,25 @@ class VideoTool {
     input.addEventListener('change', async () => {
       const file = input.files && input.files[0];
       if (!file) return;
-      btn.disabled = true;
-      btn.textContent = t('editor.uploading');
+      // A video is the file most likely to take a while and the one most likely
+      // to be rejected for size, so the picker gives way to a real bar rather
+      // than a button reading "Uploading…" for a minute.
+      const bar = createUploadProgressBar(file.name);
+      wrapper.innerHTML = '';
+      wrapper.append(bar.el);
       try {
-        const media = await uploadMedia(file);
+        const media = await uploadMedia(file, (percent) => bar.set(percent));
         this.data.url = media.url;
         this.renderPlayer(wrapper);
       } catch (e) {
-        btn.disabled = false;
-        btn.textContent = (e as Error).message || t('editor.uploadFailed');
+        bar.fail((e as Error).message || t('editor.uploadFailed'));
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.textContent = t('editor.uploadRetry');
+        retry.style.cssText =
+          'margin-top:8px;width:100%;padding:8px;border:1px dashed hsl(var(--border));border-radius:8px;background:transparent;color:hsl(var(--muted-foreground));font-size:13px;cursor:pointer';
+        retry.addEventListener('click', () => this.renderPicker(wrapper));
+        wrapper.append(retry);
       }
     });
     wrapper.append(btn, input);

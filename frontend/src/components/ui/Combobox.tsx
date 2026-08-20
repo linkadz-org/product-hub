@@ -114,6 +114,7 @@ export function Combobox({
           )}
         >
           <span
+            title={selected ? selected.label : undefined}
             className={cn(
               'flex min-w-0 items-center gap-2 truncate',
               !selected && 'text-muted-foreground',
@@ -139,7 +140,13 @@ export function Combobox({
             e.preventDefault();
             inputRef.current?.focus();
           }}
-          className="z-50 w-[var(--radix-popover-trigger-width)] overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
+          collisionPadding={8}
+          // The list is *at least* as wide as the trigger and free to grow past it,
+          // up to what the viewport allows. A picker often sits in a 260px sidebar
+          // while its options are full titles ("RM-7VBD8CR · Launch · [Create
+          // Campaign] Cannot create new ad") — pinned to the trigger's width, every
+          // row truncated at the same point and the list showed nothing but refs.
+          className="z-50 w-auto min-w-[var(--radix-popover-trigger-width)] max-w-[min(32rem,calc(100vw-1rem))] overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
         >
           <div className="flex items-center border-b px-3">
             <Search className="size-4 shrink-0 opacity-50" />
@@ -175,14 +182,19 @@ export function Combobox({
                   )}
                 >
                   <span className={cn(
-                    'flex h-5 w-5 items-center justify-center rounded-sm',
+                    'flex h-5 w-5 shrink-0 items-center justify-center rounded-sm',
                     i === active && 'bg-accent/60 text-accent-foreground'
                   )}>
                     {o.icon}
                   </span>
-                  <span className="truncate">{o.label}</span>
+                  {/* Wraps to a second line rather than truncating, so a long
+                      title is readable in the list itself; `title` still carries
+                      the whole thing for anything that runs past two lines. */}
+                  <span className="line-clamp-2 min-w-0 flex-1 break-words" title={o.label}>
+                    {o.label}
+                  </span>
                   {o.value === value && (
-                    <Check className="absolute right-2 size-4" />
+                    <Check className="absolute right-2 top-1/2 size-4 shrink-0 -translate-y-1/2" />
                   )}
                 </div>
               ))

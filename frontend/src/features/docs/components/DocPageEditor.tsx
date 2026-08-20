@@ -423,6 +423,7 @@ export function DocPageEditor({
             accept="image/*"
             multiple={false}
             variant="ghost"
+            progress="none"
             label={t('docs.addCover')}
             // Beside "link" and "styles" the button names what it adds, not the
             // mechanism it adds it by — an upload arrow would be the odd one out.
@@ -475,6 +476,7 @@ export function DocPageEditor({
                 accept="image/*"
                 multiple={false}
                 label={t('docs.changeCover')}
+                progress="none"
                 onUploaded={(m) => {
                   setCoverUrl(m.url);
                   saveNow({ coverUrl: m.url });
