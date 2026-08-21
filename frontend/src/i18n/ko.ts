@@ -782,6 +782,17 @@ export const ko: Record<I18nKey, string> = {
   'savedViews.name': '뷰 이름',
   'savedViews.share': '워크스페이스와 공유',
   'savedViews.shareHint': '워크스페이스의 누구나 이 뷰를 열고 사용할 수 있습니다.',
+  // The picker beside the save actions. Its trigger shows the open view's name,
+  // falling back to this when the board is on no saved view.
+  'savedViews.pick': '뷰',
+  // The picker's two groups. They're split because they aren't the same thing
+  // to a user: mine are mine to rename and delete, shared ones belong to
+  // someone else and can change under me.
+  'savedViews.mine': '내 뷰',
+  'savedViews.shared': '공유받은 뷰',
+  // Tooltip on the small people glyph marking one of my own views as shared.
+  'savedViews.sharedBadge': '워크스페이스와 공유됨',
+  'savedViews.confirmDelete': '이 저장된 뷰를 삭제할까요?',
   // Shown when `?sv=` names a view that's gone (deleted) or not shared with
   // this user — the board opens with its default filters instead of blank.
   'savedViews.cannotOpen': '이 뷰는 더 이상 사용할 수 없습니다 — 기본 보드를 표시합니다.',

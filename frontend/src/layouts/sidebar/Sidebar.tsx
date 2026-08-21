@@ -21,7 +21,7 @@ import {
   NavParentItem,
   RailButton,
   ROW,
-  SavedViewNavItem,
+  SavedViewNavList,
   SidebarCreateMenu,
   TeamNavList,
   useNavGroups,
@@ -295,8 +295,8 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
             );
           }
 
-          // Saved views — a user's own and any shared with the workspace, in
-          // the order the API returns them. Hidden when there are none, same
+          // Saved views — a user's own, then any shared with the workspace
+          // (`SavedViewNavList` splits them). Hidden when there are none, same
           // as Favourites: an empty block is worse than no block.
           if (section.dynamic === 'savedViews') {
             if (!savedViews || savedViews.length === 0) return null;
@@ -307,10 +307,9 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
                   open={sectionOpen(section.key)}
                   onToggle={() => toggleSection(section.key)}
                 />
-                {sectionOpen(section.key) &&
-                  savedViews.map((view) => (
-                    <SavedViewNavItem key={view.id} view={view} onNavigate={goFromPanel} />
-                  ))}
+                {sectionOpen(section.key) && (
+                  <SavedViewNavList views={savedViews} onNavigate={goFromPanel} />
+                )}
               </div>
             );
           }

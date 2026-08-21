@@ -16,6 +16,7 @@ import { t } from '@/i18n';
 import { FAVOURITE_KIND_LABEL, FavouriteKind } from '@/types/enums';
 import { useRemoveFavourite } from '@/features/favourites/api';
 import { useDeleteSavedView } from '@/features/saved-views/api';
+import { groupSavedViews, isSavedViewActive, savedViewHref } from '@/features/saved-views/scope';
 import { TeamIconPicker } from '@/features/teams/TeamIconPicker';
 import type { FavouriteDto, SavedViewDto, TeamDto } from '@/types/dto';
 
@@ -995,17 +996,6 @@ export function savedViewIcon(view: SavedViewDto): IconName {
 }
 
 /**
- * Whether the live URL is standing on this exact saved view. Every view's row
- * points at the same pathname (`/issues`), so — unlike a plain nav link — the
- * `sv` query param is the only thing that tells two rows apart; a `NavLink`'s
- * default pathname-only match would light every row at once. Pure and
- * exported for the same reason as `savedViewIcon`.
- */
-export function isSavedViewActive(pathname: string, search: string, viewId: string): boolean {
-  return pathname === '/issues' && new URLSearchParams(search).get('sv') === viewId;
-}
-
-/**
  * Whether *this* viewer's row should offer the delete action — mirrors the
  * backend's own gate (`canMutateSavedView` in
  * `saved-view.use-cases.ts`: owner or admin, no other exception) exactly, so
@@ -1024,15 +1014,19 @@ export function canDeleteSavedView(
 }
 
 /**
- * One saved view in the sidebar — a shortcut to the Issues board pre-filtered
- * by it (`/issues?sv=<id>`, applied by `IssuesPage`). Saved views are per-user
- * but can be shared, and the list the API returns already reflects that (own +
- * shared) — this row never filters by ownership, it only marks a shared one
- * with a small people glyph so it reads as "not just mine".
+ * One saved view in the sidebar — a shortcut to the board it was saved on,
+ * pre-filtered by it. The destination comes from `savedViewHref`, never from a
+ * literal: a view now carries the board it belongs to, and that resolution is
+ * deliberately in one place (see `scope.ts` for why a stored path would be an
+ * open redirect). Saved views are per-user but can be shared, and the list the
+ * API returns already reflects that (own + shared) — this row never filters by
+ * ownership, it only marks a shared one with a small people glyph so it reads
+ * as "not just mine".
  *
- * Active state is worked out by hand rather than left to `NavLink`: every row
- * shares the same pathname (`/issues`), so only the `sv` query param tells two
- * views apart — the same reasoning as `useRowActive` for a `search` row.
+ * Active state is worked out by hand rather than left to `NavLink`: two views
+ * on the same board are told apart only by `?sv=`, which a `NavLink`'s
+ * pathname-only match ignores — the same reasoning as `useRowActive` for a
+ * `search` row.
  */
 export function SavedViewNavItem({
   view,
@@ -1047,13 +1041,13 @@ export function SavedViewNavItem({
   const { pathname, search } = useLocation();
   const { user, isAdmin } = useAuth();
   const remove = useDeleteSavedView();
-  const active = isSavedViewActive(pathname, search, view.id);
+  const active = isSavedViewActive(pathname, search, view);
   const canDelete = !collapsed && canDeleteSavedView(view, { id: user?.id, isAdmin });
 
   if (collapsed) {
     return (
       <Link
-        to={{ pathname: '/issues', search: `?sv=${view.id}` }}
+        to={savedViewHref(view)}
         onClick={onNavigate}
         title={view.name}
         aria-current={active ? 'page' : undefined}
@@ -1089,7 +1083,7 @@ export function SavedViewNavItem({
         <Icon name={savedViewIcon(view)} size={18} />
       </span>
       <Link
-        to={{ pathname: '/issues', search: `?sv=${view.id}` }}
+        to={savedViewHref(view)}
         onClick={onNavigate}
         aria-current={active ? 'page' : undefined}
         className="flex min-w-0 flex-1 items-center gap-1"
@@ -1111,5 +1105,48 @@ export function SavedViewNavItem({
         </button>
       )}
     </div>
+  );
+}
+
+/** A quiet label splitting the saved-view rows into their two groups. Lighter
+ *  than `HEADING`, which belongs to the section above it — this is a divider
+ *  inside a list, not a section of its own. */
+const SUB_HEADING = 'px-2 pb-0.5 pt-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70';
+
+/**
+ * The sidebar's saved-view rows, split into the two lists the picker shows:
+ * mine, then the ones a colleague shared with the workspace.
+ *
+ * The split only appears when *both* halves exist. A workspace where nobody
+ * shares — the common case — gets exactly the flat list it had before, because
+ * a heading over a group with no counterpart labels nothing. Same rule on the
+ * icon rail, where labels aren't rendered at all.
+ *
+ * Both menus render through this, for the same reason they share every other
+ * row: the two must not disagree about what a saved view looks like.
+ */
+export function SavedViewNavList({
+  views,
+  collapsed,
+  onNavigate,
+}: {
+  views: SavedViewDto[];
+  collapsed?: boolean;
+  onNavigate: () => void;
+}) {
+  const { user } = useAuth();
+  const { mine, shared } = groupSavedViews(views, user?.id);
+  const split = !collapsed && mine.length > 0 && shared.length > 0;
+  const row = (view: SavedViewDto) => (
+    <SavedViewNavItem key={view.id} view={view} collapsed={collapsed} onNavigate={onNavigate} />
+  );
+
+  return (
+    <>
+      {split && <div className={SUB_HEADING}>{t('savedViews.mine')}</div>}
+      {mine.map(row)}
+      {split && <div className={SUB_HEADING}>{t('savedViews.shared')}</div>}
+      {shared.map(row)}
+    </>
   );
 }

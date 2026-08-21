@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { CalendarRange, LayoutGrid, List } from 'lucide-react';
 import { Badge, Button, Checkbox, Switch } from '@/components/ui';
@@ -8,9 +8,19 @@ import { BOARD_GUTTER, IssueBoardLayout } from '@/components/IssueBoardLayout';
 import { BoardCard, BoardCardAge, KanbanBoard, KanbanCardToolbar } from '@/components/KanbanBoard';
 import { IssueTimelineView } from '@/features/issues/IssueTimelineView';
 import { SortMenu } from '@/features/issues/SortMenu';
-import { useIssueSort } from '@/features/issues/useIssueSort';
+import { applyIssueSort, useIssueSort } from '@/features/issues/useIssueSort';
+import { SavedViewBar } from '@/features/saved-views/SavedViewBar';
+import { useSavedView } from '@/features/saved-views/useSavedView';
+import { teamScope } from '@/features/saved-views/scope';
 import { LabelChips } from '@/features/labels/LabelChips';
-import { FilterMenu, type FilterCategory, type FilterSelections } from '@/components/FilterMenu';
+import { FilterMenu, type FilterCategory } from '@/components/FilterMenu';
+import {
+  applyBoardView,
+  useBoardView,
+  useFilterParams,
+  useSearchParam,
+  type BoardView,
+} from '@/components/filterParams';
 import { issueSharedFilterParams, issueSharedFilters } from '@/features/issues/issueFilters';
 import { t } from '@/i18n';
 import { cn } from '@/lib/utils';
@@ -31,7 +41,13 @@ import { useCycleLookup, useCycles, useFocusedCycle, useResolvedCycleId } from '
 import { CycleInsightsButton } from '@/features/cycles/CycleInsights';
 import { useIssueSelection, type IssueSelection } from '@/features/issues/useIssueSelection';
 import { BulkActionBar, buildCycleOptions } from '@/features/issues/BulkActionBar';
-import { TaskStatus, TeamIssueType, type TaskLabelConfig, type TeamStatusConfig } from '@/types/enums';
+import {
+  IssueKind,
+  TaskStatus,
+  TeamIssueType,
+  type TaskLabelConfig,
+  type TeamStatusConfig,
+} from '@/types/enums';
 import type { CycleDto, TaskDto, TeamDto } from '@/types/dto';
 import { useDeleteTask, useSetTaskStatus, useTasks } from './api';
 
@@ -74,15 +90,7 @@ export function MyTasksPage({ teamId, teamName, titleIcon, shareTeam }: MyTasksP
   // Board is the default and kept out of the query for clean URLs; ?view=list |
   // ?view=timeline survive reloads and are shareable (same pattern as the roadmap board).
   const [searchParams, setSearchParams] = useSearchParams();
-  const viewParam = searchParams.get('view');
-  const view: 'board' | 'list' | 'timeline' =
-    viewParam === 'list' ? 'list' : viewParam === 'timeline' ? 'timeline' : 'board';
-  const setView = (v: 'board' | 'list' | 'timeline') => {
-    const next = new URLSearchParams(searchParams);
-    if (v === 'board') next.delete('view');
-    else next.set('view', v);
-    setSearchParams(next, { replace: true });
-  };
+  const [view, setView] = useBoardView();
 
   // Sub-tasks (a task with a parentId) share the board with top-level tasks.
   // This toggle hides them so the board reads as just the parent work items.
@@ -113,8 +121,12 @@ export function MyTasksPage({ teamId, teamName, titleIcon, shareTeam }: MyTasksP
   // the banner carries the rhythm, so the toolbar's ambient chip stands down.
   const focusedCycle = useFocusedCycle(shareTeam, cycleParam);
 
-  const [filters, setFilters] = useState<FilterSelections>({});
-  const [search, setSearch] = useState('');
+  // Both ride in the URL (`?f.<category>=` and `?q=`), like `view`, `subtasks`,
+  // `cycle` and the sort below — so Back out of a task lands on the list you
+  // were actually looking at, and a filtered board survives a reload and can be
+  // pasted to a teammate. See `filterParams.ts`.
+  const [filters, setFilters] = useFilterParams();
+  const [search, setSearch] = useSearchParam();
   // List-view ordering only (see `SortMenu`), and opt-in: until the user picks
   // one, neither param is sent, so board, timeline and a fresh list all keep the
   // ordering they have today. It rides in ?sort=&dir= like `view` above, so a
@@ -159,6 +171,29 @@ export function MyTasksPage({ teamId, teamName, titleIcon, shareTeam }: MyTasksP
   const { data: usersData } = useUsers({ limit: 100 }, canManageDelivery);
   const { data: projectsData } = useProjects({ limit: 100 });
   const { data: roadmaps } = useRoadmaps();
+
+  // `?sv=<id>` names a saved view to open — same contract as the workspace
+  // board: the view writes its filters, search, view and sort into the URL as
+  // ordinary params, so `sv` is only ever a label on a state the URL fully
+  // describes. There's no kind switch here because every row is a task.
+  const savedView = useSavedView({
+    // `status` isn't checked, for the same reason as the bug board: another
+    // team's status keys *should* be dropped, but `columns` is also empty on
+    // first render, which would drop valid ones. A stale key matches nothing.
+    valid: {
+      ...(projectsData ? { projectId: new Set(projectsData.items.map((p) => p.id)) } : {}),
+      ...(roadmaps
+        ? { roadmapItemId: new Set(roadmaps.flatMap((r) => (r.items ?? []).map((i) => i.id))) }
+        : {}),
+    },
+    write: (next, q) => {
+      applyBoardView(next, q.view);
+      // A task has no severity, and `useIssueSort` here reads without it — so a
+      // view carrying that field would write a `?sort=` the menu can't show or
+      // undo. Drop it to "no sort" instead.
+      applyIssueSort(next, q.sort?.field === 'severity' ? null : q.sort);
+    },
+  });
 
   // Bulk multi-select lives in the List view and only on a team board — a personal
   // queue has no shared columns/cycle to move issues between. The selection stays
@@ -232,6 +267,23 @@ export function MyTasksPage({ teamId, teamName, titleIcon, shareTeam }: MyTasksP
       sort={isList ? <SortMenu value={sort} onChange={setSort} /> : undefined}
       filtersEnd={
         <>
+          {/* Only a team board can save a view: the scope key is the team's, and
+              it's what sends the view back to *this* board when reopened. The
+              standalone "Assigned to me" queue is already covered by the
+              workspace board's `issues-me` scope. */}
+          {teamId && (
+            <SavedViewBar
+              kind={IssueKind.TASK}
+              view={view}
+              filters={filters}
+              sort={sort}
+              search={search}
+              scope={teamScope(teamId)}
+              views={savedView.views}
+              activeView={savedView.activeView}
+              onSaved={savedView.onSaved}
+            />
+          )}
           {/* Insights lives in the cycle bar; that bar only exists when the board
               is scoped to one cycle, so it falls back to the toolbar here — one
               button on screen, never two. */}
@@ -247,7 +299,7 @@ export function MyTasksPage({ teamId, teamName, titleIcon, shareTeam }: MyTasksP
       banner={<CycleBoardBanner team={shareTeam} value={cycleParam} onChange={setCycleParam} />}
       view={{
         value: view,
-        onChange: (v) => setView(v as 'board' | 'list' | 'timeline'),
+        onChange: (v) => setView(v as BoardView),
         options: [
           { value: 'board', label: t('tasks.viewBoard'), icon: <LayoutGrid /> },
           { value: 'list', label: t('tasks.viewList'), icon: <List /> },
