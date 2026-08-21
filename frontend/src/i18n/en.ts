@@ -825,6 +825,17 @@ export const en = {
   'savedViews.name': 'View name',
   'savedViews.share': 'Share with the workspace',
   'savedViews.shareHint': 'Anyone in the workspace can open and use this view.',
+  // The picker beside the save actions. Its trigger shows the open view's name,
+  // falling back to this when the board is on no saved view.
+  'savedViews.pick': 'Views',
+  // The picker's two groups. They're split because they aren't the same thing
+  // to a user: mine are mine to rename and delete, shared ones belong to
+  // someone else and can change under me.
+  'savedViews.mine': 'My views',
+  'savedViews.shared': 'Shared with me',
+  // Tooltip on the small people glyph marking one of my own views as shared.
+  'savedViews.sharedBadge': 'Shared with the workspace',
+  'savedViews.confirmDelete': 'Delete this saved view?',
   // Shown when `?sv=` names a view that's gone (deleted) or not shared with
   // this user — the board opens with its default filters instead of blank.
   'savedViews.cannotOpen': "This view is no longer available — showing the default board.",

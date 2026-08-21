@@ -57,6 +57,10 @@ export class SavedViewsController {
         name: dto.name,
         icon: dto.icon,
         shared: dto.shared,
+        // Which board the view reopens on. Left undefined by an older client,
+        // which the entity resolves to the schema default (`issues`) — the
+        // board every saved view meant before team boards could save one.
+        scope: dto.scope,
         query: dto.query as unknown as SavedViewQuery,
       },
     });

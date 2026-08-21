@@ -22,3 +22,13 @@ export interface SavedViewQuery {
 export const SAVED_VIEW_SCHEMA_VERSION = 1;
 export const SAVED_VIEW_NAME_MAX = 60;
 export const SAVED_VIEW_PER_USER_MAX = 50;
+
+/** Board mà view thuộc về, dạng *key* chứ không phải path: `issues`,
+ *  `issues-me`, `team:<id>`. Client mới là nơi đổi key thành URL (xem
+ *  `saved-views/scope.ts` bên frontend), nên ở đây chỉ chấp nhận đúng hình dạng
+ *  đó — không `/`, không `.`, không khoảng trắng, và nhiều nhất một dấu `:` làm
+ *  dấu phân cách. Một view shared do một người viết ra nhưng cả workspace mở
+ *  được, nên nếu cột này chứa được path thì `//evil.example` sẽ thành href
+ *  protocol-relative, tức open redirect núp dưới dạng saved view. */
+export const SAVED_VIEW_SCOPE_PATTERN = /^[a-z][a-z0-9-]*(:[A-Za-z0-9_-]+)?$/;
+export const SAVED_VIEW_SCOPE_MAX = 80;

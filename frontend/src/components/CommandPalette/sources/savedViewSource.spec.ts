@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SavedViewDto } from '@/types/dto';
+import { SCOPE_ISSUES, SCOPE_ISSUES_ME, teamScope } from '@/features/saved-views/scope';
 import { savedViewSource } from './savedViewSource';
 
 const view = (over: Partial<SavedViewDto> = {}): SavedViewDto => ({
@@ -8,7 +9,7 @@ const view = (over: Partial<SavedViewDto> = {}): SavedViewDto => ({
   name: 'My triage',
   icon: 'inbox',
   color: null,
-  scope: 'team',
+  scope: SCOPE_ISSUES,
   shared: false,
   kind: 'bug',
   view: 'board',
@@ -54,6 +55,19 @@ describe('savedViewSource', () => {
         run: { to: '/issues?sv=v2' },
       },
     ]);
+  });
+
+  it('view lưu ở board khác mở đúng board đó, không phải /issues', () => {
+    expect(savedViewSource([view({ id: 'v4', scope: teamScope('t-7') })])[0].run).toEqual({
+      to: '/teams/t-7?sv=v4',
+    });
+    expect(savedViewSource([view({ id: 'v5', scope: SCOPE_ISSUES_ME })])[0].run).toEqual({
+      to: '/issues/me?sv=v5',
+    });
+  });
+
+  it('scope lạ hoặc trống (view lưu trước khi có scope) vẫn rơi về /issues thay vì một route không tồn tại', () => {
+    expect(savedViewSource([view({ id: 'v6', scope: '' })])[0].run).toEqual({ to: '/issues?sv=v6' });
   });
 
   it('giữ nguyên thứ tự đầu vào — không tự sắp xếp lại (server đã sắp theo order)', () => {

@@ -18,7 +18,7 @@ import {
   NavLeafItem,
   NavParentItem,
   ROW,
-  SavedViewNavItem,
+  SavedViewNavList,
   SidebarCreateMenu,
   TeamNavList,
   useNavGroups,
@@ -178,15 +178,13 @@ export function ClassicSidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
                 onToggle={() => toggleSection('savedViews')}
                 className={cn(collapsed && 'md:hidden')}
               />
-              {sectionBodyOpen('savedViews') &&
-                savedViews.map((view) => (
-                  <SavedViewNavItem
-                    key={view.id}
-                    view={view}
-                    collapsed={collapsed}
-                    onNavigate={onCloseMobile}
-                  />
-                ))}
+              {sectionBodyOpen('savedViews') && (
+                <SavedViewNavList
+                  views={savedViews}
+                  collapsed={collapsed}
+                  onNavigate={onCloseMobile}
+                />
+              )}
             </div>
             <div className={cn('mx-2 border-t border-sidebar-border', collapsed && 'md:mx-1')} />
           </>

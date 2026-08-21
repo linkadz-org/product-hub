@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { CalendarRange, LayoutGrid, List } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
@@ -10,16 +10,16 @@ import { t } from '@/i18n';
 import { BOARD_GUTTER, IssueBoardLayout } from '@/components/IssueBoardLayout';
 import { IssueTimelineView } from '@/features/issues/IssueTimelineView';
 import { SortMenu } from '@/features/issues/SortMenu';
-import { useIssueSort } from '@/features/issues/useIssueSort';
+import { applyIssueSort, useIssueSort } from '@/features/issues/useIssueSort';
+import { SavedViewBar } from '@/features/saved-views/SavedViewBar';
+import { useSavedView } from '@/features/saved-views/useSavedView';
+import { teamScope } from '@/features/saved-views/scope';
 import { Icon } from '@/components/Icon';
 import { BackLink } from '@/components/BackLink';
 import { BoardCard, BoardCardAge, KanbanBoard, KanbanCardToolbar } from '@/components/KanbanBoard';
 import { LabelChips } from '@/features/labels/LabelChips';
-import {
-  FilterMenu,
-  type FilterCategory,
-  type FilterSelections,
-} from '@/components/FilterMenu';
+import { FilterMenu, type FilterCategory } from '@/components/FilterMenu';
+import { applyBoardView, useBoardView, useFilterParams, useSearchParam, type BoardView } from '@/components/filterParams';
 import { issueSharedFilterParams, issueSharedFilters } from '@/features/issues/issueFilters';
 import { useUsers } from '@/features/users/api';
 import { useProjects } from '@/features/projects/api';
@@ -29,6 +29,7 @@ import {
   BUG_SEVERITY_LABEL,
   BugSeverity,
   BugStatus,
+  IssueKind,
   TeamIssueType,
 } from '@/types/enums';
 import type { TaskLabelConfig } from '@/types/enums';
@@ -120,18 +121,15 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
   const caseName = params.get('case') || undefined;
   const reportId = params.get('reportId') || undefined;
 
-  const [search, setSearch] = useState('');
-  const [filters, setFilters] = useState<FilterSelections>({});
+  // Both ride in the URL (`?q=` and `?f.<category>=`), like `view`, `cycle` and
+  // the sort below — so Back out of a bug lands on the list you were actually
+  // looking at, and a filtered board can be reloaded or shared. The `f.` prefix
+  // is what keeps the `projectId` *filter* clear of the `?projectId=` above,
+  // which scopes the whole board; see `filterParams.ts`.
+  const [search, setSearch] = useSearchParam();
+  const [filters, setFilters] = useFilterParams();
   // Board is default and kept out of the URL; ?view=list | ?view=timeline are shareable.
-  const viewParam = params.get('view');
-  const view: 'board' | 'list' | 'timeline' =
-    viewParam === 'list' ? 'list' : viewParam === 'timeline' ? 'timeline' : 'board';
-  const setView = (v: 'board' | 'list' | 'timeline') => {
-    const next = new URLSearchParams(params);
-    if (v === 'board') next.delete('view');
-    else next.set('view', v);
-    setParams(next, { replace: true });
-  };
+  const [view, setView] = useBoardView();
   const isList = view === 'list';
   // List-view ordering only (see `SortMenu`), and opt-in: until the user picks
   // one, neither param is sent, so board, timeline and a fresh list all keep the
@@ -185,6 +183,25 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
   // People + projects are only needed to label the filter options.
   const { data: usersData } = useUsers({ limit: 100 }, canManageDelivery);
   const { data: projectsData } = useProjects({ limit: 100 });
+
+  // `?sv=<id>` names a saved view to open — same contract as the workspace
+  // board: the view writes its filters, search, view and sort into the URL as
+  // ordinary params, so `sv` is only ever a label on a state the URL fully
+  // describes. Only this board's own half is passed in; there's no kind switch
+  // here because every row is a bug.
+  const savedView = useSavedView({
+    // `status` isn't checked: a saved view can carry another team's status keys,
+    // and this board's columns are only this team's — dropping them would be
+    // right, but `columns` also arrives empty on first render, which would drop
+    // a *valid* selection instead. Left alone, a stale key just matches nothing.
+    valid: projectsData ? { projectId: new Set(projectsData.items.map((p) => p.id)) } : {},
+    write: (next, q) => {
+      applyBoardView(next, q.view);
+      // Severity is always a real ordering here, so unlike the workspace board
+      // there's nothing to strip on the way in.
+      applyIssueSort(next, q.sort);
+    },
+  });
 
   // Bulk multi-select — List view, team boards only (see MyTasksPage for the note).
   const selection = useIssueSelection();
@@ -286,6 +303,23 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
       sort={isList ? <SortMenu value={sort} onChange={setSort} severity /> : undefined}
       filtersEnd={
         <>
+          {/* Only a team board can save a view: the scope key is the team's, and
+              it's what sends the view back to *this* board when reopened. The
+              standalone and project-scoped boards have no such place to return
+              to, so they get no bar rather than a view that lands elsewhere. */}
+          {teamId && (
+            <SavedViewBar
+              kind={IssueKind.BUG}
+              view={view}
+              filters={filters}
+              sort={sort}
+              search={search}
+              scope={teamScope(teamId)}
+              views={savedView.views}
+              activeView={savedView.activeView}
+              onSaved={savedView.onSaved}
+            />
+          )}
           {/* Insights lives in the cycle bar; that bar only exists when the board
               is scoped to one cycle, so it falls back to the toolbar here — one
               button on screen, never two. */}
@@ -301,7 +335,7 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
       banner={<CycleBoardBanner team={shareTeam} value={cycleParam} onChange={setCycleParam} />}
       view={{
         value: view,
-        onChange: (v) => setView(v as 'board' | 'list' | 'timeline'),
+        onChange: (v) => setView(v as BoardView),
         options: [
           { value: 'board', label: t('tasks.viewBoard'), icon: <LayoutGrid /> },
           { value: 'list', label: t('tasks.viewList'), icon: <List /> },

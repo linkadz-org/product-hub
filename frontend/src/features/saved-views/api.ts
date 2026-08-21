@@ -32,8 +32,15 @@ function useInvalidate() {
 export function useCreateSavedView() {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: (input: { name: string; icon?: string; shared?: boolean; query: SavedViewQuery }) =>
-      apiPost<SavedViewDto>('/saved-views', input),
+    mutationFn: (input: {
+      name: string;
+      icon?: string;
+      shared?: boolean;
+      /** Which board this view reopens on — a key, never a path (see `scope.ts`).
+       *  Omitted means the workspace Issues board, the backend's own default. */
+      scope?: string;
+      query: SavedViewQuery;
+    }) => apiPost<SavedViewDto>('/saved-views', input),
     onSuccess: invalidate,
   });
 }

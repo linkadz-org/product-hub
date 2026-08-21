@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canDeleteSavedView, isSavedViewActive, savedViewIcon } from './navPrimitives';
+import { canDeleteSavedView, savedViewIcon } from './navPrimitives';
 import type { SavedViewDto } from '@/types/dto';
 
 function view(overrides: Partial<SavedViewDto> = {}): SavedViewDto {
@@ -30,24 +30,6 @@ describe('savedViewIcon', () => {
 
   it('dùng icon riêng của view khi có', () => {
     expect(savedViewIcon(view({ icon: 'bug' }))).toBe('bug');
-  });
-});
-
-describe('isSavedViewActive', () => {
-  it('true khi đang ở /issues với đúng ?sv=<id>', () => {
-    expect(isSavedViewActive('/issues', '?sv=sv-1', 'sv-1')).toBe(true);
-  });
-
-  it('false khi ?sv= trỏ tới view khác', () => {
-    expect(isSavedViewActive('/issues', '?sv=sv-2', 'sv-1')).toBe(false);
-  });
-
-  it('false khi không có tham số sv nào trên URL', () => {
-    expect(isSavedViewActive('/issues', '', 'sv-1')).toBe(false);
-  });
-
-  it('false khi không đứng ở /issues, kể cả khi sv khớp', () => {
-    expect(isSavedViewActive('/roadmaps', '?sv=sv-1', 'sv-1')).toBe(false);
   });
 });
 
