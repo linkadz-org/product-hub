@@ -1681,18 +1681,28 @@ export class McpUnlinkIssuesUseCase
 @Injectable()
 export class GetMcpEventsUseCase
   implements
-    IUsecaseExecute<{ tenantId: string; query: PaginationDto }, Result<McpEventPaginationResponse>>
+    IUsecaseExecute<
+      { tenantId: string; userId: string; role: Role; query: PaginationDto },
+      Result<McpEventPaginationResponse>
+    >
 {
   constructor(@Inject(IMcpEventRepository) private readonly events: IMcpEventRepository) {}
 
   async execute({
     tenantId,
+    userId,
+    role,
     query,
   }: {
     tenantId: string;
+    userId: string;
+    role: Role;
     query: PaginationDto;
   }): Promise<Result<McpEventPaginationResponse>> {
-    return Result.ok(await this.events.findByTenant(tenantId, query));
+    // Admin sees the whole workspace's history; everyone else sees only events
+    // attributed to their own account, matching the API keys scoping above.
+    const scopeUserId = role === Role.ADMIN ? undefined : userId;
+    return Result.ok(await this.events.findByTenant(tenantId, query, scopeUserId));
   }
 }
 

@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { IUsecaseExecute } from '@core/interfaces';
+import { IUsecaseExecute, Role } from '@core/interfaces';
 import { Result } from '@shared/logic/result';
 import { generateApiKey, hashApiKey } from '@module-shared/utils/api-key.util';
 import { CreateApiKeyDto } from '../dtos/api-key.dtos';
@@ -49,22 +49,48 @@ export class GenerateApiKeyUseCase
 
 @Injectable()
 export class GetApiKeysUseCase
-  implements IUsecaseExecute<{ tenantId: string }, Result<ApiKeyEntity[]>>
+  implements
+    IUsecaseExecute<{ tenantId: string; userId: string; role: Role }, Result<ApiKeyEntity[]>>
 {
   constructor(@Inject(IApiKeyRepository) private readonly keys: IApiKeyRepository) {}
-  async execute({ tenantId }: { tenantId: string }): Promise<Result<ApiKeyEntity[]>> {
-    return Result.ok(await this.keys.findByTenant(tenantId));
+  async execute({
+    tenantId,
+    userId,
+    role,
+  }: {
+    tenantId: string;
+    userId: string;
+    role: Role;
+  }): Promise<Result<ApiKeyEntity[]>> {
+    const keys = await this.keys.findByTenant(tenantId);
+    // Admin sees the whole tenant; everyone else sees only what they created —
+    // a key list is a list of credentials, so no role should enumerate another's.
+    return Result.ok(role === Role.ADMIN ? keys : keys.filter((k) => k.createdBy === userId));
   }
 }
 
 @Injectable()
 export class RevokeApiKeyUseCase
-  implements IUsecaseExecute<{ id: string; tenantId: string }, Result<void>>
+  implements
+    IUsecaseExecute<{ id: string; tenantId: string; userId: string; role: Role }, Result<void>>
 {
   constructor(@Inject(IApiKeyRepository) private readonly keys: IApiKeyRepository) {}
-  async execute({ id, tenantId }: { id: string; tenantId: string }): Promise<Result<void>> {
+  async execute({
+    id,
+    tenantId,
+    userId,
+    role,
+  }: {
+    id: string;
+    tenantId: string;
+    userId: string;
+    role: Role;
+  }): Promise<Result<void>> {
     const key = await this.keys.findById(id);
     if (!key || key.tenantId !== tenantId) return Result.fail('API key not found');
+    // Same "not found" (not "forbidden") for someone else's key, so a non-admin
+    // can't probe which ids exist outside their own.
+    if (role !== Role.ADMIN && key.createdBy !== userId) return Result.fail('API key not found');
     await this.keys.delete(id);
     return Result.ok();
   }

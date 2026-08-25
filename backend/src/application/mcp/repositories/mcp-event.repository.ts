@@ -12,8 +12,10 @@ export interface McpEventPaginationResponse {
 /** Port for the append-only log of everything MCP created. */
 export abstract class IMcpEventRepository {
   append: (event: McpEventEntity) => Promise<void>;
+  /** `userId`, when given, scopes the log to events attributed to that user. */
   findByTenant: (
     tenantId: string,
     query: PaginationDto,
+    userId?: string,
   ) => Promise<McpEventPaginationResponse>;
 }

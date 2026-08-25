@@ -9,7 +9,7 @@ import { api, setToken } from './api';
 import type { AuthResponse, UserDto } from '@/types/dto';
 import { Role } from '@/types/enums';
 
-interface AuthState {
+export interface AuthState {
   user: UserDto | null;
   loading: boolean;
   /** Workspace admin: people, settings, and deleting Roadmaps/OKRs. [admin] */
@@ -23,6 +23,9 @@ interface AuthState {
   /** Delivery management — archive/delete/share projects, delete bugs, assign
    *  work (needs the people list). [admin, product] */
   canManageDelivery: boolean;
+  /** Settings → API keys / MCP — connect an assistant with their own key.
+   *  [admin, product, developer] */
+  canAccessIntegrations: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (
     tenantName: string,
@@ -97,6 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const canWrite = isAdmin || role === Role.TESTER || role === Role.PRODUCT;
   const canEditDelivery = canWrite || role === Role.DEVELOPER;
   const canManageDelivery = isAdmin || role === Role.PRODUCT;
+  const canAccessIntegrations = canManageDelivery || role === Role.DEVELOPER;
 
   return (
     <AuthContext.Provider
@@ -107,6 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         canWrite,
         canEditDelivery,
         canManageDelivery,
+        canAccessIntegrations,
         login,
         register,
         logout,

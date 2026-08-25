@@ -17,6 +17,7 @@ import { RowsSkeleton } from '@/components/Skeletons';
 import { t } from '@/i18n';
 import { env } from '@/lib/env';
 import { timeAgo } from '@/lib/format';
+import { useAuth } from '@/lib/auth';
 import { ApiKeyScope, API_KEY_SCOPES, API_KEY_SCOPE_LABEL, McpEntity } from '@/types/enums';
 import type { CreatedApiKeyDto } from '@/types/dto';
 import { useGenerateApiKey } from '@/features/api-keys/api';
@@ -64,8 +65,9 @@ function toolVerb(tool: string): string {
  * everything runs on one machine.
  */
 export function McpSection() {
+  const { user } = useAuth();
   const generate = useGenerateApiKey();
-  const [name, setName] = useState(t('settings.mcpKeyNameDefault'));
+  const [name, setName] = useState(user?.name || t('settings.mcpKeyNameDefault'));
   const [scope, setScope] = useState<ApiKeyScope>(ApiKeyScope.READ_ONLY);
   const [created, setCreated] = useState<CreatedApiKeyDto | null>(null);
   const [endpoint, setEndpoint] = useState(

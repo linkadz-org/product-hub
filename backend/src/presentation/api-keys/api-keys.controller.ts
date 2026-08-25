@@ -22,16 +22,20 @@ export class ApiKeysController {
   ) {}
 
   @Get()
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'List API keys (masked, admin)' })
+  @Roles(Role.ADMIN, Role.PRODUCT, Role.DEVELOPER)
+  @ApiOperation({ summary: "List API keys (masked; admin sees all, others see only their own)" })
   async list(@AuthUser() auth: JwtPayload): Promise<ApiKeyResponseDto[]> {
-    const result = await this.getKeys.execute({ tenantId: auth.tenantId });
+    const result = await this.getKeys.execute({
+      tenantId: auth.tenantId,
+      userId: auth.userId,
+      role: auth.role,
+    });
     return ApiKeyMapper.toResponseDtoArray(result.getValue());
   }
 
   @Post()
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Generate an API key (secret shown once, admin)' })
+  @Roles(Role.ADMIN, Role.PRODUCT, Role.DEVELOPER)
+  @ApiOperation({ summary: 'Generate an API key (secret shown once)' })
   async create(
     @AuthUser() auth: JwtPayload,
     @Body() dto: CreateApiKeyDto,
@@ -47,13 +51,18 @@ export class ApiKeysController {
   }
 
   @Delete(':id')
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Revoke an API key (admin)' })
+  @Roles(Role.ADMIN, Role.PRODUCT, Role.DEVELOPER)
+  @ApiOperation({ summary: 'Revoke an API key (admin can revoke any; others only their own)' })
   async remove(
     @AuthUser() auth: JwtPayload,
     @Param('id') id: string,
   ): Promise<{ ok: true }> {
-    const result = await this.revoke.execute({ id, tenantId: auth.tenantId });
+    const result = await this.revoke.execute({
+      id,
+      tenantId: auth.tenantId,
+      userId: auth.userId,
+      role: auth.role,
+    });
     if (result.isFailure) throw new EntityNotFoundException(result.error as string);
     return { ok: true };
   }
