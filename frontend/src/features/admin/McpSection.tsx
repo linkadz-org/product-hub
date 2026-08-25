@@ -27,6 +27,19 @@ import { useMcpEvents } from '@/features/mcp/api';
 const KEY_PLACEHOLDER = 'phk_your_key_here';
 const PAGE_SIZE = 20;
 
+/** Which client the Step 2 snippet is written for. Claude Code registers a
+ *  server with a CLI command; Antigravity has no CLI for this and instead
+ *  reads a shared JSON config, so the two need entirely different snippets. */
+type McpClient = 'claude-code' | 'antigravity';
+const MCP_CLIENTS: McpClient[] = ['claude-code', 'antigravity'];
+const MCP_CLIENT_LABEL: Record<McpClient, string> = {
+  'claude-code': 'Claude Code',
+  antigravity: 'Antigravity',
+};
+
+/** Remembers the chosen client, same reasoning as the endpoint below. */
+const CLIENT_KEY = 'ph_mcp_client';
+
 /** Remembers an edited endpoint, so the tab doesn't forget the public host. */
 const ENDPOINT_KEY = 'ph_mcp_endpoint';
 
@@ -73,22 +86,50 @@ export function McpSection() {
   const [endpoint, setEndpoint] = useState(
     () => localStorage.getItem(ENDPOINT_KEY) || defaultEndpoint(),
   );
+  const [client, setClient] = useState<McpClient>(
+    () => (localStorage.getItem(CLIENT_KEY) as McpClient | null) || 'claude-code',
+  );
   const [limit, setLimit] = useState(PAGE_SIZE);
   const { data, isLoading } = useMcpEvents(1, limit);
 
   const events = data?.items ?? [];
   const total = data?.total ?? 0;
 
-  const addCommand = (key: string) =>
+  const claudeCodeCommand = (key: string) =>
     [
       'claude mcp add --transport http product-os \\',
       `  ${endpoint.trim() || defaultEndpoint()} \\`,
       `  --header "x-api-key: ${key}"`,
     ].join('\n');
 
+  // Antigravity has no add command — it reads mcpServers from a shared JSON
+  // config (IDE, CLI and SDK all read the same file), and uses `serverUrl`
+  // rather than `url` for a remote HTTP server.
+  const antigravityConfig = (key: string) =>
+    JSON.stringify(
+      {
+        mcpServers: {
+          'product-os': {
+            serverUrl: endpoint.trim() || defaultEndpoint(),
+            headers: { 'x-api-key': key },
+          },
+        },
+      },
+      null,
+      2,
+    );
+
+  const snippetFor = (key: string) =>
+    client === 'antigravity' ? antigravityConfig(key) : claudeCodeCommand(key);
+
   function onEndpointChange(value: string) {
     setEndpoint(value);
     localStorage.setItem(ENDPOINT_KEY, value);
+  }
+
+  function onClientChange(value: McpClient) {
+    setClient(value);
+    localStorage.setItem(CLIENT_KEY, value);
   }
 
   function onGenerate() {
@@ -143,6 +184,20 @@ export function McpSection() {
             <div className="space-y-4">
               <div className="sm:max-w-lg">
                 <label
+                  htmlFor="mcp-client"
+                  className="mb-1.5 block text-xs font-medium text-muted-foreground"
+                >
+                  {t('settings.mcpClient')}
+                </label>
+                <Select
+                  id="mcp-client"
+                  value={client}
+                  onValueChange={(v) => onClientChange(v as McpClient)}
+                  options={MCP_CLIENTS.map((c) => ({ value: c, label: MCP_CLIENT_LABEL[c] }))}
+                />
+              </div>
+              <div className="sm:max-w-lg">
+                <label
                   htmlFor="mcp-endpoint"
                   className="mb-1.5 block text-xs font-medium text-muted-foreground"
                 >
@@ -158,7 +213,12 @@ export function McpSection() {
                   {t('settings.mcpEndpointHint')}
                 </p>
               </div>
-              <Snippet code={addCommand(KEY_PLACEHOLDER)} />
+              <Snippet code={snippetFor(KEY_PLACEHOLDER)} />
+              {client === 'antigravity' && (
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  {t('settings.mcpAntigravityHint')}
+                </p>
+              )}
             </div>
           </Step>
 
@@ -241,8 +301,10 @@ export function McpSection() {
         <div className="mt-3 space-y-4">
           <Snippet code={created?.key ?? ''} />
           <div>
-            <p className="mb-2 text-sm text-muted-foreground">{t('settings.mcpReadyHint')}</p>
-            <Snippet code={addCommand(created?.key ?? '')} />
+            <p className="mb-2 text-sm text-muted-foreground">
+              {t(client === 'antigravity' ? 'settings.mcpReadyHintAntigravity' : 'settings.mcpReadyHint')}
+            </p>
+            <Snippet code={snippetFor(created?.key ?? '')} />
           </div>
         </div>
       </Dialog>

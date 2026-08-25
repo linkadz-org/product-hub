@@ -104,7 +104,13 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
   }, [collapsed]);
   const { width, dragging, handle } = useSidebarWidth({ storageKey: WIDTH_KEY, ...SIDEBAR_W });
 
-  const areas = NAV_AREAS.filter((a) => !a.adminOnly || isAdmin);
+  const areas = NAV_AREAS.filter(
+    (a) => !a.adminOnly || isAdmin || (a.integrationsAlso && canAccessIntegrations),
+  ).map((a) =>
+    // More's default landing is People, which a non-admin can't see — send
+    // them straight to the one row they can (Settings) instead of a dead end.
+    a.id === 'more' && !isAdmin && canAccessIntegrations ? { ...a, path: '/admin/settings' } : a,
+  );
   const [selectedId, setSelectedId] = useSelectedArea(findAreaId(pathname, search), areas[0].id);
   // An area can go away under a remembered id — a non-admin whose browser still
   // remembers `more`. Falling back keeps the panel from rendering empty.
@@ -317,7 +323,9 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
             );
           }
 
-          const items = section.items.filter((i) => !i.adminOnly || isAdmin);
+          const items = section.items.filter(
+            (i) => !i.adminOnly || isAdmin || (i.integrationsAlso && canAccessIntegrations),
+          );
           if (items.length === 0) return null;
           // A headingless section is the panel's lead group: nothing to toggle,
           // so it's always open.

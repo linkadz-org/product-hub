@@ -119,9 +119,13 @@ export function AdminSettingsPage() {
   // reload and is linkable — same pattern as the boards' ?view=.
   const [searchParams, setSearchParams] = useSearchParams();
   const param = searchParams.get('tab');
-  const activeTeam = param?.startsWith(TEAM_TAB)
-    ? activeTeams.find((x) => x.id === param.slice(TEAM_TAB.length))
-    : undefined;
+  // Team config (statuses/labels/cycles) is ADMIN/PRODUCT territory, same as
+  // the team endpoints' own @Roles — a Developer's ?tab=team:<id> is ignored
+  // rather than mounting TeamSettingsSection for them.
+  const activeTeam =
+    canManageDelivery && param?.startsWith(TEAM_TAB)
+      ? activeTeams.find((x) => x.id === param.slice(TEAM_TAB.length))
+      : undefined;
   // Resolved against the *filtered* list, so hand-typing `?tab=webhooks` as a
   // non-admin falls back to Teams rather than mounting a section they can't read.
   const active = tabs.find((s) => s.key === param) ?? tabs[0];
@@ -173,7 +177,7 @@ export function AdminSettingsPage() {
             );
           })}
 
-          {activeTeams.length > 0 && (
+          {canManageDelivery && activeTeams.length > 0 && (
             <>
               <span className="mt-3 hidden px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground md:block">
                 {t('navgroup.teams')}

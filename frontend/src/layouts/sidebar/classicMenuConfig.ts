@@ -90,6 +90,12 @@ export const NAV_GROUPS: NavGroup[] = [
  */
 export const PROFILE_NAV_ITEMS: NavItem[] = [
   { path: '/admin/people', labelKey: 'nav.people', icon: 'people', adminOnly: true },
-  { path: '/admin/settings', labelKey: 'nav.settings', icon: 'settings', adminOnly: true },
+  {
+    path: '/admin/settings',
+    labelKey: 'nav.settings',
+    icon: 'settings',
+    adminOnly: true,
+    integrationsAlso: true,
+  },
   { path: '/design-patterns', labelKey: 'nav.designPatterns', icon: 'sparkles', adminOnly: true },
 ];

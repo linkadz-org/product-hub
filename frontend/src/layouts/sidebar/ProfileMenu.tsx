@@ -53,7 +53,7 @@ export function ProfileMenu({
   onCloseMobile: () => void;
   className?: string;
 }) {
-  const { user, logout, isAdmin } = useAuth();
+  const { user, logout, isAdmin, canAccessIntegrations } = useAuth();
   const { theme, setTheme } = useTheme();
   const { navStyle, setNavStyle } = useNavStyle();
   const navigate = useNavigate();
@@ -83,7 +83,9 @@ export function ProfileMenu({
       path: '/profile',
     },
     ...(navStyle === 'classic'
-      ? PROFILE_NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin).map((item) => ({
+      ? PROFILE_NAV_ITEMS.filter(
+          (item) => !item.adminOnly || isAdmin || (item.integrationsAlso && canAccessIntegrations),
+        ).map((item) => ({
           icon: <Icon name={item.icon} size={16} className="shrink-0 text-muted-foreground" />,
           label: t(item.labelKey),
           path: item.path,

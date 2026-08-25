@@ -29,6 +29,10 @@ export interface NavItem {
   icon: IconName;
   /** Show only to admins. */
   adminOnly?: boolean;
+  /** Also show to Product/Developer, alongside admins — for the one `adminOnly`
+   *  row (Settings) whose page narrows itself further per-tab, so a role with
+   *  no tabs to see there still shouldn't be offered the row at all. */
+  integrationsAlso?: boolean;
   /** Route matching should be exact (index route). */
   end?: boolean;
   /** Render the inbox unread badge. */
@@ -91,6 +95,10 @@ export interface NavArea {
   path: string;
   /** Hide the whole area (rail button included) from non-admins. */
   adminOnly?: boolean;
+  /** Also open the area to Product/Developer — for More, whose People and
+   *  Design patterns rows stay admin-only via their own `adminOnly`, but whose
+   *  Settings row (`integrationsAlso`) they need a way to reach. */
+  integrationsAlso?: boolean;
   sections: NavSection[];
 }
 
@@ -216,12 +224,22 @@ export const NAV_AREAS: NavArea[] = [
     icon: 'more',
     path: '/admin/people',
     adminOnly: true,
+    // Settings narrows itself per-tab (API keys/MCP open to Product/Developer
+    // too), so the area itself has to admit them — the row-level `adminOnly`
+    // on People and Design patterns still keeps those two admin-only.
+    integrationsAlso: true,
     sections: [
       {
         key: 'more.admin',
         items: [
           { path: '/admin/people', labelKey: 'nav.people', icon: 'people', adminOnly: true },
-          { path: '/admin/settings', labelKey: 'nav.settings', icon: 'settings', adminOnly: true },
+          {
+            path: '/admin/settings',
+            labelKey: 'nav.settings',
+            icon: 'settings',
+            adminOnly: true,
+            integrationsAlso: true,
+          },
           {
             path: '/design-patterns',
             labelKey: 'nav.designPatterns',
