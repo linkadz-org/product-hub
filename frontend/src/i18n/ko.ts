@@ -1485,6 +1485,55 @@ export const ko: Record<I18nKey, string> = {
   'tasks.addToColumn': '태스크 추가',
   'bugs.addToColumn': '버그 추가',
 
+  // 안정성 뷰 — 선택한 심각도의 버그가 기간별로 얼마나 등록됐는지와, 그 시점의
+  // 미해결 건수. `sev*Hint`는 범례에서 각 심각도가 어떤 버그인지 설명합니다.
+  'bugs.viewStability': '안정성',
+  'bugs.stability.sevCritical': 'P0 — 치명적',
+  'bugs.stability.sevCriticalHint':
+    '앱이 죽거나 데이터가 사라지거나, 우회 방법 없이 주요 흐름이 막힙니다. 릴리스를 멈추는 버그입니다.',
+  'bugs.stability.sevHigh': 'P1 — 높음',
+  'bugs.stability.sevHighHint':
+    '핵심 기능이 잘못 동작합니다. 우회는 가능하지만 불편해서, 이번 사이클에 고쳐야 합니다.',
+  'bugs.stability.sevMedium': 'P2 — 보통',
+  'bugs.stability.sevMediumHint':
+    '부가 기능이 어긋나거나 우회가 쉬운 경우입니다. 일반 일정에 넣어 처리합니다.',
+  'bugs.stability.sevLow': 'P3 — 낮음',
+  'bugs.stability.sevLowHint': '표시나 문구 수준의 문제로 아무도 막히지 않습니다. 여유 있을 때 고칩니다.',
+  'bugs.stability.resolved': '해결됨',
+  'bugs.stability.stillOpen': '미해결',
+  'bugs.stability.stillOpenHint':
+    '구간이 끝난 시점에 아직 고쳐지지 않은 집계 대상 버그 — 지금 안고 있는 빚입니다.',
+  'bugs.stability.openNow': '건이 열려 있습니다',
+  'bugs.stability.period': '기간',
+  'bugs.stability.periodLength': '기간',
+  'bugs.stability.counting': '집계 대상',
+  'bugs.stability.countingHint': '심각도를 하나 이상 선택하세요.',
+  'bugs.stability.day': '일',
+  'bugs.stability.days': '일',
+  'bugs.stability.workingDays': '평일만 계산',
+  'bugs.stability.workingDaysOnHint':
+    '한 구간을 평일 기준으로 셉니다. 주말에 등록된 버그도 그대로 집계됩니다.',
+  'bugs.stability.workingDaysOffHint': '한 구간을 달력 날짜 기준으로 셉니다.',
+  'bugs.stability.tableView': '숫자로 보기',
+  'bugs.stability.trendOpened': '구간당 신규',
+  'bugs.stability.trendOpen': '미해결',
+  'bugs.stability.chartAria':
+    '구간별로 등록된 버그를 심각도별로 쌓은 막대와, 각 구간 종료 시점의 미해결 건수',
+  'bugs.stability.verdictImproving': '안정되는 중',
+  'bugs.stability.verdictImprovingHint':
+    '구간이 지날수록 버그가 줄고, 미해결 건수도 늘지 않고 있습니다.',
+  'bugs.stability.verdictSteady': '변화 없음',
+  'bugs.stability.verdictSteadyHint': '버그가 이전과 비슷한 속도로 등록되고 있습니다.',
+  'bugs.stability.verdictWorsening': '나빠지는 중',
+  'bugs.stability.verdictWorseningHint':
+    '버그가 더 빠르게 등록되거나, 미해결 건수가 계속 늘고 있습니다.',
+  'bugs.stability.verdictInsufficient': '데이터 부족',
+  'bugs.stability.verdictInsufficientHint':
+    '이 구간에는 추세를 판단할 만큼의 버그가 없습니다. 기간을 늘리거나 심각도를 더 선택해 보세요.',
+  'bugs.stability.error': '안정성 차트를 불러오지 못했습니다.',
+  'bugs.stability.empty': '이 구간에는 해당 심각도의 버그가 없습니다',
+  'bugs.stability.emptyHint': '심각도를 더 선택하거나, 기간을 늘려 더 이전까지 살펴보세요.',
+
   // Personal board — a private, owner-managed task board (only you + admins).
   'personal.title': '개인',
   'personal.subtitle': '나만의 보드입니다 — 나와 관리자만 볼 수 있습니다.',

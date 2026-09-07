@@ -2,6 +2,7 @@ import { CycleRollup } from '@application/cycles/domain/enums/cycle.enums';
 import { BurndownIssueRow } from '@application/cycles/domain/cycle-burndown';
 import type { BugStatDimension, RawBugStats } from '@application/mcp/domain/mcp-bug-stats';
 import { IssueEntity } from '../domain/entities/issue.entity';
+import { StabilityIssueRow } from '../domain/bug-stability';
 import { QueryIssueDto } from '../dtos/query-issue.dto';
 
 export interface IssuePaginationResponse {
@@ -90,6 +91,19 @@ export abstract class IIssueRepository {
     dimensions: BugStatDimension[],
     trend?: { unit: 'week' | 'month'; timezone: string },
   ) => Promise<RawBugStats>;
+  /**
+   * The rows the stability chart is reconstructed from: every bug of the given
+   * severities born on or before `until`, projected to its two timestamps.
+   *
+   * Deliberately **not** limited to the charted window — the "still open" line
+   * counts bugs however old, so a six-month-old critical that nobody closed has
+   * to be in the set. Only serious severities are fetched, which is what keeps
+   * that unbounded read small. Rules live in `domain/bug-stability.ts`.
+   */
+  bugsForStability: (
+    tenantId: string,
+    filter: { teamId?: string; projectId?: string; severities: string[]; until: Date },
+  ) => Promise<StabilityIssueRow[]>;
   save: (issue: IssueEntity) => Promise<void>;
   update: (issue: IssueEntity) => Promise<void>;
   delete: (id: string) => Promise<void>;

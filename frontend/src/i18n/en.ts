@@ -1541,6 +1541,59 @@ export const en = {
   'tasks.addToColumn': 'Add task',
   'bugs.addToColumn': 'Add bug',
 
+  // Stability view — bugs of the chosen severities opened per period, with the
+  // still-open count behind them. The QC board's "is the app settling down?"
+  // read-out. The `sev*Hint` lines are the legend's explanation of what each
+  // severity actually means, so two people reading the chart agree on the bars.
+  'bugs.viewStability': 'Stability',
+  'bugs.stability.sevCritical': 'P0 — Critical',
+  'bugs.stability.sevCriticalHint':
+    'App down, data lost, or the main flow blocked with no way around it. Stops a release.',
+  'bugs.stability.sevHigh': 'P1 — High',
+  'bugs.stability.sevHighHint':
+    'A core feature is wrong. There is a workaround, but it hurts — fix it this cycle.',
+  'bugs.stability.sevMedium': 'P2 — Medium',
+  'bugs.stability.sevMediumHint':
+    'A secondary feature misbehaves, or the workaround is easy. Schedule it normally.',
+  'bugs.stability.sevLow': 'P3 — Low',
+  'bugs.stability.sevLowHint':
+    'Cosmetic or minor wording. Nobody is blocked — fix it when there is room.',
+  'bugs.stability.resolved': 'Solved',
+  'bugs.stability.stillOpen': 'Still open',
+  'bugs.stability.stillOpenHint':
+    'Counted bugs left unfixed when the period closed — the pile you are carrying.',
+  'bugs.stability.openNow': 'open right now',
+  'bugs.stability.period': 'Period',
+  'bugs.stability.periodLength': 'Period',
+  'bugs.stability.counting': 'Counting',
+  'bugs.stability.countingHint': 'Pick at least one severity.',
+  'bugs.stability.day': 'day',
+  'bugs.stability.days': 'days',
+  'bugs.stability.workingDays': 'Working days only',
+  'bugs.stability.workingDaysOnHint':
+    'A period is that many working days. Bugs filed at the weekend still count.',
+  'bugs.stability.workingDaysOffHint': 'A period is that many calendar days.',
+  'bugs.stability.tableView': 'Show the numbers',
+  'bugs.stability.trendOpened': 'New per period',
+  'bugs.stability.trendOpen': 'Still open',
+  'bugs.stability.chartAria':
+    'Bugs opened in each period, stacked by severity, with the number still open at the end of each period',
+  'bugs.stability.verdictImproving': 'Settling down',
+  'bugs.stability.verdictImprovingHint':
+    'Fewer bugs are being found each period, and the open pile isn’t growing.',
+  'bugs.stability.verdictSteady': 'Holding steady',
+  'bugs.stability.verdictSteadyHint': 'Bugs are arriving at about the same rate as before.',
+  'bugs.stability.verdictWorsening': 'Getting worse',
+  'bugs.stability.verdictWorseningHint':
+    'Bugs are arriving faster, or the open pile keeps growing.',
+  'bugs.stability.verdictInsufficient': 'Not enough data',
+  'bugs.stability.verdictInsufficientHint':
+    'Too few bugs in this window to call a trend. Try a longer period, or count more severities.',
+  'bugs.stability.error': 'Couldn’t load the stability chart.',
+  'bugs.stability.empty': 'No bugs of these severities in this window',
+  'bugs.stability.emptyHint':
+    'Tick more severities, or use a longer period to look further back.',
+
   // Personal board — a private, owner-managed task board (only you + admins).
   'personal.title': 'Personal',
   'personal.subtitle': 'Your private board — only you and admins can see it.',

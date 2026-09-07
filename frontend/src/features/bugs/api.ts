@@ -1,7 +1,9 @@
+import { useQuery } from '@tanstack/react-query';
+import { apiGet } from '@/lib/api';
 import { makeIssueHooks } from '@/features/issues/hook-factory';
 import { IssueKind } from '@/types/enums';
 import type { IssueSortDir, IssueSortField } from '@/features/issues/api';
-import type { BugAttachment, BugDto } from '@/types/dto';
+import type { BugAttachment, BugDto, IssueStabilityDto } from '@/types/dto';
 import type { BugSeverity, BugStatus, CustomFieldValue } from '@/types/enums';
 
 /**
@@ -118,3 +120,40 @@ export const useUpdateBug = hooks.useUpdate;
  * (see `makeIssueHooks`). */
 export const useSetBugStatus = hooks.useSetStatus;
 export const useDeleteBug = hooks.useRemove;
+
+/** The stability chart's config — mirrors the backend `QueryBugStabilityDto`. */
+export interface StabilityQuery {
+  /** Scope to one team's bug list. Omitted on the workspace-wide `/bugs` route. */
+  teamId?: string;
+  projectId?: string;
+  /** Period length; working days rather than calendar days when `skipWeekends`. */
+  periodDays: number;
+  /** How many periods to draw, newest last. Not a user control — see
+   *  `STABILITY_PERIODS` in `StabilityView`. */
+  periods: number;
+  /** Which severities to count. Never empty: every number in the response (bars,
+   *  backlog line, verdict) describes exactly this set. */
+  severities: BugSeverity[];
+  skipWeekends: boolean;
+  /** The viewer's own today (`YYYY-MM-DD`), so the windows line up with the
+   *  calendar they're looking at rather than the server's UTC one. */
+  until: string;
+}
+
+/**
+ * Bugs of the chosen severities opened per period, plus the still-open count
+ * behind them — the QC stability read-out.
+ *
+ * Its own cache namespace (`bug-stability`), not `bugs`: this is an aggregate
+ * over history, so it must survive a board write untouched rather than being
+ * dropped by the list invalidation on every drag. `staleTime` is generous for
+ * the same reason — the shape of eight weeks doesn't move in a minute.
+ */
+export function useBugStability(query: StabilityQuery, enabled = true) {
+  return useQuery({
+    queryKey: ['bug-stability', query],
+    queryFn: () => apiGet<IssueStabilityDto>('/issues/stability', { ...query }),
+    enabled,
+    staleTime: 60_000,
+  });
+}

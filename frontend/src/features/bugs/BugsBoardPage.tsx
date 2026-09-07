@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { CalendarRange, LayoutGrid, List } from 'lucide-react';
+import { Activity, CalendarRange, LayoutGrid, List } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { Button, Checkbox } from '@/components/ui';
 import { AssigneeBadge } from '@/components/AssigneeBadge';
@@ -35,6 +35,7 @@ import {
 import type { TaskLabelConfig } from '@/types/enums';
 import type { BugDto, CycleDto, TeamDto } from '@/types/dto';
 import { useBugs, useDeleteBug, useSetBugStatus } from './api';
+import { StabilityView } from './StabilityView';
 import { useTeamStatuses, useTeamLabelsLookup } from '@/features/teams/api';
 import { TeamShareMenu } from '@/features/teams/TeamShareMenu';
 import {
@@ -131,6 +132,10 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
   // Board is default and kept out of the URL; ?view=list | ?view=timeline are shareable.
   const [view, setView] = useBoardView();
   const isList = view === 'list';
+  // The Stability tab is a chart over the board's whole history, not a list of
+  // issues — so none of the toolbar's narrowing controls apply to it (see the
+  // toolbar props below), and it renders before the list's loading/empty gates.
+  const isStability = view === 'stability';
   // List-view ordering only (see `SortMenu`), and opt-in: until the user picks
   // one, neither param is sent, so board, timeline and a fresh list all keep the
   // ordering they have today. It rides in ?sort=&dir= like `view` above, so a
@@ -291,17 +296,26 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
             : t('bugs.title'))
       }
       subtitle={teamName ? t('teams.issuesSubtitle') : undefined}
-      search={{ value: search, onChange: setSearch, placeholder: t('bugs.search') }}
+      // Search and Filter narrow a *list*. The Stability tab is an aggregate over
+      // every serious bug the board has ever had, so both stand down there rather
+      // than sitting inert above a chart they don't touch — which is also what
+      // leaves that tab with no toolbar row at all (see `IssueBoardLayout`).
+      search={
+        isStability ? undefined : { value: search, onChange: setSearch, placeholder: t('bugs.search') }
+      }
       filters={
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <FilterMenu size="default" categories={filterCategories} value={filters} onChange={setFilters} />
-        </div>
+        isStability ? undefined : (
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <FilterMenu size="default" categories={filterCategories} value={filters} onChange={setFilters} />
+          </div>
+        )
       }
       // Every row here is a bug, so severity is always a real ordering — and on a
       // list grouped by status column it orders *within* each column, which is how
       // the criticals sitting in "Open" surface.
       sort={isList ? <SortMenu value={sort} onChange={setSort} severity /> : undefined}
       filtersEnd={
+        isStability ? undefined : (
         <>
           {/* Only a team board can save a view: the scope key is the team's, and
               it's what sends the view back to *this* board when reopened. The
@@ -331,8 +345,13 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
           )}
           <CycleFilterSelect team={shareTeam} value={cycleParam} onChange={setCycleParam} />
         </>
+        )
       }
-      banner={<CycleBoardBanner team={shareTeam} value={cycleParam} onChange={setCycleParam} />}
+      banner={
+        isStability ? undefined : (
+          <CycleBoardBanner team={shareTeam} value={cycleParam} onChange={setCycleParam} />
+        )
+      }
       view={{
         value: view,
         onChange: (v) => setView(v as BoardView),
@@ -340,6 +359,7 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
           { value: 'board', label: t('tasks.viewBoard'), icon: <LayoutGrid /> },
           { value: 'list', label: t('tasks.viewList'), icon: <List /> },
           { value: 'timeline', label: t('boards.viewTimeline'), icon: <CalendarRange /> },
+          { value: 'stability', label: t('bugs.viewStability'), icon: <Activity /> },
         ],
       }}
       actions={
@@ -353,7 +373,14 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
         ) : undefined
       }
     >
-      {isLoading ? (
+      {/* Ahead of the list's loading/empty gates on purpose: the chart reads the
+          board's whole history, so it has something to say even when the current
+          list is empty — and it fetches its own aggregate, not these rows. */}
+      {isStability ? (
+        <div className={cn('min-h-0 flex-1 overflow-y-auto pb-6 pt-4', BOARD_GUTTER)}>
+          <StabilityView teamId={teamId} projectId={projectId} />
+        </div>
+      ) : isLoading ? (
         view === 'list' ? (
           <ListSkeleton inset />
         ) : view === 'timeline' ? (

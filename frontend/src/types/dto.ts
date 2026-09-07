@@ -894,6 +894,56 @@ export interface CycleBurndownDto {
   projects: CycleBurndownGroup[];
 }
 
+/** One period on the stability chart. Counts are for the whole period, not per day. */
+export interface IssueStabilityPoint {
+  /** Inclusive first day, `YYYY-MM-DD`. */
+  start: string;
+  /** Inclusive last day. */
+  end: string;
+  /** Calendar days spanned — longer than the period length when weekends are
+   *  skipped, so a "3 working days" bar can still say which dates it covers. */
+  days: number;
+  /** Critical bugs opened in the period (shown as P0). */
+  openedCritical: number;
+  /** High bugs opened in the period (shown as P1). */
+  openedHigh: number;
+  /** Medium bugs opened in the period; 0 unless medium is a counted severity. */
+  openedMedium: number;
+  /** Low bugs opened in the period; 0 unless low is a counted severity. */
+  openedLow: number;
+  /** The four counts added up — the bar's height. */
+  opened: number;
+  /** Counted bugs resolved during the period. */
+  resolved: number;
+  /** Counted bugs still open on the period's last day, however old. */
+  openAtEnd: number;
+}
+
+/**
+ * The QC stability read-out: bugs of the chosen severities opened per period
+ * (critical + high by default — read as P0 + P1), with the standing open count
+ * behind them. Both series are needed to call a trend — a falling open rate on a
+ * growing backlog means testing stopped, not that the app improved.
+ */
+export interface IssueStabilityDto {
+  periodDays: number;
+  skipWeekends: boolean;
+  /** Which severities these numbers cover, most serious first — also the order
+   *  the chart stacks them in. */
+  severities: BugSeverity[];
+  /** Oldest → newest, so the chart draws left to right. */
+  series: IssueStabilityPoint[];
+  totalOpened: number;
+  /** Still open on the final day. */
+  openNow: number;
+  /** Slope of the opened series as a fraction of its mean per period; negative =
+   *  falling. Scale-free, so a noisy team and a quiet one read the same. */
+  openedTrend: number;
+  /** The same slope over the still-open series. */
+  openTrend: number;
+  verdict: 'improving' | 'steady' | 'worsening' | 'insufficient';
+}
+
 /**
  * Cloud storage for uploaded media. Secrets are never returned — the two
  * `*Configured` booleans say whether one is stored, and the size caps drive the

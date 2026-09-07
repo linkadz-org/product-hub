@@ -15,6 +15,7 @@ import {
   MovedIssue,
 } from '@application/issues/repositories/issue.repository';
 import { IssueEntity } from '@application/issues/domain/entities/issue.entity';
+import { StabilityIssueRow } from '@application/issues/domain/bug-stability';
 import {
   BUG_SEVERITIES,
   BugSeverity,
@@ -581,6 +582,35 @@ export class IssueRepository
           : [],
       labelKeys: d.labelKeys ?? [],
       projectId: d.projectId ?? '',
+    }));
+  }
+
+  async bugsForStability(
+    tenantId: string,
+    filter: { teamId?: string; projectId?: string; severities: string[]; until: Date },
+  ): Promise<StabilityIssueRow[]> {
+    const match: FilterQuery<IssueDoc> = {
+      tenantId,
+      kind: IssueKind.BUG,
+      severity: { $in: filter.severities },
+      createdAt: { $lte: filter.until },
+    };
+    if (filter.teamId) match.teamId = filter.teamId;
+    if (filter.projectId) match.projectId = filter.projectId;
+
+    const docs = await this.model
+      .find(match, { createdAt: 1, updatedAt: 1, resolvedAt: 1, status: 1, severity: 1 })
+      .lean<Pick<IssueDoc, 'createdAt' | 'updatedAt' | 'resolvedAt' | 'status' | 'severity'>[]>()
+      .exec();
+
+    return docs.map((d) => ({
+      createdAt: d.createdAt,
+      updatedAt: d.updatedAt,
+      // `?? null` because a pre-`resolvedAt` row has the key absent, not null —
+      // the domain's `updatedAt` fallback keys off exactly that.
+      resolvedAt: d.resolvedAt ?? null,
+      status: d.status,
+      severity: d.severity ?? '',
     }));
   }
 

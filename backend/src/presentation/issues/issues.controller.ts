@@ -20,7 +20,12 @@ import {
   UpdateIssueUseCase,
   SetIssueStatusUseCase,
   DeleteIssueUseCase,
+  GetBugStabilityUseCase,
 } from '@application/issues/use-cases';
+import {
+  BugStabilityResponseDto,
+  QueryBugStabilityDto,
+} from '@application/issues/dtos/bug-stability.dto';
 import { CreateIssueDto } from '@application/issues/dtos/create-issue.dto';
 import { UpdateIssueDto } from '@application/issues/dtos/update-issue.dto';
 import { UpdateIssueStatusDto } from '@application/issues/dtos/update-issue-status.dto';
@@ -43,6 +48,7 @@ export class IssuesController {
     private readonly updateIssue: UpdateIssueUseCase,
     private readonly setStatus: SetIssueStatusUseCase,
     private readonly deleteIssue: DeleteIssueUseCase,
+    private readonly getStability: GetBugStabilityUseCase,
   ) {}
 
   @Get()
@@ -75,6 +81,22 @@ export class IssuesController {
     });
     if (result.isFailure) throw new EntityNotFoundException(result.error as string);
     return IssueMapper.toResponseDto(result.getValue());
+  }
+
+  // Declared above `@Get(':id')` — Nest matches in declaration order, so a static
+  // segment listed after the param route would be read as an issue id.
+  @Get('stability')
+  @ApiOperation({
+    summary:
+      'Bug stability: serious (critical + high) bugs opened per period, with the still-open ' +
+      'count behind them — the read-out for "is the app settling down?"',
+  })
+  async stability(
+    @AuthUser() auth: JwtPayload,
+    @Query() query: QueryBugStabilityDto,
+  ): Promise<BugStabilityResponseDto> {
+    const result = await this.getStability.execute({ tenantId: auth.tenantId, query });
+    return result.getValue();
   }
 
   @Get(':id')

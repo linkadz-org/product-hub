@@ -99,8 +99,25 @@ export function applySearchParam(params: URLSearchParams, search: string): void 
   else params.delete(SEARCH_PARAM);
 }
 
-/** Which view tab the board is on. */
-export type BoardView = 'board' | 'list' | 'timeline';
+/** Which view tab the board is on. Not every board offers every one — the bug
+ *  boards add `stability` (a chart, not a list of issues); a board that doesn't
+ *  list it in its `view.options` simply never writes it. */
+export type BoardView = 'board' | 'list' | 'timeline' | 'stability';
+
+/**
+ * The subset of views a *saved view* can carry.
+ *
+ * A saved view is a named set of filters, a search term and a sort — so it only
+ * makes sense over a view that lists issues. `stability` is a chart with none of
+ * those (the bug board even drops the toolbar there), so it's excluded at the
+ * type level rather than by remembering not to save it; `savedBoardView` is the
+ * one place a board view is narrowed down to a savable one.
+ */
+export type SavedBoardView = Exclude<BoardView, 'stability'>;
+
+export function savedBoardView(view: BoardView): SavedBoardView {
+  return view === 'stability' ? 'board' : view;
+}
 
 /** The view switch's param. Board is the default and stays *out* of the URL. */
 export const VIEW_PARAM = 'view';
@@ -110,7 +127,7 @@ export const VIEW_PARAM = 'view';
  *  filters follow. */
 export function readBoardView(params: URLSearchParams): BoardView {
   const value = params.get(VIEW_PARAM);
-  return value === 'list' || value === 'timeline' ? value : 'board';
+  return value === 'list' || value === 'timeline' || value === 'stability' ? value : 'board';
 }
 
 /** Write the view in place, for a caller building the next query string (a
