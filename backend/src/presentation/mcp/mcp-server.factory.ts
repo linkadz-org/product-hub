@@ -401,7 +401,8 @@ export class McpServerFactory {
           'File a task or bug on a team board in Product OS. Team, status and assignee accept plain ' +
           'names ("QC", "In progress", "Aaron") — an unknown one comes back with the valid choices ' +
           'instead of guessing. Omit `team` to use the workspace default for the kind. Pass `parent` ' +
-          'to create this as a subtask under an existing issue.',
+          'to create this as a subtask under an existing issue, and `attachments` (URLs from ' +
+          'upload_file) to file it with its screenshots or screen recording already on it.',
         inputSchema: {
           kind: z.nativeEnum(IssueKind).describe('task = work to do, bug = a defect'),
           title: z.string().min(1),
@@ -429,6 +430,20 @@ export class McpServerFactory {
             .string()
             .optional()
             .describe('Parent issue ref (e.g. ENG-14) or id — creates this as a subtask under it'),
+          attachments: z
+            .array(
+              z.object({
+                url: z.string().describe('Public URL returned by upload_file'),
+                name: z.string().describe('Display name on the issue'),
+                contentType: z.string().optional(),
+                size: z.number().min(0).optional(),
+              }),
+            )
+            .optional()
+            .describe(
+              'Files to hang on the new issue — call upload_file first and pass what it returns. ' +
+                'Screenshots and clips preview on the issue page; anything else lists as a file.',
+            ),
         },
       },
       (dto) =>
@@ -507,7 +522,7 @@ export class McpServerFactory {
             )
             .optional()
             .describe(
-              'Files on a bug — REPLACES the whole set ([] clears). Call upload_file first, and ' +
+              'Files on the issue — REPLACES the whole set ([] clears). Call upload_file first, and ' +
                 'get_issue to read the existing attachments so you can send them back alongside ' +
                 'the new one instead of dropping them.',
             ),

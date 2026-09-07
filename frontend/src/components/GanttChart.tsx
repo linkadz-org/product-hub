@@ -184,6 +184,17 @@ export interface GanttRow {
    * opens the detail, which is the keyboard/screen-reader path to the dates.
    */
   onBarChange?: (next: { start: number; end: number }) => void;
+  /**
+   * Makes this row's **diamond** draggable — the single-date twin of
+   * {@link GanttRow.onBarChange}. A row with only one of its two dates is drawn as
+   * a marker, and that date is just as reschedulable as a window is: without this
+   * the only way to move a due date on a timeline was to open the issue, which is
+   * exactly the trip a timeline exists to save.
+   *
+   * Same contract as `onBarChange`: called once on release with the day-aligned
+   * date, pointer-only, and the caller must reflect it optimistically.
+   */
+  onMarkerChange?: (next: { at: number }) => void;
 }
 
 export interface GanttChartProps {
@@ -212,7 +223,8 @@ export interface GanttChartProps {
  * is draggable from the header's right edge (remembered per browser).
  *
  * A row that supplies `onBarChange` is also **editable**: its bar drags to a new
- * window and its edges resize, snapped to whole days.
+ * window and its edges resize, snapped to whole days. A single-date row does the
+ * same through `onMarkerChange` — its diamond drags to a new date.
  */
 export function GanttChart({ rows, labelHeader, bands = [], legend, isLoading, empty }: GanttChartProps) {
   const [railW, setRailW] = useState(readRail);
@@ -518,11 +530,7 @@ function GanttRowView({
         {row.bar ? (
           <GanttBarView bar={row.bar} pct={pct} spanMs={spanMs} onChange={row.onBarChange} />
         ) : row.marker && isEpoch(row.marker.at) ? (
-          <span
-            className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 rounded-[2px] ring-2 ring-card"
-            style={{ left: `${pct(row.marker.at)}%`, backgroundColor: row.marker.color }}
-            title={row.marker.tooltip}
-          />
+          <GanttMarkerView marker={row.marker} pct={pct} spanMs={spanMs} onChange={row.onMarkerChange} />
         ) : row.emptyText ? (
           <span className="absolute left-1 top-1/2 -translate-y-1/2 text-[10px] italic text-muted-foreground/70">
             {row.emptyText}
@@ -755,6 +763,96 @@ function GanttBarView({
         </span>
       )}
     </div>
+  );
+}
+
+/**
+ * One single-date diamond, optionally draggable. The maths is the bar's, minus a
+ * second date: pixels → whole days from the measured track, a floating label while
+ * it moves, and the new date reported once on release.
+ *
+ * A 10px glyph is nothing to aim at, so when it's editable the diamond sits in a
+ * transparent 24px hit box — the target you grab is the one a pointer can actually
+ * hit, while the drawn marker stays the same size a read-only one is.
+ */
+function GanttMarkerView({
+  marker,
+  pct,
+  spanMs,
+  onChange,
+}: {
+  marker: GanttMarker;
+  pct: (v: number) => number;
+  spanMs: number;
+  onChange?: (next: { at: number }) => void;
+}) {
+  const wrap = useRef<HTMLSpanElement>(null);
+  const drag = useRef<{ x0: number; at0: number; msPerPx: number } | null>(null);
+  const latest = useRef<number | null>(null);
+  const [preview, setPreview] = useState<number | null>(null);
+  const editable = !!onChange;
+
+  const at = preview ?? marker.at;
+  const label = formatDate(new Date(at));
+
+  const begin = (e: ReactPointerEvent<HTMLElement>) => {
+    const el = wrap.current;
+    // Measure the track (the marker's own box is a fixed 24px, not the window).
+    const w = el?.parentElement?.getBoundingClientRect().width ?? 0;
+    // Mouse/pen only — on touch the chart scrolls sideways, and claiming the
+    // gesture here would trap a swipe that happened to start on a diamond.
+    if (!onChange || !el || !w || e.button !== 0 || e.pointerType === 'touch') return;
+    e.preventDefault();
+    e.stopPropagation();
+    drag.current = { x0: e.clientX, at0: marker.at, msPerPx: spanMs / w };
+    latest.current = marker.at;
+    el.setPointerCapture(e.pointerId);
+    setPreview(marker.at);
+  };
+
+  const onMove = (e: ReactPointerEvent<HTMLElement>) => {
+    const d = drag.current;
+    if (!d) return;
+    const shift = Math.round(((e.clientX - d.x0) * d.msPerPx) / GANTT_DAY) * GANTT_DAY;
+    latest.current = d.at0 + shift;
+    setPreview(latest.current);
+  };
+
+  const finish = () => {
+    const d = drag.current;
+    const next = latest.current;
+    drag.current = null;
+    latest.current = null;
+    setPreview(null);
+    // A click that moved nothing is not an edit.
+    if (d && next !== null && next !== d.at0) onChange?.({ at: next });
+  };
+
+  return (
+    <span
+      ref={wrap}
+      className={cn(
+        'absolute top-1/2 grid -translate-x-1/2 -translate-y-1/2 place-items-center',
+        editable ? 'size-6 cursor-grab touch-none active:cursor-grabbing' : 'size-2.5',
+      )}
+      style={{ left: `${pct(at)}%` }}
+      title={marker.tooltip}
+      onPointerDown={editable ? begin : undefined}
+      onPointerMove={editable ? onMove : undefined}
+      onPointerUp={editable ? finish : undefined}
+      onPointerCancel={editable ? finish : undefined}
+    >
+      <span
+        className="size-2.5 rotate-45 rounded-[2px] ring-2 ring-card"
+        style={{ backgroundColor: marker.color }}
+        aria-hidden
+      />
+      {preview !== null && (
+        <span className="absolute bottom-full left-1/2 z-20 mb-0.5 -translate-x-1/2 whitespace-nowrap rounded bg-foreground px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-background shadow">
+          {label}
+        </span>
+      )}
+    </span>
   );
 }
 

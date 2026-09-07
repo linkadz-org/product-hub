@@ -177,6 +177,9 @@ export class CreateIssueUseCase
       caseId: dto.caseId,
       caseLabel: dto.caseLabel,
       reportId: dto.reportId,
+      // Files picked in the create form. They're already uploaded by then (the
+      // uploader stores on pick), so this only records where they live.
+      attachments: dto.attachments,
     });
     if (created.isFailure) return Result.fail(created.error as string);
 

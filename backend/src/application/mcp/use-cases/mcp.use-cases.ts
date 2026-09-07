@@ -355,6 +355,15 @@ export class McpCreateIssueUseCase
         roadmapId: roadmapId || undefined,
         roadmapItemId: roadmapItemId || undefined,
         roadmapItemLabel: roadmapItemLabel || undefined,
+        // Files already in storage (upload_file), attached as the issue is filed
+        // rather than in a follow-up update. Same defaults update_issue applies:
+        // the name is all the issue page needs to draw a row.
+        attachments: dto.attachments?.map((a) => ({
+          url: a.url,
+          name: a.name,
+          contentType: a.contentType ?? '',
+          size: a.size ?? 0,
+        })),
       } as CreateIssueDto,
     });
     if (created.isFailure) return Result.fail(created.error as string);

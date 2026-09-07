@@ -13,6 +13,7 @@ import {
   Skeleton,
 } from '@/components/ui';
 import { t } from '@/i18n';
+import { AttachmentSection } from '@/components/AttachmentBar';
 import { PageHeader } from '@/layouts/headers/PageHeader';
 import { Icon } from '@/components/Icon';
 import { AssigneeField } from '@/components/AssigneeField';
@@ -23,6 +24,7 @@ import { TeamIconPicker } from '@/features/teams/TeamIconPicker';
 import { CyclePropField } from '@/features/cycles/CycleControls';
 import { useBacklogLink } from '@/features/roadmaps/useBacklogLink';
 import { TASK_ESTIMATES, TeamIssueType, taskEstimateLabel } from '@/types/enums';
+import type { BugAttachment } from '@/types/dto';
 import { CenteredPageLayout } from '@/layouts/shared';
 import { useCreateTask } from './api';
 
@@ -64,6 +66,9 @@ export function NewTaskPage() {
   const [endDate, setEndDate] = useState('');
   const [estimate, setEstimate] = useState(0);
   const [itemId, setItemId] = useState('');
+  // Files are uploaded as they're picked (storage doesn't care that the task
+  // doesn't exist yet) and travel with the create call as `attachments`.
+  const [attachments, setAttachments] = useState<BugAttachment[]>([]);
   // Seeded from the board that opened this (a cycle-filtered board), and editable
   // here via the same Cycle picker the detail sidebar shows.
   const [cycleId, setCycleId] = useState(presetCycleId ?? '');
@@ -123,6 +128,7 @@ export function NewTaskPage() {
         roadmapItemLabel: link.roadmapItemLabel || undefined,
         roadmapId: link.roadmapId || undefined,
         projectId: link.projectId || undefined,
+        attachments: attachments.length ? attachments : undefined,
       },
       {
         // Straight into the task we just made — replace, so Back skips the form.
@@ -180,6 +186,15 @@ export function NewTaskPage() {
               className="border-0"
             />
           </div>
+
+          {/* Attach evidence while filing, not after — same section the open task
+              shows, so the form and the detail read as one screen. */}
+          <AttachmentSection
+            items={attachments}
+            canWrite
+            onChange={setAttachments}
+            className="mt-8"
+          />
 
           {/* Activity needs a real task; until then, name the section and say so. */}
           <section className="mt-10 border-t pt-6">

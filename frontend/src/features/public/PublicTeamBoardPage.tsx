@@ -123,6 +123,9 @@ export function PublicTeamBoardPage() {
             labelsFor={labelsFor}
             teamFor={() => team}
             onOpenItem={(item) => setOpenItem(item as BugDto | TaskDto)}
+            // A share link reads through a token and has no write path — the
+            // dates here are a picture, not a plan you can drag.
+            readOnly
           />
         </div>
       )}

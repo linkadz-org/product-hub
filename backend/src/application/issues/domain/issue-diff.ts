@@ -30,6 +30,10 @@ export const TRACKED_FIELDS = [
   'roadmapItemId',
   'reportId',
   'caseId',
+  // Attached files, by name (see `read` below). Not a bug-only field: a task
+  // carries them too, and "who took that screenshot off the ticket" is exactly
+  // the question a history row exists to answer.
+  'attachments',
 ] as const;
 
 export type TrackedField = (typeof TRACKED_FIELDS)[number];
@@ -78,6 +82,11 @@ function read(issue: IssueEntity, field: TrackedField): string {
       return (issue.assignees ?? []).map((a) => a.name).join(', ');
     case 'labelKeys':
       return (issue.labelKeys ?? []).join(', ');
+    // Filenames, not URLs: the name is what the page shows and what a person
+    // recognises, while a storage URL is long, unreadable, and can outlive the
+    // file it points at. Same treatment as `assignees` above.
+    case 'attachments':
+      return (issue.attachments ?? []).map((a) => a.name).join(', ');
     case 'estimate':
       // `estimate` is typed `number` on the entity and defaults to 0 — never
       // undefined/null, so there is nothing to guard here.

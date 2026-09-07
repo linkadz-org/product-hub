@@ -92,6 +92,8 @@ export interface CreateIssueInput {
    *  there). A concrete current/upcoming cycle id of the issue's team. */
   cycleId?: string;
   projectId?: string;
+  /** Files to attach on creation — already uploaded by the time this is sent. */
+  attachments?: BugAttachment[];
   // ── roadmap link (either kind — a task delivers an item, a bug blocks it) ────
   roadmapId?: string;
   roadmapItemId?: string;
