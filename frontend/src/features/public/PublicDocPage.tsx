@@ -4,7 +4,7 @@ import { ChevronRight, FileText } from 'lucide-react';
 import { DetailSkeleton } from '@/components/Skeletons';
 import { RichText } from '@/components/ui';
 import { TeamSymbol } from '@/components/TeamSymbol';
-import { DocAttachments } from '@/features/docs/components/DocAttachments';
+import { AttachmentBar } from '@/components/AttachmentBar';
 import { pageStyleOf, typographyAttrs, widthClass } from '@/features/docs/pageStyle';
 import { pageFromSlug, pageSlug } from '@/features/docs/slug';
 import { buildDocTree, visibleRows } from '@/features/docs/tree';
@@ -196,7 +196,7 @@ export function PublicDocPage() {
                 and the spec without an account — same row as the workspace,
                 minus every way to change it. */}
             {style.showAttachments && (
-              <DocAttachments
+              <AttachmentBar
                 items={page?.attachments ?? []}
                 canWrite={false}
                 className="mt-4 border-y py-2.5"

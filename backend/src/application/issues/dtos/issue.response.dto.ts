@@ -132,7 +132,11 @@ export class IssueResponseDto {
   @ApiProperty()
   reportId: string;
 
-  @ApiProperty({ type: 'array', items: { type: 'object' }, description: 'Bug attachments' })
+  @ApiProperty({
+    type: 'array',
+    items: { type: 'object' },
+    description: 'Files attached to the issue (task or bug) itself, not to a comment',
+  })
   attachments: BugAttachment[];
 
   @ApiProperty({ type: [String], description: 'Keys of the team labels on this issue' })

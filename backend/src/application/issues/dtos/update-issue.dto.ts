@@ -168,7 +168,10 @@ export class UpdateIssueDto {
   @IsString()
   reportId?: string;
 
-  @ApiPropertyOptional({ type: [IssueAttachmentDto], description: '(bug)' })
+  @ApiPropertyOptional({
+    type: [IssueAttachmentDto],
+    description: 'Replace the files attached to the issue — task or bug ([] detaches them all)',
+  })
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })

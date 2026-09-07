@@ -156,6 +156,8 @@ export function BugDetail({ bugId, onDeleted, menuTarget = 'header', dense = fal
       users={users}
       onSaveTitle={(title) => save({ title })}
       onSaveDescription={(description) => save({ description })}
+      attachments={bug.attachments ?? []}
+      onSaveAttachments={(attachments) => save({ attachments })}
       // Repro-steps shapes, offered on an empty description the way a backlog
       // item offers User Story / JTBD — a bug without steps can't be fixed.
       templates={BUG_TEMPLATES}
