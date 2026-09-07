@@ -166,6 +166,8 @@ export function TaskDetail({ taskId, onDeleted, menuTarget = 'header', dense = f
       users={users}
       onSaveTitle={(title) => save({ title })}
       onSaveDescription={(description) => save({ description })}
+      attachments={task.attachments ?? []}
+      onSaveAttachments={(attachments) => save({ attachments })}
       beforeActivity={
         // A private personal task has no team, so the team-based sub-task composer
         // doesn't apply — hidden for now (personal sub-tasks are a v2 item).

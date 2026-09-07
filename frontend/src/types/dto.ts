@@ -550,6 +550,9 @@ export interface TaskDto {
   dueDate: string;
   /** Points on the estimate scale (see `TASK_ESTIMATES`); `0` means unset. */
   estimate: number;
+  /** Files attached to the task itself (not to a comment) — same shape a bug's
+   *  attachments use, since both read the one `/issues` response. */
+  attachments: BugAttachment[];
   /** Keys of the team labels on this task (resolved against its team's `labels`). */
   labelKeys: string[];
   /** Values for the team's custom fields, keyed by each field's stable `id`. */

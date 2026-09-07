@@ -64,6 +64,9 @@ export function PublicIssueDialog({
         comments={comments ?? []}
         onSaveTitle={noop}
         onSaveDescription={noop}
+        // Read-only: the files show as download chips, with no way to add or
+        // remove them (no `onSaveAttachments`).
+        attachments={item.attachments ?? []}
       />
     </Dialog>
   );

@@ -3,7 +3,7 @@ import { apiGet, apiPatch, apiPut } from '@/lib/api';
 import { IssueKind } from '@/types/enums';
 import { makeIssueHooks } from '@/features/issues/hook-factory';
 import type { IssueSortDir, IssueSortField } from '@/features/issues/api';
-import type { TaskDto } from '@/types/dto';
+import type { BugAttachment, TaskDto } from '@/types/dto';
 import type { CustomFieldValue, TaskStatus, TeamStatusConfig } from '@/types/enums';
 
 /**
@@ -120,6 +120,8 @@ export interface UpdateTaskInput {
   labelKeys?: string[];
   /** Replace the task's custom-field values, keyed by field id. */
   customFields?: Record<string, CustomFieldValue>;
+  /** Replace the files attached to the task ([] detaches them all). */
+  attachments?: BugAttachment[];
 }
 
 // Bound to the task cache namespace (`['tasks']`/`['task']`) + `kind: task`; all the

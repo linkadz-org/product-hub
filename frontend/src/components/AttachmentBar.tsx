@@ -15,14 +15,25 @@ import { t } from '@/i18n';
 import { formatFileSize } from '@/lib/format';
 import { useUploadQueue } from '@/features/uploads/useUploadQueue';
 import { UploadProgressList } from '@/features/uploads/UploadProgressList';
-import type { DocAttachment } from '@/types/dto';
 
-interface DocAttachmentsProps {
-  items: DocAttachment[];
+/**
+ * One stored file, as the upload endpoint returns it. `DocAttachment` and
+ * `BugAttachment` are this shape — the bar takes the structural type so a doc
+ * page and an issue attach files through the same component.
+ */
+export interface AttachmentFile {
+  url: string;
+  name: string;
+  contentType: string;
+  size: number;
+}
+
+interface AttachmentBarProps {
+  items: AttachmentFile[];
   /** Read-only when false: chips still download, nothing can be added or removed. */
   canWrite: boolean;
-  /** The whole list after the change — the page saves it as one field. */
-  onChange?: (next: DocAttachment[]) => void;
+  /** The whole list after the change — the owner saves it as one field. */
+  onChange?: (next: AttachmentFile[]) => void;
   className?: string;
 }
 
@@ -52,15 +63,16 @@ function glyphFor(contentType: string, name: string) {
 }
 
 /**
- * The files attached to one doc page, as a row of chips beneath the links row.
+ * The files attached to one record — a doc page or an issue (task / bug) — as a
+ * row of chips.
  *
  * Uploads go straight to the workspace storage and the new list is handed back
- * for the page to save — there's no staging step, because there's no Save button
- * on a doc page to stage anything for. Dropping files onto the row works too;
- * the drop target is the row itself rather than the whole page, so it never
- * competes with the editor's own drag handling for images.
+ * for the owner to save — there's no staging step, because none of the surfaces
+ * using this have a Save button to stage anything for. Dropping files onto the
+ * row works too; the drop target is the row itself rather than the whole page, so
+ * it never competes with an editor's own drag handling for images.
  */
-export function DocAttachments({ items, canWrite, onChange, className }: DocAttachmentsProps) {
+export function AttachmentBar({ items, canWrite, onChange, className }: AttachmentBarProps) {
   const [dragging, setDragging] = useState(false);
   // Depth counter so dragging across the chips inside doesn't flicker the hint.
   const depth = useRef(0);
@@ -69,7 +81,7 @@ export function DocAttachments({ items, canWrite, onChange, className }: DocAtta
   const queue = useUploadQueue();
 
   // Nothing attached and nothing to attach with — don't leave an empty rule
-  // across the page (this is how it renders on the public view).
+  // across the page (this is how it renders on a public view).
   if (!items.length && !canWrite) return null;
 
   async function uploadAll(files: FileList | File[]) {
@@ -140,8 +152,8 @@ export function DocAttachments({ items, canWrite, onChange, className }: DocAtta
             {canWrite ? (
               <button
                 type="button"
-                aria-label={t('docs.fileRemove')}
-                title={t('docs.fileRemove')}
+                aria-label={t('attachments.remove')}
+                title={t('attachments.remove')}
                 onClick={() => onChange?.(items.filter((f) => f.url !== file.url))}
                 className="grid size-4 shrink-0 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
               >
@@ -159,7 +171,7 @@ export function DocAttachments({ items, canWrite, onChange, className }: DocAtta
           <MediaUploader
             accept={ACCEPT}
             variant="ghost"
-            label={t('docs.addFile')}
+            label={t('attachments.add')}
             className="h-7 gap-1.5 text-xs text-muted-foreground"
             // One queue for both ways in (button and drop), and one list of rows
             // for it — drawn below the chips rather than as a column wedged into
@@ -173,7 +185,7 @@ export function DocAttachments({ items, canWrite, onChange, className }: DocAtta
           {/* Only worth saying while it's empty — after that the row explains itself. */}
           {!items.length && (
             <span className="hidden items-center gap-1 text-xs text-muted-foreground/70 sm:inline-flex">
-              <Paperclip className="size-3" aria-hidden /> {t('docs.filesHint')}
+              <Paperclip className="size-3" aria-hidden /> {t('attachments.hint')}
             </span>
           )}
           <UploadProgressList tasks={queue.tasks} onDismiss={queue.dismiss} className="basis-full" />

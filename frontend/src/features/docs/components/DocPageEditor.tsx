@@ -26,7 +26,7 @@ import { CollabLive, CollabPresence } from '../collab/CollabPresence';
 import { resetCollabDoc } from '../collab/resetCollabDoc';
 import { useCollabSession } from '../collab/useCollabSession';
 import { pageStyleOf, typographyAttrs, widthClass, type DocPageStyle } from '../pageStyle';
-import { DocAttachments } from './DocAttachments';
+import { AttachmentBar } from '@/components/AttachmentBar';
 import { DocComments } from './DocComments';
 import {
   DocCommentLayer,
@@ -677,7 +677,7 @@ export function DocPageEditor({
             )}
 
             {filesOn && (
-              <DocAttachments
+              <AttachmentBar
                 items={files}
                 canWrite={canWrite}
                 onChange={(next) => {
