@@ -84,7 +84,7 @@ interface SidebarProps {
  * of pushing it — otherwise collapsing would strand every level-2 destination.
  */
 export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
-  const { isAdmin, canManageDelivery } = useAuth();
+  const { isAdmin, canManageDelivery, canAccessIntegrations } = useAuth();
   const navigate = useNavigate();
   const { pathname, search } = useLocation();
   const { data: inbox } = useInbox();
@@ -104,7 +104,13 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
   }, [collapsed]);
   const { width, dragging, handle } = useSidebarWidth({ storageKey: WIDTH_KEY, ...SIDEBAR_W });
 
-  const areas = NAV_AREAS.filter((a) => !a.adminOnly || isAdmin);
+  const areas = NAV_AREAS.filter(
+    (a) => !a.adminOnly || isAdmin || (a.integrationsAlso && canAccessIntegrations),
+  ).map((a) =>
+    // More's default landing is People, which a non-admin can't see — send
+    // them straight to the one row they can (Settings) instead of a dead end.
+    a.id === 'more' && !isAdmin && canAccessIntegrations ? { ...a, path: '/admin/settings' } : a,
+  );
   const [selectedId, setSelectedId] = useSelectedArea(findAreaId(pathname, search), areas[0].id);
   // An area can go away under a remembered id — a non-admin whose browser still
   // remembers `more`. Falling back keeps the panel from rendering empty.
@@ -225,14 +231,15 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
                   open={sectionOpen(section.key)}
                   onToggle={() => toggleSection(section.key)}
                   actions={
-                    // `⋯` opens the page that owns teams and is revealed only while
-                    // the heading row is hovered (the group/heading scope lives on
-                    // NavHeading's row, not the team rows below). `+` adds a team and
-                    // stays visible as the primary action. Both gated on
-                    // canManageDelivery, matching the team endpoints' @Roles(ADMIN,
-                    // PRODUCT) — the gates must agree or an affordance silently
-                    // vanishes for Product.
-                    canManageDelivery ? (
+                    // `⋯` opens Settings and is revealed only while the heading row
+                    // is hovered (the group/heading scope lives on NavHeading's row,
+                    // not the team rows below) — also the only nav path to
+                    // Settings → API keys/MCP for a Developer, who has no team
+                    // management to reach there for. `+` adds a team and stays
+                    // canManageDelivery-only, matching the team endpoints'
+                    // @Roles(ADMIN, PRODUCT) — that gate must agree with the team
+                    // rows or an affordance silently vanishes for Product.
+                    canManageDelivery || canAccessIntegrations ? (
                       <span className="flex items-center gap-0.5">
                         <Link
                           to="/admin/settings"
@@ -243,15 +250,17 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
                         >
                           <MoreHorizontal className="size-3.5" aria-hidden />
                         </Link>
-                        <button
-                          type="button"
-                          onClick={() => setCreatingTeam(true)}
-                          title={t('teams.add')}
-                          aria-label={t('teams.add')}
-                          className={cn(ACTION, 'opacity-100')}
-                        >
-                          <Plus className="size-3.5" aria-hidden />
-                        </button>
+                        {canManageDelivery && (
+                          <button
+                            type="button"
+                            onClick={() => setCreatingTeam(true)}
+                            title={t('teams.add')}
+                            aria-label={t('teams.add')}
+                            className={cn(ACTION, 'opacity-100')}
+                          >
+                            <Plus className="size-3.5" aria-hidden />
+                          </button>
+                        )}
                       </span>
                     ) : undefined
                   }
@@ -314,7 +323,9 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
             );
           }
 
-          const items = section.items.filter((i) => !i.adminOnly || isAdmin);
+          const items = section.items.filter(
+            (i) => !i.adminOnly || isAdmin || (i.integrationsAlso && canAccessIntegrations),
+          );
           if (items.length === 0) return null;
           // A headingless section is the panel's lead group: nothing to toggle,
           // so it's always open.

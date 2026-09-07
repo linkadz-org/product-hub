@@ -14,7 +14,7 @@ import {
   Users,
   Webhook,
 } from 'lucide-react';
-import { useAuth } from '@/lib/auth';
+import { useAuth, type AuthState } from '@/lib/auth';
 import { cn, deepEqual } from '@/lib/utils';
 import {
   Button,
@@ -79,28 +79,27 @@ import { CenteredPageLayout } from '@/layouts/shared';
 /**
  * Left-menu sections, in order. `key` is the `?tab=` value.
  *
- * `adminOnly` sections are workspace-wide credentials, not delivery config: they
- * stay admin-only even though Product can manage teams and labels. Their data is
- * fetched behind the same gate (`GET /settings` is @Roles(ADMIN) and carries the
- * webhook config), so a Product user must never render them.
+ * `visible` mirrors the backend `@Roles` matrix for each section's API, so a
+ * tab never renders a control that would just 403. Teams/webhooks/GitHub/
+ * storage stay scoped to workspace management (admin, plus Product for
+ * teams); API keys/MCP are also open to Developer, since those endpoints let
+ * a caller manage their own key without touching anyone else's.
  */
 const TABS: {
   key: string;
   labelKey: Parameters<typeof t>[0];
   icon: ComponentType<{ className?: string }>;
   Section: ComponentType;
-  adminOnly?: boolean;
+  visible: (auth: Pick<AuthState, 'isAdmin' | 'canManageDelivery' | 'canAccessIntegrations'>) => boolean;
 }[] = [
-  { key: 'teams', labelKey: 'teams.title', icon: Users, Section: TeamsSection },
-  { key: 'api-keys', labelKey: 'settings.apiKeys', icon: KeyRound, Section: ApiKeysSection, adminOnly: true },
-  // Admin-only because connecting an assistant means generating a key, and keys
-  // are `@Roles(ADMIN)` — the tab would render a Generate button that 403s.
-  { key: 'mcp', labelKey: 'settings.mcp', icon: Plug, Section: McpSection, adminOnly: true },
-  { key: 'webhooks', labelKey: 'settings.webhooks', icon: Webhook, Section: WebhooksSection, adminOnly: true },
+  { key: 'teams', labelKey: 'teams.title', icon: Users, Section: TeamsSection, visible: (a) => a.canManageDelivery },
+  { key: 'api-keys', labelKey: 'settings.apiKeys', icon: KeyRound, Section: ApiKeysSection, visible: (a) => a.canAccessIntegrations },
+  { key: 'mcp', labelKey: 'settings.mcp', icon: Plug, Section: McpSection, visible: (a) => a.canAccessIntegrations },
+  { key: 'webhooks', labelKey: 'settings.webhooks', icon: Webhook, Section: WebhooksSection, visible: (a) => a.isAdmin },
   // Inbound, unlike the Webhooks tab above it: GitHub posts *to* us. Admin-only
   // because connecting mints a signing secret.
-  { key: 'github', labelKey: 'settings.github', icon: GitBranch, Section: GitHubSection, adminOnly: true },
-  { key: 'storage', labelKey: 'settings.storage', icon: Cloud, Section: CloudStorageSection, adminOnly: true },
+  { key: 'github', labelKey: 'settings.github', icon: GitBranch, Section: GitHubSection, visible: (a) => a.isAdmin },
+  { key: 'storage', labelKey: 'settings.storage', icon: Cloud, Section: CloudStorageSection, visible: (a) => a.isAdmin },
 ];
 
 /** A team's own settings live at ?tab=team:<id>. */
@@ -108,10 +107,10 @@ const TEAM_TAB = 'team:';
 
 export function AdminSettingsPage() {
   // Teams and labels are delivery config, which Product owns too — the backend
-  // already says so (`@Roles(ADMIN, PRODUCT)` on every team endpoint). Only the
-  // credential sections are narrowed further, via each tab's `adminOnly`.
-  const { isAdmin, canManageDelivery } = useAuth();
-  const tabs = TABS.filter((s) => !s.adminOnly || isAdmin);
+  // already says so (`@Roles(ADMIN, PRODUCT)` on every team endpoint). Each
+  // tab narrows further via its own `visible` check.
+  const { isAdmin, canManageDelivery, canAccessIntegrations } = useAuth();
+  const tabs = TABS.filter((s) => s.visible({ isAdmin, canManageDelivery, canAccessIntegrations }));
   // Each team gets its own entry — statuses are per-team, so there's no
   // workspace-wide column editor any more.
   const { data: teams } = useTeams();
@@ -120,9 +119,13 @@ export function AdminSettingsPage() {
   // reload and is linkable — same pattern as the boards' ?view=.
   const [searchParams, setSearchParams] = useSearchParams();
   const param = searchParams.get('tab');
-  const activeTeam = param?.startsWith(TEAM_TAB)
-    ? activeTeams.find((x) => x.id === param.slice(TEAM_TAB.length))
-    : undefined;
+  // Team config (statuses/labels/cycles) is ADMIN/PRODUCT territory, same as
+  // the team endpoints' own @Roles — a Developer's ?tab=team:<id> is ignored
+  // rather than mounting TeamSettingsSection for them.
+  const activeTeam =
+    canManageDelivery && param?.startsWith(TEAM_TAB)
+      ? activeTeams.find((x) => x.id === param.slice(TEAM_TAB.length))
+      : undefined;
   // Resolved against the *filtered* list, so hand-typing `?tab=webhooks` as a
   // non-admin falls back to Teams rather than mounting a section they can't read.
   const active = tabs.find((s) => s.key === param) ?? tabs[0];
@@ -133,7 +136,7 @@ export function AdminSettingsPage() {
     setSearchParams(next, { replace: true });
   };
 
-  if (!canManageDelivery)
+  if (!canManageDelivery && !canAccessIntegrations)
     return (
       <CenteredPageLayout>
         <div className="rounded-xl border border-dashed p-8 text-center text-muted-foreground">
@@ -174,7 +177,7 @@ export function AdminSettingsPage() {
             );
           })}
 
-          {activeTeams.length > 0 && (
+          {canManageDelivery && activeTeams.length > 0 && (
             <>
               <span className="mt-3 hidden px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground md:block">
                 {t('navgroup.teams')}

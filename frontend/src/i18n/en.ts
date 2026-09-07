@@ -1101,7 +1101,10 @@ export const en = {
     'The assistant acts as you through this key, so everything it creates has you as the author.',
   'settings.mcpStep2': 'Register the URL with your assistant',
   'settings.mcpStep2Hint':
-    'One command, run wherever your assistant lives. There is nothing to clone and nothing to install — the MCP server is this API.',
+    'One snippet, wherever your assistant lives. There is nothing to clone and nothing to install — the MCP server is this API.',
+  'settings.mcpClient': 'Client',
+  'settings.mcpAntigravityHint':
+    'Antigravity has no add command — paste this into the mcpServers object in ~/.gemini/config/mcp_config.json (shared by the IDE, CLI and SDK), then refresh the server list.',
   'settings.mcpEndpoint': 'MCP endpoint',
   'settings.mcpEndpointHint':
     'Where the assistant reaches this API. Change it if the machine running Claude can’t use the address your browser is on — it needs a URL of its own.',
@@ -1120,6 +1123,8 @@ export const en = {
     'Then ask it to “list my Product OS workspace”, “file a bug for QC”, “add a backlog item”, or “write this up as a doc — with a diagram of the flow”. It can attach a screenshot too — “file this bug and attach the screenshot” uploads the file to your storage and puts it on the bug. Team, status and assignee accept plain names; an unknown one comes back with the valid choices instead of guessing.',
   'settings.mcpReady': 'Your key is ready',
   'settings.mcpReadyHint': 'This command already contains it — run it in your terminal.',
+  'settings.mcpReadyHintAntigravity':
+    'This config already contains it — paste it into your mcp_config.json.',
   'settings.mcpHistory': 'Created via MCP',
   'settings.mcpHistoryHint': 'Everything an assistant has created in this workspace, newest first.',
   'settings.mcpNoHistory': 'Nothing has been created via MCP yet.',

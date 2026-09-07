@@ -72,10 +72,12 @@ export class McpEventRepository
   async findByTenant(
     tenantId: string,
     query: PaginationDto,
+    userId?: string,
   ): Promise<McpEventPaginationResponse> {
     const page = query.page ?? 1;
     const limit = query.limit ?? 10;
     const filter: FilterQuery<McpEventDoc> = { tenantId };
+    if (userId) filter.userId = userId;
     if (query.search) {
       // Escaped: free text from a search box would otherwise throw on `(`.
       const re = new RegExp(query.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');

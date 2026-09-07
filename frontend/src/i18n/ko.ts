@@ -1053,7 +1053,10 @@ export const ko: Record<I18nKey, string> = {
     '어시스턴트는 이 키로 나를 대신해 동작하므로, 만들어지는 모든 항목의 작성자는 나입니다.',
   'settings.mcpStep2': '어시스턴트에 URL 등록하기',
   'settings.mcpStep2Hint':
-    '어시스턴트가 있는 곳에서 명령 한 줄만 실행하세요. 복제할 것도 설치할 것도 없습니다 — MCP 서버가 곧 이 API입니다.',
+    '어시스턴트가 있는 곳에서 코드 한 줄만 등록하세요. 복제할 것도 설치할 것도 없습니다 — MCP 서버가 곧 이 API입니다.',
+  'settings.mcpClient': '클라이언트',
+  'settings.mcpAntigravityHint':
+    'Antigravity에는 등록 명령이 없습니다 — 이 내용을 ~/.gemini/config/mcp_config.json (IDE·CLI·SDK가 공유하는 파일)의 mcpServers 객체에 붙여넣은 뒤 서버 목록을 새로고침하세요.',
   'settings.mcpEndpoint': 'MCP 엔드포인트',
   'settings.mcpEndpointHint':
     '어시스턴트가 이 API에 접근하는 주소입니다. Claude가 실행되는 컴퓨터에서 지금 브라우저 주소를 쓸 수 없다면 별도의 URL로 바꾸세요.',
@@ -1072,6 +1075,7 @@ export const ko: Record<I18nKey, string> = {
     '그런 다음 “내 Product OS 워크스페이스를 보여줘”, “QC에 버그를 등록해줘”, “백로그 항목을 추가해줘”, “이걸 문서로 정리해줘”처럼 요청하세요. 스크린샷도 첨부할 수 있습니다 — “이 버그를 등록하고 스크린샷도 첨부해줘”라고 하면 파일을 스토리지에 올린 뒤 버그에 붙여 줍니다. 팀, 상태, 담당자는 이름 그대로 받으며, 알 수 없는 값이면 추측하지 않고 가능한 선택지를 알려줍니다.',
   'settings.mcpReady': '키가 준비되었습니다',
   'settings.mcpReadyHint': '이 명령에 키가 이미 들어 있습니다 — 터미널에서 실행하세요.',
+  'settings.mcpReadyHintAntigravity': '이 설정에 키가 이미 들어 있습니다 — mcp_config.json에 붙여넣으세요.',
   'settings.mcpHistory': 'MCP로 만든 항목',
   'settings.mcpHistoryHint': '어시스턴트가 이 워크스페이스에 만든 모든 항목입니다. 최신순.',
   'settings.mcpNoHistory': '아직 MCP로 만든 항목이 없습니다.',

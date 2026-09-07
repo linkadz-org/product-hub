@@ -60,7 +60,7 @@ interface SidebarProps {
  * so a collapsed menu stays collapsed across a switch.
  */
 export function ClassicSidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
-  const { isAdmin, canManageDelivery } = useAuth();
+  const { isAdmin, canManageDelivery, canAccessIntegrations } = useAuth();
   const navigate = useNavigate();
   const { data: inbox } = useInbox();
   const unseen = inbox?.unseenCount ?? 0;
@@ -250,14 +250,15 @@ export function ClassicSidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
                     onToggle={() => toggleSection('teams')}
                     className={cn(collapsed && 'md:hidden')}
                     actions={
-                      // `⋯` opens the page that owns teams and is revealed only while
-                      // the heading row is hovered (the group/heading scope lives on
-                      // NavHeading's row, not the team rows below). `+` adds a team and
-                      // stays visible as the primary action. Both gated on
-                      // canManageDelivery, matching the team endpoints' @Roles(ADMIN,
-                      // PRODUCT) — the gates must agree or an affordance silently
-                      // vanishes for Product.
-                      canManageDelivery ? (
+                      // `⋯` opens Settings and is revealed only while the heading row
+                      // is hovered (the group/heading scope lives on NavHeading's row,
+                      // not the team rows below) — also the only nav path to
+                      // Settings → API keys/MCP for a Developer, who has no team
+                      // management to reach there for. `+` adds a team and stays
+                      // canManageDelivery-only, matching the team endpoints'
+                      // @Roles(ADMIN, PRODUCT) — that gate must agree with the team
+                      // rows or an affordance silently vanishes for Product.
+                      canManageDelivery || canAccessIntegrations ? (
                         <span className="flex items-center gap-0.5">
                           <Link
                             to="/admin/settings"
@@ -268,15 +269,17 @@ export function ClassicSidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
                           >
                             <MoreHorizontal className="size-3.5" aria-hidden />
                           </Link>
-                          <button
-                            type="button"
-                            onClick={() => setCreatingTeam(true)}
-                            title={t('teams.add')}
-                            aria-label={t('teams.add')}
-                            className={cn(ACTION, 'opacity-100')}
-                          >
-                            <Plus className="size-3.5" aria-hidden />
-                          </button>
+                          {canManageDelivery && (
+                            <button
+                              type="button"
+                              onClick={() => setCreatingTeam(true)}
+                              title={t('teams.add')}
+                              aria-label={t('teams.add')}
+                              className={cn(ACTION, 'opacity-100')}
+                            >
+                              <Plus className="size-3.5" aria-hidden />
+                            </button>
+                          )}
                         </span>
                       ) : undefined
                     }

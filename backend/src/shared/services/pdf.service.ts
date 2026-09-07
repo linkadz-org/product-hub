@@ -1,5 +1,13 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
-import puppeteer, { Browser } from 'puppeteer';
+import type * as Puppeteer from 'puppeteer';
+import type { Browser } from 'puppeteer';
+
+/** `new Function` hides this `import()` from TypeScript, which would otherwise
+ *  rewrite a literal `import('puppeteer')` into `require('puppeteer')` under our
+ *  CommonJS build — and `require()` can't load the ESM-only `puppeteer` package. */
+const dynamicImportPuppeteer: () => Promise<typeof Puppeteer> = new Function(
+  'return import("puppeteer")',
+) as () => Promise<typeof Puppeteer>;
 
 /** What a caller can say about the paper. Everything else is this service's call. */
 export interface PdfOptions {
@@ -50,13 +58,19 @@ export class PdfService implements OnModuleDestroy {
   private async getBrowser(): Promise<Browser> {
     if (this.browser?.connected) return this.browser;
     if (this.launching) return this.launching;
-    this.launching = puppeteer
-      .launch({
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-        // `--no-sandbox` is what makes this work in a container running as root;
-        // the only thing rendered is HTML this server just built.
-        args: ['--no-sandbox', '--disable-dev-shm-usage', '--font-render-hinting=none'],
-      })
+    // `puppeteer` is ESM-only; under our CommonJS build TypeScript downlevels a
+    // plain `import()` back into `require()`, which fails with ERR_REQUIRE_ESM.
+    // Routing it through `Function` hides the call from that transform so it
+    // stays a real dynamic import at runtime.
+    this.launching = dynamicImportPuppeteer()
+      .then(({ default: puppeteer }) =>
+        puppeteer.launch({
+          executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+          // `--no-sandbox` is what makes this work in a container running as root;
+          // the only thing rendered is HTML this server just built.
+          args: ['--no-sandbox', '--disable-dev-shm-usage', '--font-render-hinting=none'],
+        }),
+      )
       .then((browser) => {
         this.browser = browser;
         this.launching = undefined;
