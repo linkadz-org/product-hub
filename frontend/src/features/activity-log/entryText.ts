@@ -80,6 +80,8 @@ export type TrackedField =
   | 'caseId'
   | 'title'
   | 'description'
+  // Files on the issue, logged by filename (see backend `issue-diff.ts`).
+  | 'attachments'
   // Doc-page-only field (see backend/src/application/docs/domain/doc-page-diff.ts):
   // a page's rank among its siblings. Value-less — see NO_VALUE_FIELDS below.
   | 'order'
@@ -122,6 +124,7 @@ export const FIELD_LABEL: Record<TrackedField, I18nKey> = {
   caseId: 'activityLog.field.caseId',
   title: 'activityLog.field.title',
   description: 'activityLog.field.description',
+  attachments: 'activityLog.field.attachments',
   order: 'activityLog.field.order',
   phase: 'activityLog.field.phase',
   difficulty: 'activityLog.field.difficulty',

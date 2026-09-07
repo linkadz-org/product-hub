@@ -15,6 +15,7 @@ import {
 import { AssigneeField } from '@/components/AssigneeField';
 import { DescriptionTemplates, useTemplateSeed } from '@/components/DescriptionTemplates';
 import { t } from '@/i18n';
+import { AttachmentSection } from '@/components/AttachmentBar';
 import { PageHeader } from '@/layouts/headers/PageHeader';
 import { Icon } from '@/components/Icon';
 import {
@@ -34,6 +35,7 @@ import {
   BugSeverity,
   TeamIssueType,
 } from '@/types/enums';
+import type { BugAttachment } from '@/types/dto';
 import { CenteredPageLayout } from '@/layouts/shared';
 import { BUG_TEMPLATES } from './bugTemplates';
 import { useCreateBug } from './api';
@@ -93,6 +95,9 @@ export function NewBugPage() {
   // Seeded from the board that opened this (a cycle-filtered board), and editable
   // here via the same Cycle picker the detail sidebar shows.
   const [cycleId, setCycleId] = useState(presetCycleId ?? '');
+  // Uploaded as they're picked (storage doesn't need the bug to exist yet) and
+  // sent with the create call as `attachments`.
+  const [attachments, setAttachments] = useState<BugAttachment[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   // Repro-steps shapes, offered on an empty description exactly as bug detail
@@ -145,6 +150,7 @@ export function NewBugPage() {
         caseId,
         caseLabel,
         reportId,
+        attachments: attachments.length ? attachments : undefined,
       },
       {
         // Straight into the bug we just filed — replace, so Back skips the form
@@ -209,6 +215,15 @@ export function NewBugPage() {
               className="border-0"
             />
           </div>
+
+          {/* The screenshots and logs that make the report reproducible — attached
+              while filing rather than in a follow-up comment. */}
+          <AttachmentSection
+            items={attachments}
+            canWrite
+            onChange={setAttachments}
+            className="mt-8"
+          />
 
           {/* Activity needs a real bug; until then, name the section and say so. */}
           <section className="mt-10 border-t pt-6">

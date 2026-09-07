@@ -94,6 +94,8 @@ export interface CreateTaskInput {
    * personal-board column key.
    */
   personal?: boolean;
+  /** Files picked in the create form — already uploaded by the time this is sent. */
+  attachments?: BugAttachment[];
 }
 
 export interface UpdateTaskInput {

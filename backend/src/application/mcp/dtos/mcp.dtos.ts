@@ -26,6 +26,38 @@ import {
  * a uuid, and forcing it to look one up first turns one tool call into three.
  * Resolution lives server-side so any future transport inherits it.
  */
+/**
+ * One stored file as it hangs off an issue — the exact shape `upload_file` hands
+ * back, so an assistant passes the reply straight through without reshaping it.
+ *
+ * Declared before the DTOs that carry it: `@ApiPropertyOptional({ type: [...] })`
+ * reads the class at decoration time, so a later declaration would be in its
+ * temporal dead zone and blow up on import.
+ */
+export class McpAttachmentDto {
+  @ApiProperty({ description: 'Public URL from upload_file' })
+  @IsString()
+  @IsNotEmpty()
+  url: string;
+
+  @ApiProperty({ description: 'Display name shown on the issue' })
+  @IsString()
+  @IsNotEmpty()
+  name: string;
+
+  @ApiPropertyOptional({ description: 'MIME type — decides whether it previews inline' })
+  @IsOptional()
+  @IsString()
+  contentType?: string;
+
+  @ApiPropertyOptional({ description: 'Size in bytes' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  size?: number;
+}
+
 export class McpCreateIssueDto {
   @ApiProperty({ enum: IssueKind, description: 'task or bug' })
   @IsEnum(IssueKind)
@@ -92,6 +124,17 @@ export class McpCreateIssueDto {
   @IsOptional()
   @IsString()
   parent?: string;
+
+  @ApiPropertyOptional({
+    type: [McpAttachmentDto],
+    description:
+      'Files to attach as the issue is filed (each already in storage — call upload_file first).',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => McpAttachmentDto)
+  attachments?: McpAttachmentDto[];
 }
 
 /**
@@ -138,34 +181,6 @@ export class McpCreateUploadUrlDto {
   @IsString()
   @MaxLength(200)
   name?: string;
-}
-
-/**
- * One stored file as it hangs off an issue — the exact shape `upload_file` hands
- * back, so an assistant passes the reply straight through without reshaping it.
- */
-export class McpAttachmentDto {
-  @ApiProperty({ description: 'Public URL from upload_file' })
-  @IsString()
-  @IsNotEmpty()
-  url: string;
-
-  @ApiProperty({ description: 'Display name shown on the issue' })
-  @IsString()
-  @IsNotEmpty()
-  name: string;
-
-  @ApiPropertyOptional({ description: 'MIME type — decides whether it previews inline' })
-  @IsOptional()
-  @IsString()
-  contentType?: string;
-
-  @ApiPropertyOptional({ description: 'Size in bytes' })
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  size?: number;
 }
 
 /** Read one issue in full — the ref (`ENG-14`) or its uuid. */
@@ -257,7 +272,7 @@ export class McpUpdateIssueDto {
   @ApiPropertyOptional({
     type: [McpAttachmentDto],
     description:
-      'Files on a bug (from upload_file) — REPLACES the whole set ([] clears them). ' +
+      'Files on the issue (from upload_file) — REPLACES the whole set ([] clears them). ' +
       'Read the issue first and send its existing attachments back alongside the new one.',
   })
   @IsOptional()

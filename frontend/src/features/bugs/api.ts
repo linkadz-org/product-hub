@@ -72,6 +72,8 @@ export interface CreateBugInput {
   /** Create straight into a team cycle (a board filtered to a cycle creates
    *  there). A concrete current/upcoming cycle id of the bug's team. */
   cycleId?: string;
+  /** Files picked in the create form — already uploaded by the time this is sent. */
+  attachments?: BugAttachment[];
 }
 
 export interface UpdateBugInput {

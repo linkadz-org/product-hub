@@ -386,6 +386,7 @@ export const ko: Record<I18nKey, string> = {
   'activityLog.field.caseId': '테스트 케이스',
   'activityLog.field.title': '제목',
   'activityLog.field.description': '설명',
+  'activityLog.field.attachments': '첨부파일',
   'activityLog.field.order': '위치',
   // 로드맵 항목 필드 — `phase`(보드 단계)와 `status`(작업 상태)는 서로 다른 필드로,
   // 둘 다 기록됩니다.
@@ -1410,6 +1411,8 @@ export const ko: Record<I18nKey, string> = {
   'boards.timelineNoDates': '날짜 없음',
   'boards.timelineLegendBar': '일정 (시작 → 마감)',
   'boards.timelineLegendMarker': '날짜 하나',
+  'boards.timelineDragHint': '막대나 마름모를 끌어 일정을 옮기고, 막대 끝을 끌면 그 날짜가 바뀝니다',
+  'boards.timelineSaveFailed': '날짜를 변경하지 못했습니다 — 되돌립니다.',
 
   // Filters — the multi-select filter menu on the bug/task boards
   'filters.title': '필터',

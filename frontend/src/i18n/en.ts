@@ -394,6 +394,9 @@ export const en = {
   'activityLog.field.caseId': 'test case',
   'activityLog.field.title': 'title',
   'activityLog.field.description': 'description',
+  // Logged as the filenames, so the row reads "changed attachments from
+  // repro.png to repro.png, console.log".
+  'activityLog.field.attachments': 'attachments',
   // Doc-page only: a page's rank among its siblings (see NO_VALUE_FIELDS in
   // entryText.ts) — reads as "changed position", never the raw integer.
   'activityLog.field.order': 'position',
@@ -1464,6 +1467,8 @@ export const en = {
   'boards.timelineNoDates': 'No dates',
   'boards.timelineLegendBar': 'Scheduled (start → due)',
   'boards.timelineLegendMarker': 'Single date',
+  'boards.timelineDragHint': 'Drag a bar or a diamond to reschedule, or a bar’s edge to change that date',
+  'boards.timelineSaveFailed': 'Couldn’t change those dates — put them back.',
 
   // Filters — the multi-select filter menu on the bug/task boards
   'filters.title': 'Filter',

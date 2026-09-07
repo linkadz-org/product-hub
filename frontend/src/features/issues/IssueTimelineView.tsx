@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { MoveHorizontal } from 'lucide-react';
+import { toast } from 'sonner';
 import { t } from '@/i18n';
 import { formatDate } from '@/lib/format';
 import { AssigneeBadge } from '@/components/AssigneeBadge';
@@ -6,6 +8,8 @@ import { GanttChart, GanttChip, firstEpoch, isEpoch, toEpoch, type GanttRow } fr
 import { LabelChips } from '@/features/labels/LabelChips';
 import { TeamChip, type TeamChipTeam } from '@/features/teams/TeamChip';
 import { useTeamLabelsLookup, useTeamLookup, useTeamStatusesLookup } from '@/features/teams/api';
+import { useAuth } from '@/lib/auth';
+import { useUpdateIssue } from './api';
 import {
   BUG_SEVERITY_COLOR,
   BUG_SEVERITY_LABEL,
@@ -57,6 +61,31 @@ interface IssueTimelineViewProps {
   /** Overrides what a row opens (e.g. the public board's read-only dialog) instead
    *  of this view's own peek drawer, which needs an account. */
   onOpenItem?: (item: IssueTimelineItem) => void;
+  /** Turns off drag-to-reschedule regardless of the viewer's role — for a surface
+   *  that has no authenticated write path at all (the public share board, whose
+   *  rows are read through a share token). */
+  readOnly?: boolean;
+}
+
+/** The dates a drag wrote, in the ISO-day shape the API stores. */
+type DateEdit = { startDate?: string; endDate?: string };
+
+/** Epoch ms back to an ISO day. `toEpoch` reads `YYYY-MM-DD` as UTC midnight and a
+ *  drag only ever adds whole days, so this round-trips exactly. */
+const isoDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+
+/** Does the stored issue already show what a drag wrote? Compared on the day, not
+ *  the string: the API answers `endDate` as a full timestamp while a drag sends
+ *  `YYYY-MM-DD`, so a raw `===` would never settle and the overlay would stick. */
+function settled(item: IssueTimelineItem, edit: DateEdit): boolean {
+  const same = (stored: number, written: string | undefined) =>
+    !written || (isEpoch(stored) && isoDay(stored) === written);
+  return (
+    same(toEpoch(item.startDate), edit.startDate) &&
+    // `endDate` first, then the legacy `dueDate` — the same fallback the bar uses,
+    // so a task saved before the rename settles too.
+    same(firstEpoch(item.endDate, item.dueDate), edit.endDate)
+  );
 }
 
 /** The date that anchors a row's position — its start, else its end. */
@@ -77,6 +106,14 @@ function anchor(i: IssueTimelineItem): number {
  * identify a row in is just a picture of dates: you'd have to open every bar to
  * find whose it is, which team owns it, or whether it's blocked.
  *
+ * Every placed row is **draggable** for anyone who can write: a bar moves the whole
+ * window (or resizes from either edge), and a diamond moves the single date it
+ * stands for. Rescheduling is the one edit a timeline is actually *for* — reading
+ * dates off an axis and then opening each issue to change them is the trip this
+ * view exists to save — and most rows here are diamonds, so leaving those fixed
+ * made the view read-only in practice. The drag writes ISO days through the shared
+ * `PATCH /issues/:id`, held on screen optimistically until the refetch agrees.
+ *
  * Clicking a row **peeks** it in a drawer rather than navigating, for the reason
  * the roadmap timeline does: leaving the chart to read one issue and coming back
  * loses your place on the axis, and a timeline is about the rows *around* the one
@@ -90,6 +127,7 @@ export function IssueTimelineView({
   labelsFor: labelsForOverride,
   teamFor: teamForOverride,
   onOpenItem,
+  readOnly,
 }: IssueTimelineViewProps) {
   // Same hooks either way (rules of hooks) — `enabled` just skips their fetch
   // when the caller supplies its own lookup.
@@ -100,6 +138,44 @@ export function IssueTimelineView({
   const labelsFor = labelsForOverride ?? labelsForHook;
   const teamFor = teamForOverride ?? teamForHook;
   const [peek, setPeek] = useState<IssuePeek | null>(null);
+
+  const { canWrite } = useAuth();
+  const update = useUpdateIssue();
+  const editable = !readOnly && canWrite;
+  // Dates just dragged, laid over the fetched issue until the refetch agrees: the
+  // PATCH isn't optimistic, so without this the bar (or diamond) would spring back
+  // to where it started for the length of the round-trip.
+  const [pending, setPending] = useState<Record<string, DateEdit>>({});
+  useEffect(() => {
+    setPending((prev) => {
+      if (!Object.keys(prev).length) return prev;
+      const next = { ...prev };
+      let changed = false;
+      for (const item of items) {
+        if (next[item.id] && settled(item, next[item.id])) {
+          delete next[item.id];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [items]);
+
+  /** Write one or both dates, keeping the shape the drag put on screen. */
+  const reschedule = (id: string, edit: DateEdit) => {
+    setPending((p) => ({ ...p, [id]: edit }));
+    update.mutate(
+      { id, input: edit },
+      {
+        onError: (err) => {
+          // Drop back to the stored dates and say why — an unexplained snap-back
+          // just reads as a broken timeline.
+          setPending(({ [id]: _dropped, ...rest }) => rest);
+          toast.error(t('boards.timelineSaveFailed'), { description: err.message });
+        },
+      },
+    );
+  };
 
   // Name the team only on a board whose rows actually span teams — "All issues",
   // "Assigned to me", a roadmap's tasks. On a single team's board every chip
@@ -113,8 +189,10 @@ export function IssueTimelineView({
     ((issue: IssueTimelineItem) =>
       setPeek({ id: issue.id, issueType, href: `/issues/${issue.shortId || issue.id}` }));
 
-  // Dated first (soonest at the top), undated last — a stable, useful order.
-  const ordered = [...items].sort((a, b) => {
+  // Dated first (soonest at the top), undated last — a stable, useful order. Over
+  // the *dragged* dates, so a row doesn't jump position mid-save either.
+  const charted = items.map((i) => (pending[i.id] ? { ...i, ...pending[i.id] } : i));
+  const ordered = [...charted].sort((a, b) => {
     const aa = anchor(a);
     const bb = anchor(b);
     if (isEpoch(aa) && isEpoch(bb)) return aa - bb;
@@ -161,13 +239,24 @@ export function IssueTimelineView({
       ),
     };
 
+    // Every dated shape is draggable, not just the two-date one: a bar moves (or
+    // resizes from an edge) and a diamond moves the one date it stands for. The
+    // diamond is the common case on these boards — most issues carry a due date
+    // and nothing else — so leaving it fixed would make the timeline read-only
+    // for exactly the rows people schedule most.
     if (isEpoch(start) && isEpoch(end)) {
       const range = `${formatDate(new Date(start))} – ${formatDate(new Date(end))}`;
       row.bar = { start, end, color, tooltip: `${issue.title} · ${range} · ${statusLabel}` };
+      if (editable) {
+        row.onBarChange = (n) =>
+          reschedule(issue.id, { startDate: isoDay(n.start), endDate: isoDay(n.end) });
+      }
     } else if (isEpoch(end)) {
       row.marker = { at: end, color, tooltip: `${issue.title} · ${formatDate(new Date(end))} · ${statusLabel}` };
+      if (editable) row.onMarkerChange = (n) => reschedule(issue.id, { endDate: isoDay(n.at) });
     } else if (isEpoch(start)) {
       row.marker = { at: start, color, tooltip: `${issue.title} · ${formatDate(new Date(start))} · ${statusLabel}` };
+      if (editable) row.onMarkerChange = (n) => reschedule(issue.id, { startDate: isoDay(n.at) });
     } else {
       row.emptyText = t('boards.timelineNoDates');
     }
@@ -191,6 +280,14 @@ export function IssueTimelineView({
               <span className="size-2.5 rotate-45 rounded-[2px] bg-muted-foreground" aria-hidden />
               {t('boards.timelineLegendMarker')}
             </span>
+            {/* Drag isn't discoverable on its own — say it, but only to someone
+                who can actually move a date. */}
+            {editable && (
+              <span className="flex items-center gap-1.5">
+                <MoveHorizontal className="size-3.5" aria-hidden />
+                {t('boards.timelineDragHint')}
+              </span>
+            )}
           </>
         }
       />

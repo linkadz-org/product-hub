@@ -1,8 +1,8 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { MoreHorizontal, Paperclip } from 'lucide-react';
+import { MoreHorizontal } from 'lucide-react';
 import { Menu, RichText, RichTextEditor, type MenuItem } from '@/components/ui';
-import { AttachmentBar } from '@/components/AttachmentBar';
+import { AttachmentSection } from '@/components/AttachmentBar';
 import {
   DescriptionTemplates,
   useTemplateSeed,
@@ -257,23 +257,12 @@ export function IssueDetailMain({
           evidence for the issue rather than part of one comment. Hidden entirely
           on a read-only view with nothing attached, so a public share doesn't
           grow an empty section. */}
-      {(attachments.length > 0 || (canWrite && onSaveAttachments)) && (
-        <section className="mt-8 flex flex-col gap-2">
-          {/* Same eyebrow heading as the neighbouring SUB-TASKS / DOCS sections. */}
-          <h3 className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            <Paperclip className="size-3.5" aria-hidden />
-            {t('attachments.title')}
-            {attachments.length > 0 && (
-              <span className="tabular-nums">({attachments.length})</span>
-            )}
-          </h3>
-          <AttachmentBar
-            items={attachments}
-            canWrite={canWrite && !!onSaveAttachments}
-            onChange={onSaveAttachments}
-          />
-        </section>
-      )}
+      <AttachmentSection
+        items={attachments}
+        canWrite={canWrite && !!onSaveAttachments}
+        onChange={onSaveAttachments}
+        className="mt-8"
+      />
 
       {/* Optional inset (task detail's Sub-tasks) between description and Activity. */}
       {beforeActivity}

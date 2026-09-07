@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
@@ -9,8 +10,10 @@ import {
   Matches,
   MaxLength,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
 import { BugSeverity, IssueKind, TASK_ESTIMATE_VALUES } from '../domain/enums/issue.enums';
+import { IssueAttachmentDto } from './update-issue.dto';
 
 /**
  * Create an issue. `kind` picks task vs bug; the kind-specific fields (estimate &
@@ -89,6 +92,16 @@ export class CreateIssueDto {
   @IsOptional()
   @IsString()
   projectId?: string;
+
+  @ApiPropertyOptional({
+    type: [IssueAttachmentDto],
+    description: 'Files to attach to the issue on creation (task or bug)',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => IssueAttachmentDto)
+  attachments?: IssueAttachmentDto[];
 
   // ── task-only ──────────────────────────────────────────────────────────────
   @ApiPropertyOptional({ deprecated: true, description: 'Legacy alias of endDate (task)' })
