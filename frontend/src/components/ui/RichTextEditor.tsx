@@ -43,6 +43,18 @@ export interface RichTextEditorProps {
   value: string;
   onChange: (html: string) => void;
   /**
+   * Emitted when focus leaves the editor — the moment a piece of writing is
+   * actually finished.
+   *
+   * This is where a description should be **saved**. `onChange` fires on every
+   * DOM mutation the editor sees, and not all of them are the author typing: a
+   * browser page translator rewrites the text in place, and a save wired to
+   * `onChange` writes that rewrite to the server as if it had been typed. Take
+   * `onChange` as "the draft moved" and this as "commit it" (`useHtmlSaveGuard`
+   * pairs the two, with a check on how much text changed).
+   */
+  onBlur?: (html: string) => void;
+  /**
    * Mount with these blocks instead of parsing `value`.
    *
    * For the one caller that has block ids worth keeping: the collaborative doc
@@ -240,6 +252,7 @@ function withFallbackBlocks(blocks: EditorBlockSeed[]): EditorBlockSeed[] {
 export function RichTextEditor({
   value,
   onChange,
+  onBlur,
   initialBlocks,
   placeholder,
   minHeight,
@@ -260,6 +273,8 @@ export function RichTextEditor({
   const initialBlocksRef = useRef(initialBlocks);
   const lastEmittedRef = useRef(value);
   const onChangeRef = useRef(onChange);
+  const onBlurRef = useRef(onBlur);
+  onBlurRef.current = onBlur;
   const placeholderRef = useRef(placeholder);
   const minHeightRef = useRef(minHeight);
   const imagesRef = useRef(images);
@@ -330,6 +345,7 @@ export function RichTextEditor({
     let unbindShortcuts: (() => void) | null = null;
     let unbindRules: (() => void) | null = null;
     let unbindInsertLine: (() => void) | null = null;
+    let unbindBlur: (() => void) | null = null;
     let rafId = 0;
 
     const initTimer = window.setTimeout(() => {
@@ -450,6 +466,35 @@ export function RichTextEditor({
         }
       }
 
+      /**
+       * Focus left the editor → hand the caller the finished HTML.
+       *
+       * Read after a tick, and only when focus really landed outside: the
+       * inline toolbar and the block menus live inside the holder, but clicking
+       * one moves focus through `document.body` on the way. The caller compares
+       * against what's stored, so an extra emit that changed nothing costs
+       * nothing — losing an edit because we were too clever would not.
+       */
+      async function emitBlurHtml() {
+        if (!onBlurRef.current) return;
+        try {
+          const saved = await instance.save();
+          onBlurRef.current?.(blocksToHtml((saved.blocks as unknown as HtmlEditorBlock[]) ?? []));
+        } catch {
+          /* ignore save races during teardown */
+        }
+      }
+      const onFocusOut = () => {
+        window.setTimeout(() => {
+          if (cancelled || !holderRef.current) return;
+          const active = document.activeElement;
+          if (active && holder.contains(active)) return;
+          void emitBlurHtml();
+        }, 0);
+      };
+      holder.addEventListener('focusout', onFocusOut);
+      unbindBlur = () => holder.removeEventListener('focusout', onFocusOut);
+
       // Add a copy button to code blocks once rendered, and whenever blocks change.
       instance.isReady
         .then(() => {
@@ -529,6 +574,7 @@ export function RichTextEditor({
       unbindShortcuts?.();
       unbindRules?.();
       unbindInsertLine?.();
+      unbindBlur?.();
       slashMenu?.destroy();
       mentionMenu?.destroy();
       const e = editor;
@@ -555,10 +601,19 @@ export function RichTextEditor({
 
   return (
     <>
+      {/* `translate="no"` (plus the class every translator also honours) is not
+          a nicety — it is what keeps the document *the author's*. A page
+          translator rewrites text nodes in place, and in a contenteditable
+          those nodes are the content: translate the page and the editor now
+          holds a machine translation that any save would write over the
+          original. So the read views stay translatable and the editor does not:
+          you can read this workspace in your language, and what you save is
+          still what you wrote. */}
       <div
         ref={holderRef}
         onClick={onLinkClick}
-        className={`rich-text-editor${className ? ` ${className}` : ''}`}
+        translate="no"
+        className={`notranslate rich-text-editor${className ? ` ${className}` : ''}`}
       />
       {imageZoom.node}
       {links.node}

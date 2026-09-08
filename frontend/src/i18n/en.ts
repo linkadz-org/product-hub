@@ -1704,6 +1704,17 @@ export const en = {
   'editor.slashPrevMonth': 'Previous month',
   'editor.slashNextMonth': 'Next month',
 
+  // Held-back save — most of a written description was about to disappear
+  // (components/EditGuard).
+  'editGuard.title': 'This would replace what you wrote',
+  'editGuard.body':
+    'The new text drops {percent}% of the saved description. Saving overwrites the original, and that cannot be undone.',
+  'editGuard.translated':
+    'This page looks translated by your browser. Turn the translation off before editing, so what you save stays in the language you wrote it in.',
+  'editGuard.hint': 'Nothing has been saved yet — the stored version is still intact.',
+  'editGuard.keep': 'Keep the saved version',
+  'editGuard.saveAnyway': 'Replace it anyway',
+
   // Enum labels — the fixed vocabularies in `types/enums.ts`. The stored value
   // never changes (a bug is `high` in every language); only the label does.
   'enum.role.admin': 'Admin',

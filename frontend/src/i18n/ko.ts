@@ -1641,6 +1641,17 @@ export const ko: Record<I18nKey, string> = {
   'editor.slashDate': '날짜',
   'editor.slashNoResults': '일치하는 항목이 없습니다',
   'editor.slashLinkPlaceholder': '링크를 붙여넣고 Enter를 누르세요',
+  // Held-back save — most of a written description was about to disappear
+  // (components/EditGuard).
+  'editGuard.title': '작성한 내용을 덮어쓰게 됩니다',
+  'editGuard.body':
+    '새 내용이 저장된 설명의 {percent}%를 지웁니다. 저장하면 원본을 덮어쓰며 되돌릴 수 없습니다.',
+  'editGuard.translated':
+    '브라우저 번역이 켜져 있는 것 같습니다. 번역을 끄고 편집하면 작성한 언어 그대로 저장됩니다.',
+  'editGuard.hint': '아직 저장되지 않았습니다 — 저장된 내용은 그대로입니다.',
+  'editGuard.keep': '저장된 내용 유지',
+  'editGuard.saveAnyway': '그래도 덮어쓰기',
+
   'editor.slashPrevMonth': '이전 달',
   'editor.slashNextMonth': '다음 달',
 

@@ -11,6 +11,7 @@ import { Link } from 'react-router-dom';
 import { Check, History, Image as ImageIcon, Link2, Loader2, Paintbrush, X } from 'lucide-react';
 import { Button, Drawer, RichText, RichTextEditor, SymbolPicker } from '@/components/ui';
 import { MediaUploader } from '@/components/MediaUploader';
+import { useHtmlSaveGuard } from '@/components/EditGuard';
 import { ProseSkeleton } from '@/components/Skeletons';
 import { TeamSymbol, TEAM_SYMBOL_NAMES } from '@/components/TeamSymbol';
 import { cn } from '@/lib/utils';
@@ -291,6 +292,19 @@ export function DocPageEditor({
     },
     [flush],
   );
+
+  // The body keeps its autosave — a doc is written in long sittings and the
+  // status chip is the promise that nothing is lost. What the guard adds is a
+  // floor under it: an edit that would drop most of the page (a browser
+  // translation rewriting the text in place is the one that started this) is
+  // held back and asked about instead of queued (components/EditGuard).
+  const bodyGuard = useHtmlSaveGuard({
+    saved: page.content ?? '',
+    onSave: (html) => queue({ content: html }),
+    // Re-seed from what's stored rather than from this mount's copy: a version
+    // restore may have moved it since.
+    onRevert: () => setSeed((s) => ({ nonce: s.nonce + 1, html: page.content })),
+  });
 
   // Renaming this page from the rail lands in the page cache, not in this
   // component's state — adopt it, unless a title edit of ours is still queued
@@ -725,7 +739,7 @@ export function DocPageEditor({
                 mentions
                 minHeight={360}
                 placeholder={t('docs.write')}
-                onChange={(html) => queue({ content: html })}
+                onChange={bodyGuard.commit}
                 onComment={canComment ? (range) => commentOnRange(range) : undefined}
                 commentLabel={t('docs.comments.add')}
                 // A doc page *is* the document — the skin drops the frame + focus
@@ -742,6 +756,7 @@ export function DocPageEditor({
             )}
           </div>
           {prompt && <SelectionCommentButton prompt={prompt} onPick={startComment} />}
+          {bodyGuard.dialog}
         </div>
       </div>
 

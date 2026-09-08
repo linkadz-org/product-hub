@@ -27,6 +27,7 @@ import {
 import { AssigneeField, fallbackNames } from '@/components/AssigneeField';
 import { DetailSkeleton } from '@/components/Skeletons';
 import { DescriptionTemplates, useTemplateSeed } from '@/components/DescriptionTemplates';
+import { useHtmlSaveGuard } from '@/components/EditGuard';
 import { cn } from '@/lib/utils';
 import { t } from '@/i18n';
 import { usePageChrome } from '@/layouts/headers/PageChrome';
@@ -139,10 +140,6 @@ export function RoadmapItemDetail({
   useEffect(() => {
     if (item) setProgressDraft(item.progress);
   }, [item?.progress]);
-  // Debounce description saves the way the issue detail does — save on pause.
-  const descTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => void (descTimer.current && clearTimeout(descTimer.current)), []);
-
   /** Persist a field patch: recompute RICE, re-derive the cover, PUT the array.
    *  Declared above the loading guard so the template picker (a hook) can save
    *  through it; it no-ops until the item resolves. */
@@ -156,6 +153,32 @@ export function RoadmapItemDetail({
 
   // Backlog templates (User Story / JTBD) — the shared picker, same as a bug's.
   const seed = useTemplateSeed(item?.description ?? '', (html) => save({ description: html }), itemId);
+
+  /** Write the description back, and link any issue it now names.
+   *
+   *  A pasted issue link (/issues/TSK-5, /issues/BUG-12) links it to this item.
+   *  Add-only: unresolved refs are ignored and deleting the text later won't
+   *  unlink. Declared above the loading guard so the save guard (a hook) can
+   *  reach it; it no-ops until the item resolves. */
+  const saveDescription = (html: string) => {
+    if (!roadmap || !item) return;
+    save({ description: html });
+    const refs = issueRefsInText(html);
+    if (!refs.length) return;
+    const cols = roadmap.columns?.length ? roadmap.columns : DEFAULT_ROADMAP_COLUMNS;
+    linkIssues.mutate({
+      refs,
+      roadmapId: roadmap.id,
+      roadmapItemId: item.id,
+      roadmapItemLabel: `${cols.find((c) => c.key === item.phase)?.label ?? item.phase} · ${item.title}`,
+      projectId: roadmap.projectId,
+    });
+  };
+  // Saves when you leave the editor, not while you type — and never silently
+  // when most of the stored text would vanish (components/EditGuard). Same
+  // contract as task/bug detail, so a backlog item can't be lost to a browser
+  // translation either.
+  const descGuard = useHtmlSaveGuard({ saved: item?.description ?? '', onSave: saveDescription });
 
   if (isLoading) {
     return <DetailSkeleton />;
@@ -198,26 +221,6 @@ export function RoadmapItemDetail({
         : t('board.ageDays').replace('{n}', String(daysBetween(from, to)))
       : '—';
   const itemLabel = `${columns.find((c) => c.key === item.phase)?.label ?? item.phase} · ${item.title}`;
-
-  const saveDescription = (html: string) => {
-    if (descTimer.current) clearTimeout(descTimer.current);
-    descTimer.current = setTimeout(() => {
-      save({ description: html });
-      // A pasted issue link (/issues/TSK-5, /issues/BUG-12) links it to this
-      // item. Add-only: unresolved refs are ignored and deleting the text later
-      // won't unlink.
-      const refs = issueRefsInText(html);
-      if (refs.length) {
-        linkIssues.mutate({
-          refs,
-          roadmapId: roadmap.id,
-          roadmapItemId: item.id,
-          roadmapItemLabel: itemLabel,
-          projectId: roadmap.projectId,
-        });
-      }
-    }, 700);
-  };
 
   /** id → the `{id,name}` pair the item stores; keeps the name of anyone the
    *  workspace no longer lists rather than blanking it. */
@@ -571,9 +574,10 @@ export function RoadmapItemDetail({
               onApply={seed.apply}
             />
             <RichTextEditor
-              key={`${item.id}:${seed.nonce}`}
+              key={`${item.id}:${seed.nonce}:${descGuard.nonce}`}
               value={seed.value}
-              onChange={saveDescription}
+              onChange={descGuard.draft}
+              onBlur={descGuard.commit}
               placeholder={t('roadmaps.description')}
               minHeight={80}
               images
@@ -581,6 +585,7 @@ export function RoadmapItemDetail({
               mentions
               className="border-0"
             />
+            {descGuard.dialog}
           </>
         ) : item.description ? (
           <RichText className="text-sm text-muted-foreground" html={item.description} />

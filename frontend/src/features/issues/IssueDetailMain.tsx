@@ -1,8 +1,9 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { MoreHorizontal } from 'lucide-react';
 import { Menu, RichText, RichTextEditor, type MenuItem } from '@/components/ui';
 import { AttachmentSection } from '@/components/AttachmentBar';
+import { useHtmlSaveGuard } from '@/components/EditGuard';
 import {
   DescriptionTemplates,
   useTemplateSeed,
@@ -113,17 +114,11 @@ export function IssueDetailMain({
   beforeActivity,
   propertiesInline,
 }: IssueDetailMainProps) {
-  // The rich editor emits HTML on every keystroke — debounce so we save once the
-  // user pauses, not per character, and skip no-op round trips.
-  const savedRef = useRef(description);
-  savedRef.current = description;
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
-  function handleDescription(html: string) {
-    if (html === savedRef.current) return;
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => onSaveDescription(html), 700);
-  }
+  // The description saves when you leave it, not while you type: `onChange`
+  // fires for every DOM mutation the editor sees, and a browser page translator
+  // rewriting the text is one of those. The guard also refuses to write a value
+  // that drops most of what's stored without asking first (components/EditGuard).
+  const guard = useHtmlSaveGuard({ saved: description, onSave: onSaveDescription });
 
   // Templates: applying one saves at once (no debounce) and remounts the editor
   // via `nonce`, since Editor.js only reads `value` at mount.
@@ -225,9 +220,10 @@ export function IssueDetailMain({
               onApply={seed.apply}
             />
             <RichTextEditor
-              key={`${issueId}:${seed.nonce}`}
+              key={`${issueId}:${seed.nonce}:${guard.nonce}`}
               value={seed.value}
-              onChange={handleDescription}
+              onChange={guard.draft}
+              onBlur={guard.commit}
               placeholder={descriptionPlaceholder}
               minHeight={80}
               images
@@ -236,6 +232,7 @@ export function IssueDetailMain({
               mentions
               className="border-0"
             />
+            {guard.dialog}
           </>
         ) : description ? (
           <RichText className="text-sm text-muted-foreground" html={description} />
