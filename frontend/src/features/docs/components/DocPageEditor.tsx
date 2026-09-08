@@ -8,10 +8,21 @@ import {
   type MouseEvent,
 } from 'react';
 import { Link } from 'react-router-dom';
-import { Check, History, Image as ImageIcon, Link2, Loader2, Paintbrush, X } from 'lucide-react';
+import {
+  Check,
+  History,
+  Image as ImageIcon,
+  Languages,
+  Link2,
+  Loader2,
+  Paintbrush,
+  Pencil,
+  X,
+} from 'lucide-react';
 import { Button, Drawer, RichText, RichTextEditor, SymbolPicker } from '@/components/ui';
 import { MediaUploader } from '@/components/MediaUploader';
 import { useHtmlSaveGuard } from '@/components/EditGuard';
+import { useEditToggle } from '@/components/EditToggle';
 import { ProseSkeleton } from '@/components/Skeletons';
 import { TeamSymbol, TEAM_SYMBOL_NAMES } from '@/components/TeamSymbol';
 import { cn } from '@/lib/utils';
@@ -304,6 +315,17 @@ export function DocPageEditor({
     // Re-seed from what's stored rather than from this mount's copy: a version
     // restore may have moved it since.
     onRevert: () => setSeed((s) => ({ nonce: s.nonce + 1, html: page.content })),
+  });
+  // Reading the page in your own language, translator and all — see the toggle
+  // in the byline row. `doc-page-read` is the same skin a reader gets, so the
+  // page doesn't change shape on the way in or out. Unlike a description, a doc
+  // page opens in the editor: it *is* the writing surface, and a writer who
+  // came here to write shouldn't have to ask for the editor first.
+  const edit = useEditToggle(page.content, {
+    className: 'doc-page-read',
+    placeholder: t('docs.write'),
+    start: 'edit',
+    onLeaveEdit: bodyGuard.flush,
   });
 
   // Renaming this page from the rail lands in the page cache, not in this
@@ -654,6 +676,29 @@ export function DocPageEditor({
           >
             <History className="size-3" aria-hidden /> {t('docs.versionHistory')}
           </button>
+          {/* Reading this page in your own language. The editor is marked
+              untranslatable on purpose (a translation in a contenteditable is a
+              rewrite waiting to be saved), so a writer gets the reader's view on
+              request — see components/EditToggle. Its own small-text button
+              rather than the hook's, so it sits in this row like its
+              neighbours. */}
+          {canWrite && page.content && (
+            <button
+              type="button"
+              onClick={edit.toggle}
+              className="inline-flex items-center gap-1 rounded transition-colors hover:text-foreground"
+            >
+              {edit.editing ? (
+                <>
+                  <Languages className="size-3" aria-hidden /> {t('readMode.show')}
+                </>
+              ) : (
+                <>
+                  <Pencil className="size-3" aria-hidden /> {t('readMode.edit')}
+                </>
+              )}
+            </button>
+          )}
         </div>
 
         {/* Links and files share one rule: both answer "what else belongs with
@@ -709,7 +754,12 @@ export function DocPageEditor({
         <div ref={setBox} className="relative mt-4">
           <DocCommentLayer layout={layout} activeId={activeComment} hiddenIds={resolvedIds} />
           <div ref={setContent} className="relative z-[1]" onClick={pickThread}>
-            {collab ? (
+            {/* Reading mode wins over every body below it, collaborative one
+                included: while it's up there is no editor mounted at all, which
+                is exactly what makes the page safe to translate. */}
+            {edit.view ? (
+              edit.view
+            ) : collab ? (
               /* The collaborative body. Note what's missing: no `value`, and no
                  `onChange` that queues a save. That absence *is* the feature —
                  the Y.Doc is the document, and the sync server renders it back

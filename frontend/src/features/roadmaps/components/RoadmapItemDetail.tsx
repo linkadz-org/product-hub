@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import {
@@ -17,6 +17,7 @@ import { useAuth } from '@/lib/auth';
 import {
   DateRangePicker,
   DotLabel,
+  EditableTitle,
   Input,
   Menu,
   RichText,
@@ -28,6 +29,7 @@ import { AssigneeField, fallbackNames } from '@/components/AssigneeField';
 import { DetailSkeleton } from '@/components/Skeletons';
 import { DescriptionTemplates, useTemplateSeed } from '@/components/DescriptionTemplates';
 import { useHtmlSaveGuard } from '@/components/EditGuard';
+import { useEditToggle } from '@/components/EditToggle';
 import { cn } from '@/lib/utils';
 import { t } from '@/i18n';
 import { usePageChrome } from '@/layouts/headers/PageChrome';
@@ -179,6 +181,13 @@ export function RoadmapItemDetail({
   // contract as task/bug detail, so a backlog item can't be lost to a browser
   // translation either.
   const descGuard = useHtmlSaveGuard({ saved: item?.description ?? '', onSave: saveDescription });
+  // The editor can't be translated without eating the original, so the read
+  // view is what's on screen until someone presses Edit (components/EditToggle).
+  const edit = useEditToggle(item?.description ?? '', {
+    className: 'text-sm',
+    placeholder: t('roadmaps.description'),
+    onLeaveEdit: descGuard.flush,
+  });
 
   if (isLoading) {
     return <DetailSkeleton />;
@@ -532,25 +541,18 @@ export function RoadmapItemDetail({
       {item.shortId && (
         <span className="mb-1 block font-mono text-xs text-muted-foreground">{item.shortId}</span>
       )}
-      <div className="flex items-center gap-2">
-        {canWrite ? (
-          <input
-            key={item.id}
-            className="min-w-0 flex-1 border-0 bg-transparent p-0 text-2xl font-semibold tracking-tight text-foreground outline-none placeholder:text-muted-foreground"
-            defaultValue={item.title}
-            placeholder={t('roadmaps.itemTitlePlaceholder')}
-            aria-label={t('roadmaps.itemTitle')}
-            onBlur={(e) => {
-              const v = e.target.value.trim();
-              if (v && v !== item.title) save({ title: v });
-              else e.target.value = item.title;
-            }}
-          />
-        ) : (
-          <h1 className="min-w-0 flex-1 text-2xl font-semibold tracking-tight">
-            {item.title || t('roadmaps.untitled')}
-          </h1>
-        )}
+      {/* `items-start`, not centre: a title now wraps to two lines, and the
+          star and ⋯ belong beside its first line rather than halfway down it. */}
+      <div className="flex items-start gap-2">
+        {/* Same title field as a task or bug: a heading that wraps and can be
+            translated, an editor once you focus it (ui/EditableTitle). */}
+        <EditableTitle
+          key={item.id}
+          value={item.title}
+          onSave={(v) => save({ title: v })}
+          placeholder={canWrite ? t('roadmaps.itemTitlePlaceholder') : t('roadmaps.untitled')}
+          canWrite={canWrite}
+        />
         {/* Drawer (no topbar): favourite + ⋯ sit inline in the title row. */}
         {menuTarget === 'header' && favourite}
         {menuTarget === 'header' && overflow}
@@ -571,20 +573,26 @@ export function RoadmapItemDetail({
             <DescriptionTemplates
               templates={BACKLOG_TEMPLATES}
               hasContent={seed.hasContent}
-              onApply={seed.apply}
+              onApply={(tpl) => {
+                edit.edit();
+                seed.apply(tpl);
+              }}
+              actions={edit.button}
             />
-            <RichTextEditor
-              key={`${item.id}:${seed.nonce}:${descGuard.nonce}`}
-              value={seed.value}
-              onChange={descGuard.draft}
-              onBlur={descGuard.commit}
-              placeholder={t('roadmaps.description')}
-              minHeight={80}
-              images
-              // `@` names a person here too — a reference in the text, not a ping.
-              mentions
-              className="border-0"
-            />
+            {edit.view ?? (
+              <RichTextEditor
+                key={`${item.id}:${seed.nonce}:${descGuard.nonce}`}
+                value={seed.value}
+                onChange={descGuard.draft}
+                onBlur={descGuard.commit}
+                placeholder={t('roadmaps.description')}
+                minHeight={80}
+                images
+                // `@` names a person here too — a reference in the text, not a ping.
+                mentions
+                className="border-0"
+              />
+            )}
             {descGuard.dialog}
           </>
         ) : item.description ? (

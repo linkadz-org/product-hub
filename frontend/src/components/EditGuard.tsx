@@ -35,6 +35,17 @@ export interface HtmlSaveGuard {
   draft: (html: string) => void;
   /** Wire to the editor's `onBlur`: this is the save. */
   commit: (html: string) => void;
+  /**
+   * Save the draft now, on the same terms as a blur.
+   *
+   * For the one case blur can't cover: the editor being taken off screen by a
+   * click that isn't a focus change — the Edit toggle putting the read view
+   * back. The editor unmounts in that click's render pass, before its own
+   * deferred blur ever runs, so without this the last thing typed would only be
+   * caught by the silent unmount flush, which *drops* anything over the
+   * threshold. Called from a button, there's someone there to ask.
+   */
+  flush: () => void;
   /** Put in the editor's `key` — bumping it remounts the editor with what's
    *  stored, so "Keep the saved version" visibly puts the text back. */
   nonce: number;
@@ -112,21 +123,26 @@ export function useHtmlSaveGuard({
     [attempt],
   );
 
+  const flush = useCallback(() => {
+    const pending = draftRef.current;
+    if (pending != null) attempt(pending);
+  }, [attempt]);
+
   // An edit in progress when the field goes away — a route change, the drawer
   // closing, the tab being hidden — never had its blur. Flush it here on the
   // same terms; blur-only saving would otherwise lose the last paragraph.
   useEffect(() => {
-    const flush = () => {
+    const flushSilently = () => {
       const pending = draftRef.current;
       if (pending != null) attempt(pending, { silent: true });
     };
     const onHidden = () => {
-      if (document.visibilityState === 'hidden') flush();
+      if (document.visibilityState === 'hidden') flushSilently();
     };
     document.addEventListener('visibilitychange', onHidden);
     return () => {
       document.removeEventListener('visibilitychange', onHidden);
-      flush();
+      flushSilently();
     };
   }, [attempt]);
 
@@ -180,5 +196,5 @@ export function useHtmlSaveGuard({
     </Dialog>
   ) : null;
 
-  return { draft, commit, nonce, dialog };
+  return { draft, commit, flush, nonce, dialog };
 }

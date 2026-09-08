@@ -1652,6 +1652,12 @@ export const ko: Record<I18nKey, string> = {
   'editGuard.keep': '저장된 내용 유지',
   'editGuard.saveAnyway': '그래도 덮어쓰기',
 
+  // The Edit toggle. What a description shows by default is the read view — no
+  // editor, so the browser is free to translate it; this opens the editor and
+  // closes it again (components/EditToggle).
+  'readMode.show': '읽기·번역',
+  'readMode.edit': '편집',
+
   'editor.slashPrevMonth': '이전 달',
   'editor.slashNextMonth': '다음 달',
 

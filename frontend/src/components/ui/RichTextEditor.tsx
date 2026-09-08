@@ -346,6 +346,8 @@ export function RichTextEditor({
     let unbindRules: (() => void) | null = null;
     let unbindInsertLine: (() => void) | null = null;
     let unbindBlur: (() => void) | null = null;
+    // Has anything actually changed since the last blur emit? (see emitBlurHtml)
+    let changedSinceBlur = false;
     let rafId = 0;
 
     const initTimer = window.setTimeout(() => {
@@ -459,6 +461,7 @@ export function RichTextEditor({
           const nextHtml = blocksToHtml((saved.blocks as unknown as HtmlEditorBlock[]) ?? []);
           if (nextHtml !== lastEmittedRef.current) {
             lastEmittedRef.current = nextHtml;
+            changedSinceBlur = true;
             onChangeRef.current(nextHtml);
           }
         } catch {
@@ -476,7 +479,12 @@ export function RichTextEditor({
        * nothing — losing an edit because we were too clever would not.
        */
       async function emitBlurHtml() {
-        if (!onBlurRef.current) return;
+        // Nothing moved since the last one — say nothing. Editor.js rarely gives
+        // back byte-identical HTML to what it was seeded with, so emitting on
+        // every blur would have every visit to an issue file a "changed the
+        // description" no-op behind the reader's back.
+        if (!onBlurRef.current || !changedSinceBlur) return;
+        changedSinceBlur = false;
         try {
           const saved = await instance.save();
           onBlurRef.current?.(blocksToHtml((saved.blocks as unknown as HtmlEditorBlock[]) ?? []));

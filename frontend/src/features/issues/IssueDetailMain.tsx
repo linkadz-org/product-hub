@@ -1,9 +1,10 @@
 import { type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { MoreHorizontal } from 'lucide-react';
-import { Menu, RichText, RichTextEditor, type MenuItem } from '@/components/ui';
+import { EditableTitle, Menu, RichText, RichTextEditor, type MenuItem } from '@/components/ui';
 import { AttachmentSection } from '@/components/AttachmentBar';
 import { useHtmlSaveGuard } from '@/components/EditGuard';
+import { useEditToggle } from '@/components/EditToggle';
 import {
   DescriptionTemplates,
   useTemplateSeed,
@@ -119,6 +120,14 @@ export function IssueDetailMain({
   // rewriting the text is one of those. The guard also refuses to write a value
   // that drops most of what's stored without asking first (components/EditGuard).
   const guard = useHtmlSaveGuard({ saved: description, onSave: onSaveDescription });
+  // And what's on screen by default is the *read* view, not the editor: the
+  // editor can't be translated without eating the original, so it only appears
+  // when someone presses Edit (components/EditToggle).
+  const edit = useEditToggle(description, {
+    className: 'text-sm',
+    placeholder: descriptionPlaceholder,
+    onLeaveEdit: guard.flush,
+  });
 
   // Templates: applying one saves at once (no debounce) and remounts the editor
   // via `nonce`, since Editor.js only reads `value` at mount.
@@ -158,20 +167,18 @@ export function IssueDetailMain({
       )}
       {/* Title row — the ⋯ overflow menu (Delete, …) sits at its right, like an
           issue header. Hidden when there are no actions the viewer may take. */}
-      <div className="flex items-center gap-2">
-        {canWrite ? (
-          <input
-            className="min-w-0 flex-1 border-0 bg-transparent p-0 text-2xl font-semibold tracking-tight text-foreground outline-none placeholder:text-muted-foreground"
-            defaultValue={title}
-            placeholder={titlePlaceholder}
-            aria-label={titlePlaceholder}
-            onBlur={(e) =>
-              e.target.value.trim() && e.target.value !== title && onSaveTitle(e.target.value.trim())
-            }
-          />
-        ) : (
-          <h1 className="min-w-0 flex-1 text-2xl font-semibold tracking-tight">{title}</h1>
-        )}
+      {/* `items-start`, not centre: a title now wraps to two lines, and the
+          star and ⋯ belong beside its first line rather than halfway down it. */}
+      <div className="flex items-start gap-2">
+        {/* Reads as a heading and edits as a field — so a long title wraps
+            instead of scrolling off its own right edge, and the browser's
+            translator can reach it. See ui/EditableTitle. */}
+        <EditableTitle
+          value={title}
+          onSave={onSaveTitle}
+          placeholder={titlePlaceholder}
+          canWrite={canWrite}
+        />
         {/* Inbox pane (no topbar): favourite + ⋯ sit inline in the title row. */}
         {menuTarget === 'header' && favourite && currentUserId && (
           <FavouriteButton
@@ -214,24 +221,33 @@ export function IssueDetailMain({
       <div className="mt-4">
         {canWrite ? (
           <>
+            {/* Templates and the Edit toggle share one row rather than stacking
+                two right-aligned strips above the same field. Applying a
+                template opens the editor — it's the start of writing. */}
             <DescriptionTemplates
               templates={templates}
               hasContent={seed.hasContent}
-              onApply={seed.apply}
+              onApply={(tpl) => {
+                edit.edit();
+                seed.apply(tpl);
+              }}
+              actions={edit.button}
             />
-            <RichTextEditor
-              key={`${issueId}:${seed.nonce}:${guard.nonce}`}
-              value={seed.value}
-              onChange={guard.draft}
-              onBlur={guard.commit}
-              placeholder={descriptionPlaceholder}
-              minHeight={80}
-              images
-              // `@` names a person in the description the same way it does in a
-              // comment. The chip is a reference, not a ping — only comments notify.
-              mentions
-              className="border-0"
-            />
+            {edit.view ?? (
+              <RichTextEditor
+                key={`${issueId}:${seed.nonce}:${guard.nonce}`}
+                value={seed.value}
+                onChange={guard.draft}
+                onBlur={guard.commit}
+                placeholder={descriptionPlaceholder}
+                minHeight={80}
+                images
+                // `@` names a person in the description the same way it does in a
+                // comment. The chip is a reference, not a ping — only comments notify.
+                mentions
+                className="border-0"
+              />
+            )}
             {guard.dialog}
           </>
         ) : description ? (

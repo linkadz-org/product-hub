@@ -1715,6 +1715,12 @@ export const en = {
   'editGuard.keep': 'Keep the saved version',
   'editGuard.saveAnyway': 'Replace it anyway',
 
+  // The Edit toggle. What a description shows by default is the read view — no
+  // editor, so the browser is free to translate it; this opens the editor and
+  // closes it again (components/EditToggle).
+  'readMode.show': 'Read & translate',
+  'readMode.edit': 'Edit',
+
   // Enum labels — the fixed vocabularies in `types/enums.ts`. The stored value
   // never changes (a bug is `high` in every language); only the label does.
   'enum.role.admin': 'Admin',
