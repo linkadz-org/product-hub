@@ -9,6 +9,8 @@ import { cn } from '@/lib/utils';
 import { t } from '@/i18n';
 import { BOARD_GUTTER, IssueBoardLayout } from '@/components/IssueBoardLayout';
 import { IssueTimelineView } from '@/features/issues/IssueTimelineView';
+import { SubIssueTree, renderIssueTree, rowIndent, TreeRowLead, TreeRowMeta, type IssueTreeCtl, type RowTree } from '@/features/issues/SubIssueTree';
+import { useIssueTree } from '@/features/issues/issueTree';
 import { SortMenu } from '@/features/issues/SortMenu';
 import { applyIssueSort, useIssueSort } from '@/features/issues/useIssueSort';
 import { SavedViewBar } from '@/features/saved-views/SavedViewBar';
@@ -35,7 +37,7 @@ import {
 import type { TaskLabelConfig } from '@/types/enums';
 import type { BugDto, CycleDto, TeamDto } from '@/types/dto';
 import { useBugs, useDeleteBug, useSetBugStatus } from './api';
-import { useTeamStatuses, useTeamLabelsLookup } from '@/features/teams/api';
+import { useTeamStatuses, useTeamStatusesLookup, useTeamLabelsLookup } from '@/features/teams/api';
 import { TeamShareMenu } from '@/features/teams/TeamShareMenu';
 import {
   CarryOverBadge,
@@ -65,6 +67,7 @@ export function BugCard({
   labels,
   cycle,
   overlay = false,
+  footer,
 }: {
   bug: BugDto;
   labels?: TaskLabelConfig[];
@@ -72,10 +75,13 @@ export function BugCard({
    *  — a hook per card isn't legal and the rows can span teams. */
   cycle?: CycleDto;
   overlay?: boolean;
+  /** Sub-issue tree, shown in the card's footer strip. */
+  footer?: ReactNode;
 }) {
   return (
     <BoardCard
       overlay={overlay}
+      footer={footer}
       titleDotColor={BUG_SEVERITY_COLOR[bug.severity]}
       titleDotLabel={BUG_SEVERITY_LABEL[bug.severity]}
       title={bug.title}
@@ -262,6 +268,8 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
   // Each card names its own cycle — at the default all-cycles scope that's the
   // only place it's stated. Resolved per-row like the labels, and scoped to the
   // teams actually on this board (the standalone /bugs route spans teams).
+  const tree = useIssueTree(bugs);
+  const statusesFor = useTeamStatusesLookup();
   const cycleFor = useCycleLookup(bugs.map((b) => b.teamId));
 
   /** Bugs don't persist ordering, so the drop slot (`overId`) is ignored — only
@@ -373,7 +381,7 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
       ) : view === 'board' ? (
         <KanbanBoard
           columns={columns}
-          items={bugs}
+          items={tree.roots}
           getId={(b) => b.id}
           getColumnKey={(b) => b.status}
           renderCard={(bug, overlay) => (
@@ -382,6 +390,19 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
               labels={labelsFor(bug.teamId)}
               cycle={cycleFor(bug.cycleId)}
               overlay={overlay}
+              footer={
+                tree.childrenOf.has(bug.id) ? (
+                  <SubIssueTree
+                    issue={bug}
+                    childrenOf={tree.childrenOf}
+                    expanded={tree.expanded}
+                    toggle={tree.toggle}
+                    issueType={TeamIssueType.BUG}
+                    statusesFor={statusesFor}
+                    onOpen={(b) => navigate(`/issues/${b.shortId || b.id}`)}
+                  />
+                ) : undefined
+              }
             />
           )}
           onMove={onMove}
@@ -415,7 +436,13 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
           )}
         >
           <BugList
-            bugs={bugs}
+            bugs={tree.roots}
+            tree={{
+              childrenOf: tree.childrenOf,
+              expanded: tree.expanded,
+              toggle: tree.toggle,
+              statusFor: (b) => statusesFor(b.teamId, TeamIssueType.BUG).find((c) => c.key === b.status),
+            }}
             columns={columns}
             labelsFor={labelsFor}
             cycleFor={cycleFor}
@@ -452,6 +479,7 @@ export function BugList({
   cycleFor,
   onOpen,
   selection,
+  tree,
 }: {
   bugs: BugDto[];
   columns: { key: string; label: string; color: string }[];
@@ -465,6 +493,9 @@ export function BugList({
   onOpen?: (bug: BugDto) => void;
   /** When present, each row gets a checkbox and each column a select-all. */
   selection?: IssueSelection;
+  /** Nest sub-issues under their parent (`bugs` is then just the top level). Left
+   *  off — the public board — and the list stays flat, exactly as before. */
+  tree?: IssueTreeCtl<BugDto>;
 }) {
   return (
     <div className="flex flex-col gap-6">
@@ -493,16 +524,27 @@ export function BugList({
               <span className="text-xs tabular-nums text-muted-foreground">{list.length}</span>
             </div>
             <div className="rounded-xl border bg-card p-2 text-card-foreground shadow-sm">
-              {list.map((bug) => (
-                <BugRow
-                  key={bug.id}
-                  bug={bug}
-                  labels={labelsFor(bug.teamId)}
-                  cycle={cycleFor?.(bug.cycleId)}
-                  onOpen={onOpen}
-                  selection={selection}
-                />
-              ))}
+              {tree
+                ? renderIssueTree(list, tree, (bug, rt) => (
+                    <BugRow
+                      bug={bug}
+                      labels={labelsFor(bug.teamId)}
+                      cycle={cycleFor?.(bug.cycleId)}
+                      onOpen={onOpen}
+                      selection={selection}
+                      rt={rt}
+                    />
+                  ))
+                : list.map((bug) => (
+                    <BugRow
+                      key={bug.id}
+                      bug={bug}
+                      labels={labelsFor(bug.teamId)}
+                      cycle={cycleFor?.(bug.cycleId)}
+                      onOpen={onOpen}
+                      selection={selection}
+                    />
+                  ))}
             </div>
           </section>
         );
@@ -521,20 +563,25 @@ function BugRow({
   cycle,
   onOpen,
   selection,
+  rt,
 }: {
   bug: BugDto;
   labels: TaskLabelConfig[];
   cycle?: CycleDto;
   onOpen?: (bug: BugDto) => void;
   selection?: IssueSelection;
+  /** Where the row sits when the list is a tree. */
+  rt?: RowTree;
 }) {
   const content = (
     <>
+      <TreeRowLead rt={rt} />
       <span
         className={cn('size-2 shrink-0 rounded-full', SEVERITY_DOT[bug.severity])}
         title={BUG_SEVERITY_LABEL[bug.severity]}
       />
       <span className="min-w-0 flex-1 truncate text-sm">{bug.title}</span>
+      <TreeRowMeta rt={rt} />
       {/* Hidden on mobile, like the labels beside it — a row has room for the
           title and the assignee first. */}
       <IssueCycleChip cycle={cycle} className="hidden shrink-0 sm:flex" />
@@ -557,11 +604,11 @@ function BugRow({
     selection?.isSelected(bug.id) && 'bg-accent',
   );
   const clickable = onOpen ? (
-    <button type="button" onClick={() => onOpen(bug)} className={className}>
+    <button type="button" onClick={() => onOpen(bug)} className={className} style={rowIndent(rt)}>
       {content}
     </button>
   ) : (
-    <Link to={`/issues/${bug.shortId || bug.id}`} className={className}>
+    <Link to={`/issues/${bug.shortId || bug.id}`} className={className} style={rowIndent(rt)}>
       {content}
     </Link>
   );

@@ -152,6 +152,7 @@ export function BoardCard({
   metaLeading,
   metaTrailing,
   progress,
+  footer,
 }: {
   overlay?: boolean;
   /** Full-bleed cover image URL (roadmap items). */
@@ -173,6 +174,10 @@ export function BoardCard({
   metaTrailing?: ReactNode;
   /** 0–100 progress bar; omit to hide it. */
   progress?: number;
+  /** A full-width strip under the card body, set off by a hairline — for something
+   *  interactive that lives *inside* the card (a sub-issue tree). Pointer-down and
+   *  click are stopped here, so using it neither starts a drag nor opens the card. */
+  footer?: ReactNode;
 }) {
   return (
     <KanbanCard overlay={overlay}>
@@ -215,6 +220,15 @@ export function BoardCard({
         )}
         {progress != null && <ProgressBar value={progress} />}
       </div>
+      {footer && (
+        <div
+          className="border-t border-border/60 px-1.5 py-1"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {footer}
+        </div>
+      )}
     </KanbanCard>
   );
 }

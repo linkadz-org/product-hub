@@ -1413,6 +1413,11 @@ export const ko: Record<I18nKey, string> = {
   'boards.timelineLegendMarker': '날짜 하나',
   'boards.timelineDragHint': '막대나 마름모를 끌어 일정을 옮기고, 막대 끝을 끌면 그 날짜가 바뀝니다',
   'boards.timelineSaveFailed': '날짜를 변경하지 못했습니다 — 되돌립니다.',
+  'boards.timelineExpand': '하위 이슈 펼치기',
+  'boards.timelineCollapse': '하위 이슈 접기',
+  'boards.timelineExpandAll': '모두 펼치기',
+  'boards.timelineCollapseAll': '모두 접기',
+  'boards.timelineSubCount': '하위 이슈 {n}개',
 
   // Filters — the multi-select filter menu on the bug/task boards
   'filters.title': '필터',

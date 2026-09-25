@@ -5,6 +5,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
+import { ChevronRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Spinner } from '@/components/ui';
 import { cn } from '@/lib/utils';
@@ -160,8 +161,17 @@ export interface GanttRow {
    * so all three surfaces stay one treatment. Wraps when the rail is narrow.
    */
   meta?: ReactNode;
-  /** 0 = top-level, 1 = an indented child (e.g. a task under a roadmap item). */
+  /** 0 = top-level, 1 = an indented child (e.g. a task under a roadmap item),
+   *  2+ = deeper levels of a tree (each indents one more step). */
   depth?: number;
+  /**
+   * Makes the row part of an **expandable tree**: a chevron slot leads the rail
+   * cell. `onToggle` present → a working chevron for a row that has children;
+   * absent → an empty slot, so leaf rows stay aligned with their siblings.
+   * The chevron is its own button beside the row's cell (a button can't nest
+   * inside the cell's button), so toggling never opens the detail.
+   */
+  tree?: { expanded?: boolean; onToggle?: () => void; label?: string };
   /** Leading dot before the label — a status/severity colour. */
   dotColor?: string;
   /** Click **anywhere in the row's rail cell** (opens a detail — usually a peek
@@ -499,7 +509,9 @@ function GanttRowView({
   // than a target per line, so there are no dead gaps left between them.
   const cellCls = cn(
     'flex min-w-0 flex-1 flex-col justify-center gap-0.5',
-    child ? 'py-1.5 pl-6 pr-3' : 'px-3 py-2',
+    // A child's indent lives on the gutter (below), so 16px × depth + 8px here
+    // lands depth 1 on the same 24px the roadmap timeline always had.
+    child ? 'py-1.5 pl-2 pr-3' : row.tree ? 'py-2 pl-1 pr-3' : 'px-3 py-2',
     interactive &&
       'text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
   );
@@ -521,6 +533,30 @@ function GanttRowView({
           its own (the row's hover tint can't show through it, hence `group-hover`)
           and `self-stretch` to cover the row's full height as bars scroll under. */}
       <div className="group/rail sticky left-0 z-20 flex self-stretch border-r bg-card group-hover:bg-accent/30">
+        {(child || row.tree) && (
+          <div
+            className="flex shrink-0 items-center"
+            style={{ paddingLeft: (row.depth ?? 0) * 16 + (row.tree && !child ? 8 : 0) }}
+          >
+            {row.tree &&
+              (row.tree.onToggle ? (
+                <button
+                  type="button"
+                  onClick={row.tree.onToggle}
+                  aria-expanded={!!row.tree.expanded}
+                  aria-label={row.tree.label}
+                  title={row.tree.label}
+                  className="grid size-5 place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <ChevronRight
+                    className={cn('size-3.5 transition-transform', row.tree.expanded && 'rotate-90')}
+                  />
+                </button>
+              ) : (
+                <span className="size-5" aria-hidden />
+              ))}
+          </div>
+        )}
         {cell}
       </div>
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { MoveHorizontal } from 'lucide-react';
+import { ChevronsDownUp, ChevronsUpDown, MoveHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 import { t } from '@/i18n';
 import { formatDate } from '@/lib/format';
@@ -20,6 +20,7 @@ import {
 } from '@/types/enums';
 import type { IssueAssigneeDto } from '@/types/dto';
 import { IssuePeekDrawer, type IssuePeek } from './IssuePeekDrawer';
+import { useAncestors } from './issueTree';
 
 /**
  * The subset of a task/bug a timeline row needs. Both `TaskDto` and `BugDto`
@@ -32,6 +33,9 @@ export interface IssueTimelineItem {
   title: string;
   status: string;
   teamId?: string;
+  /** Parent issue id ('' / absent = top-level). Rows nest under their parent when
+   *  it is on the same chart; a child whose parent isn't shown stays at the root. */
+  parentId?: string;
   startDate?: string;
   endDate?: string;
   /** Task-only legacy alias of `endDate`; used as an end fallback when present. */
@@ -120,7 +124,7 @@ function anchor(i: IssueTimelineItem): number {
  * you're reading. The drawer carries its own "open full page" link.
  */
 export function IssueTimelineView({
-  items,
+  items: listed,
   issueType,
   isLoading,
   statusesFor: statusesForOverride,
@@ -138,6 +142,16 @@ export function IssueTimelineView({
   const labelsFor = labelsForOverride ?? labelsForHook;
   const teamFor = teamForOverride ?? teamForHook;
   const [peek, setPeek] = useState<IssuePeek | null>(null);
+
+  // A filtered list ("Assigned to me", a team, a search…) often holds a child but
+  // not its parent, and a child with no parent on screen can only sit at the root —
+  // which is exactly the flat list a hierarchy view exists to replace. So the
+  // missing ancestors are fetched (all the way up) and shown as the roots the
+  // children hang under. A public board has no account to fetch with; it stays flat.
+  const ancestors = useAncestors(listed, !readOnly && !onOpenItem);
+  const items = ancestors.length
+    ? [...listed, ...ancestors.filter((a) => !listed.some((i) => i.id === a.id))]
+    : listed;
 
   const { canWrite } = useAuth();
   const update = useUpdateIssue();
@@ -160,6 +174,39 @@ export function IssueTimelineView({
       return changed ? next : prev;
     });
   }, [items]);
+
+  // Which parents are open. Collapsed by default: the chart opens as the top-level
+  // plan, and you drill into whichever branch you're reading.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggle = (id: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+
+  // Dated first (soonest at the top), undated last — a stable, useful order. Over
+  // the *dragged* dates, so a row doesn't jump position mid-save either.
+  const charted = items.map((i) => (pending[i.id] ? { ...i, ...pending[i.id] } : i));
+  const byId = new Map(charted.map((i) => [i.id, i]));
+  const byAnchor = (a: IssueTimelineItem, b: IssueTimelineItem) => {
+    const aa = anchor(a);
+    const bb = anchor(b);
+    if (isEpoch(aa) && isEpoch(bb)) return aa - bb;
+    return isEpoch(aa) ? -1 : isEpoch(bb) ? 1 : 0;
+  };
+
+  // The hierarchy on this chart: a child nests under its parent only when that
+  // parent is a *different* row here — filters can hide either end of the link.
+  const childrenOf = new Map<string, IssueTimelineItem[]>();
+  const roots: IssueTimelineItem[] = [];
+  for (const i of charted) {
+    if (i.parentId && i.parentId !== i.id && byId.has(i.parentId)) {
+      childrenOf.set(i.parentId, [...(childrenOf.get(i.parentId) ?? []), i]);
+    } else {
+      roots.push(i);
+    }
+  }
 
   /** Write one or both dates, keeping the shape the drag put on screen. */
   const reschedule = (id: string, edit: DateEdit) => {
@@ -189,17 +236,37 @@ export function IssueTimelineView({
     ((issue: IssueTimelineItem) =>
       setPeek({ id: issue.id, issueType, href: `/issues/${issue.shortId || issue.id}` }));
 
-  // Dated first (soonest at the top), undated last — a stable, useful order. Over
-  // the *dragged* dates, so a row doesn't jump position mid-save either.
-  const charted = items.map((i) => (pending[i.id] ? { ...i, ...pending[i.id] } : i));
-  const ordered = [...charted].sort((a, b) => {
-    const aa = anchor(a);
-    const bb = anchor(b);
-    if (isEpoch(aa) && isEpoch(bb)) return aa - bb;
-    return isEpoch(aa) ? -1 : isEpoch(bb) ? 1 : 0;
-  });
+  // Flatten the tree into the rows on screen: siblings in date order, a parent's
+  // children right beneath it while it's open. `seen` keeps a corrupt parent loop
+  // from spinning, and anything a loop stranded is surfaced as a root below.
+  const ordered: { issue: IssueTimelineItem; depth: number }[] = [];
+  const seen = new Set<string>();
+  const walk = (issue: IssueTimelineItem, depth: number) => {
+    if (seen.has(issue.id)) return;
+    seen.add(issue.id);
+    ordered.push({ issue, depth });
+    if (expanded.has(issue.id)) {
+      for (const c of [...(childrenOf.get(issue.id) ?? [])].sort(byAnchor)) walk(c, depth + 1);
+    }
+  };
+  for (const r of [...roots].sort(byAnchor)) walk(r, 0);
+  // A parent loop (A under B under A) has no root, so nothing above reaches it.
+  // "Reachable" is judged over the whole tree, *ignoring* what's collapsed — a
+  // closed branch's children are hidden on purpose, not stranded.
+  const reachable = new Set<string>();
+  const reach = (id: string) => {
+    if (reachable.has(id)) return;
+    reachable.add(id);
+    for (const c of childrenOf.get(id) ?? []) reach(c.id);
+  };
+  roots.forEach((r) => reach(r.id));
+  for (const i of charted) if (!reachable.has(i.id)) walk(i, 0);
+  const anyParent = childrenOf.size > 0;
+  const allParentIds = [...childrenOf.keys()];
+  const allOpen = allParentIds.length > 0 && allParentIds.every((id) => expanded.has(id));
 
-  const rows: GanttRow[] = ordered.map((issue) => {
+  const rows: GanttRow[] = ordered.map(({ issue, depth }) => {
+    const kids = childrenOf.get(issue.id)?.length ?? 0;
     const start = toEpoch(issue.startDate);
     const end = firstEpoch(issue.endDate, issue.dueDate);
     const cfg = statusesFor(issue.teamId, issueType).find((c) => c.key === issue.status);
@@ -210,6 +277,16 @@ export function IssueTimelineView({
       id: issue.id,
       label: issue.title,
       dotColor: color,
+      depth,
+      // Once anything on the chart has children, every row gets the chevron slot
+      // so leaves line up with their siblings.
+      tree: anyParent
+        ? {
+            expanded: expanded.has(issue.id),
+            onToggle: kids ? () => toggle(issue.id) : undefined,
+            label: t(expanded.has(issue.id) ? 'boards.timelineCollapse' : 'boards.timelineExpand'),
+          }
+        : undefined,
       onClick: () => open(issue),
       // The row's identity, widest scope first: ref, team, state, labels, people.
       // Assignees only when there are any — an "Unassigned" pill on every row
@@ -219,6 +296,11 @@ export function IssueTimelineView({
         <>
           {issue.shortId && (
             <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{issue.shortId}</span>
+          )}
+          {kids > 0 && (
+            <span className="shrink-0 text-[11px] text-muted-foreground">
+              {t('boards.timelineSubCount').replace('{n}', String(kids))}
+            </span>
           )}
           {showTeam && <TeamChip team={teamFor(issue.teamId)} />}
           <GanttChip color={color}>{statusLabel}</GanttChip>
@@ -282,6 +364,16 @@ export function IssueTimelineView({
             </span>
             {/* Drag isn't discoverable on its own — say it, but only to someone
                 who can actually move a date. */}
+            {anyParent && (
+              <button
+                type="button"
+                onClick={() => setExpanded(allOpen ? new Set() : new Set(allParentIds))}
+                className="flex items-center gap-1.5 rounded px-1 text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {allOpen ? <ChevronsDownUp className="size-3.5" aria-hidden /> : <ChevronsUpDown className="size-3.5" aria-hidden />}
+                {t(allOpen ? 'boards.timelineCollapseAll' : 'boards.timelineExpandAll')}
+              </button>
+            )}
             {editable && (
               <span className="flex items-center gap-1.5">
                 <MoveHorizontal className="size-3.5" aria-hidden />
@@ -297,3 +389,4 @@ export function IssueTimelineView({
     </>
   );
 }
+
