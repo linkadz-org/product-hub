@@ -330,6 +330,17 @@ export interface BugDto {
    * status move) — what the board's "Solved date" filter ranges over.
    */
   resolvedAt: string | null;
+  /**
+   * How far along, 0–100. **Derived server-side, never stored.** With sub-tasks
+   * it's the share of them that are done, so a parent's percentage is simply the
+   * truth about its children; with none it's 0, or 100 once the issue itself is
+   * in a done status. Read-only — moving a sub-task is what moves it.
+   */
+  progress: number;
+  /** How many sub-tasks this issue has (0 = it's a leaf). */
+  subtaskCount: number;
+  /** How many of those are in a done status. */
+  subtaskDoneCount: number;
 }
 
 /** A file attached to a bug (image / short video) — matches the upload response. */
@@ -457,6 +468,11 @@ export interface RoadmapItem {
   impact: number;
   confidence: number;
   effort: number;
+  /** Percent complete, 0–100 — **derived server-side, read-only**. It is the
+   *  item's sub-tasks (its linked issues and everything under them, bugs
+   *  excluded) done ÷ total, falling back to its own status when nothing is
+   *  linked. Sending a different value back changes nothing: the API recomputes
+   *  it on every read, which is what keeps it in step with the SUB-TASKS bar. */
   progress: number;
   rice: number;
   /** Optional cover / UI-reference image URL ('' when unset). */
@@ -472,6 +488,12 @@ export interface RoadmapItem {
   /** When the item was created (ISO). Set and preserved server-side; optional
    *  here only so a freshly-built draft item can omit it before the first save. */
   createdAt?: string;
+  /** Who created it — denormalized id + name, set and preserved server-side (a
+   *  draft item omits both until the first save). '' on items created before the
+   *  board stored a creator and out of reach of `backfill:roadmap-item-creator`;
+   *  those match no option in the Creator filter, which is the honest answer. */
+  createdById?: string;
+  createdByName?: string;
   /** When work first started (status → In progress), ISO; absent until started. */
   startedAt?: string;
   /** When the item was completed (status → Done), ISO; absent until done. */
@@ -560,6 +582,11 @@ export interface TaskDto {
   order: number;
   createdAt: string;
   updatedAt: string;
+  /** Derived completion 0–100 — see {@link BugDto.progress}. */
+  progress: number;
+  /** Sub-task counts behind that percentage; both 0 on a leaf. */
+  subtaskCount: number;
+  subtaskDoneCount: number;
 }
 
 // ── Issues (unified task + bug) ───────────────────────────────────────────────
@@ -648,6 +675,11 @@ export interface IssueDto {
   updatedAt: string;
   /** When it was solved — see {@link BugDto.resolvedAt}. */
   resolvedAt: string | null;
+  /** Derived completion 0–100 — see {@link BugDto.progress}. */
+  progress: number;
+  /** Sub-task counts behind that percentage; both 0 on a leaf. */
+  subtaskCount: number;
+  subtaskDoneCount: number;
 }
 
 // ── Milestones (OKR) ─────────────────────────────────────────────────────────
@@ -892,6 +924,56 @@ export interface CycleBurndownDto {
   assignees: CycleBurndownGroup[];
   labels: CycleBurndownGroup[];
   projects: CycleBurndownGroup[];
+}
+
+/** One period on the stability chart. Counts are for the whole period, not per day. */
+export interface IssueStabilityPoint {
+  /** Inclusive first day, `YYYY-MM-DD`. */
+  start: string;
+  /** Inclusive last day. */
+  end: string;
+  /** Calendar days spanned — longer than the period length when weekends are
+   *  skipped, so a "3 working days" bar can still say which dates it covers. */
+  days: number;
+  /** Critical bugs opened in the period (shown as P0). */
+  openedCritical: number;
+  /** High bugs opened in the period (shown as P1). */
+  openedHigh: number;
+  /** Medium bugs opened in the period; 0 unless medium is a counted severity. */
+  openedMedium: number;
+  /** Low bugs opened in the period; 0 unless low is a counted severity. */
+  openedLow: number;
+  /** The four counts added up — the bar's height. */
+  opened: number;
+  /** Counted bugs resolved during the period. */
+  resolved: number;
+  /** Counted bugs still open on the period's last day, however old. */
+  openAtEnd: number;
+}
+
+/**
+ * The QC stability read-out: bugs of the chosen severities opened per period
+ * (critical + high by default — read as P0 + P1), with the standing open count
+ * behind them. Both series are needed to call a trend — a falling open rate on a
+ * growing backlog means testing stopped, not that the app improved.
+ */
+export interface IssueStabilityDto {
+  periodDays: number;
+  skipWeekends: boolean;
+  /** Which severities these numbers cover, most serious first — also the order
+   *  the chart stacks them in. */
+  severities: BugSeverity[];
+  /** Oldest → newest, so the chart draws left to right. */
+  series: IssueStabilityPoint[];
+  totalOpened: number;
+  /** Still open on the final day. */
+  openNow: number;
+  /** Slope of the opened series as a fraction of its mean per period; negative =
+   *  falling. Scale-free, so a noisy team and a quiet one read the same. */
+  openedTrend: number;
+  /** The same slope over the still-open series. */
+  openTrend: number;
+  verdict: 'improving' | 'steady' | 'worsening' | 'insufficient';
 }
 
 /**
@@ -1170,7 +1252,7 @@ export interface SavedViewDto {
   scope: string;
   shared: boolean;
   kind: 'task' | 'bug';
-  view: 'board' | 'list' | 'timeline';
+  view: 'board' | 'list' | 'timeline' | 'calendar';
   filters: Record<string, string[]>;
   sort: { field: string; dir: 'asc' | 'desc' } | null;
   search: string;

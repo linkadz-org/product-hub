@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
 import {
   Activity,
   CalendarRange,
@@ -17,8 +18,10 @@ import { useAuth } from '@/lib/auth';
 import {
   DateRangePicker,
   DotLabel,
+  EditableTitle,
   Input,
   Menu,
+  ProgressBar,
   RichText,
   RichTextEditor,
   Select,
@@ -27,6 +30,7 @@ import {
 import { AssigneeField, fallbackNames } from '@/components/AssigneeField';
 import { DetailSkeleton } from '@/components/Skeletons';
 import { DescriptionTemplates, useTemplateSeed } from '@/components/DescriptionTemplates';
+import { useHtmlSaveGuard } from '@/components/EditGuard';
 import { cn } from '@/lib/utils';
 import { t } from '@/i18n';
 import { usePageChrome } from '@/layouts/headers/PageChrome';
@@ -61,6 +65,7 @@ import { useReplaceRoadmapItems, useRoadmap } from '../api';
 import { useRoadmapSprints } from '../useRoadmapSprints';
 import { sprintMoveRows, useSprintMove } from '../useSprintMove';
 import { BACKLOG_TEMPLATES } from '../backlogTemplates';
+import { phaseForStatus } from '../itemStatusPhase';
 
 /** RICE inputs, in order, with the field key + help copy. */
 const RICE_FIELDS = [
@@ -133,16 +138,6 @@ export function RoadmapItemDetail({
     items.find((i) => i.shortId && i.shortId.toUpperCase() === wanted) ??
     items.find((i) => i.id === itemId);
 
-  // Progress slider keeps a local draft so it stays smooth while dragging; the
-  // value is written back only on release. Synced when the item changes.
-  const [progressDraft, setProgressDraft] = useState(item?.progress ?? 0);
-  useEffect(() => {
-    if (item) setProgressDraft(item.progress);
-  }, [item?.progress]);
-  // Debounce description saves the way the issue detail does — save on pause.
-  const descTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => void (descTimer.current && clearTimeout(descTimer.current)), []);
-
   /** Persist a field patch: recompute RICE, re-derive the cover, PUT the array.
    *  Declared above the loading guard so the template picker (a hook) can save
    *  through it; it no-ops until the item resolves. */
@@ -154,8 +149,50 @@ export function RoadmapItemDetail({
     replaceItems.mutate({ id: roadmap.id, items: items.map((i) => (i.id === item.id ? next : i)) });
   };
 
+  /** The roadmap as it is *right now*. The move offered by the status toast is
+   *  applied seconds later, by which time this render's `roadmap`/`item` are a
+   *  stale snapshot — patching through them would write back whatever else had
+   *  been edited in between. The ref always holds the latest query data. */
+  const roadmapRef = useRef(roadmap);
+  roadmapRef.current = roadmap;
+  /** Move one item to another column, against the freshest items array. */
+  const moveToColumn = (id: string, phase: string) => {
+    const current = roadmapRef.current;
+    if (!current) return;
+    replaceItems.mutate({
+      id: current.id,
+      items: (current.items ?? []).map((i) => (i.id === id ? { ...i, phase } : i)),
+    });
+  };
+
   // Backlog templates (User Story / JTBD) — the shared picker, same as a bug's.
   const seed = useTemplateSeed(item?.description ?? '', (html) => save({ description: html }), itemId);
+
+  /** Write the description back, and link any issue it now names.
+   *
+   *  A pasted issue link (/issues/TSK-5, /issues/BUG-12) links it to this item.
+   *  Add-only: unresolved refs are ignored and deleting the text later won't
+   *  unlink. Declared above the loading guard so the save guard (a hook) can
+   *  reach it; it no-ops until the item resolves. */
+  const saveDescription = (html: string) => {
+    if (!roadmap || !item) return;
+    save({ description: html });
+    const refs = issueRefsInText(html);
+    if (!refs.length) return;
+    const cols = roadmap.columns?.length ? roadmap.columns : DEFAULT_ROADMAP_COLUMNS;
+    linkIssues.mutate({
+      refs,
+      roadmapId: roadmap.id,
+      roadmapItemId: item.id,
+      roadmapItemLabel: `${cols.find((c) => c.key === item.phase)?.label ?? item.phase} · ${item.title}`,
+      projectId: roadmap.projectId,
+    });
+  };
+  // Saves when you leave the editor, not while you type — and never silently
+  // when most of the stored text would vanish (components/EditGuard). Same
+  // contract as task/bug detail, so a backlog item can't be lost to a browser
+  // translation either.
+  const descGuard = useHtmlSaveGuard({ saved: item?.description ?? '', onSave: saveDescription });
 
   if (isLoading) {
     return <DetailSkeleton />;
@@ -177,6 +214,39 @@ export function RoadmapItemDetail({
   const columns = roadmap.columns?.length ? roadmap.columns : DEFAULT_ROADMAP_COLUMNS;
   const score = riceOf(item);
   const clampRice = (v: string) => Math.min(5, Math.max(1, Number(v) || 1));
+  /**
+   * Status, and the column it implies — **offered, not forced**.
+   *
+   * Marking an item Done while its card sits in Now says two things at once, so
+   * the save is followed by a toast naming the column the status points at
+   * (Done, or the way back out of it): one tap moves the card, ignoring it
+   * leaves the card exactly where the person put it. Where the board is already
+   * in step — Done in the Done column — nothing is offered. See
+   * `itemStatusPhase` for the rule, and the board's drag for its mirror.
+   */
+  const setStatus = (status: RoadmapItemStatus) => {
+    save({ status });
+    const phase = phaseForStatus(status, item.phase, columns);
+    if (phase === item.phase) return;
+    const column = columns.find((c) => c.key === phase)?.label ?? phase;
+    toast(
+      t('roadmaps.moveColumnPrompt')
+        .replace('{status}', ROADMAP_ITEM_STATUS_LABEL[status])
+        .replace('{col}', column),
+      {
+        // One offer per item: changing your mind twice in a row replaces the
+        // toast rather than stacking two cards that disagree.
+        id: `roadmap-move-${item.id}`,
+        // Long enough to read and answer, short enough not to sit there — it is
+        // a suggestion, and ignoring it is a valid answer.
+        duration: 10000,
+        action: {
+          label: t('roadmaps.moveColumnAction').replace('{col}', column),
+          onClick: () => moveToColumn(item.id, phase),
+        },
+      },
+    );
+  };
   // OKR picker — every objective across all milestones, labelled "Milestone ›
   // Objective". `linkedObjective` is the one this item points at (if any), whose
   // key results fill the optional second Select.
@@ -198,26 +268,6 @@ export function RoadmapItemDetail({
         : t('board.ageDays').replace('{n}', String(daysBetween(from, to)))
       : '—';
   const itemLabel = `${columns.find((c) => c.key === item.phase)?.label ?? item.phase} · ${item.title}`;
-
-  const saveDescription = (html: string) => {
-    if (descTimer.current) clearTimeout(descTimer.current);
-    descTimer.current = setTimeout(() => {
-      save({ description: html });
-      // A pasted issue link (/issues/TSK-5, /issues/BUG-12) links it to this
-      // item. Add-only: unresolved refs are ignored and deleting the text later
-      // won't unlink.
-      const refs = issueRefsInText(html);
-      if (refs.length) {
-        linkIssues.mutate({
-          refs,
-          roadmapId: roadmap.id,
-          roadmapItemId: item.id,
-          roadmapItemLabel: itemLabel,
-          projectId: roadmap.projectId,
-        });
-      }
-    }, 700);
-  };
 
   /** id → the `{id,name}` pair the item stores; keeps the name of anyone the
    *  workspace no longer lists rather than blanking it. */
@@ -297,7 +347,7 @@ export function RoadmapItemDetail({
           {canWrite ? (
             <Select
               value={item.status}
-              onValueChange={(v) => save({ status: v as RoadmapItemStatus })}
+              onValueChange={(v) => setStatus(v as RoadmapItemStatus)}
               options={ROADMAP_ITEM_STATUSES.map((s) => ({
                 value: s,
                 label: (
@@ -362,24 +412,20 @@ export function RoadmapItemDetail({
 
         <SprintField roadmapId={roadmap.id} itemId={item.id} canWrite={canWrite} />
 
+        {/* Read-only, and deliberately so: this used to be a slider you dragged,
+            which meant the number said whatever someone last set it to while the
+            SUB-TASKS bar below counted the real work — two answers to the same
+            question, on the same screen. It is now derived server-side from the
+            item's linked issues (`roadmap-progress.ts`), by exactly the rule that
+            bar uses, and it moves the moment a sub-task's status does. */}
         <PropField label={t('roadmaps.progress')} icon={<Activity />} align="stack">
           <div className="flex items-center gap-3">
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={progressDraft}
-              disabled={!canWrite}
-              onChange={(e) => setProgressDraft(Number(e.target.value) || 0)}
-              onPointerUp={() => progressDraft !== item.progress && save({ progress: progressDraft })}
-              onKeyUp={() => progressDraft !== item.progress && save({ progress: progressDraft })}
-              className="h-1.5 flex-1 cursor-pointer accent-primary"
-              aria-label={t('roadmaps.progress')}
-            />
+            <ProgressBar value={item.progress} className="h-1.5 flex-1" />
             <span className="w-10 text-right text-sm tabular-nums text-muted-foreground">
-              {progressDraft}%
+              {item.progress}%
             </span>
           </div>
+          <p className="mt-1.5 text-xs text-muted-foreground">{t('roadmaps.progressAuto')}</p>
         </PropField>
 
         <PropField label={t('roadmaps.assignees')} icon={<Users />} align="stack">
@@ -529,25 +575,18 @@ export function RoadmapItemDetail({
       {item.shortId && (
         <span className="mb-1 block font-mono text-xs text-muted-foreground">{item.shortId}</span>
       )}
-      <div className="flex items-center gap-2">
-        {canWrite ? (
-          <input
-            key={item.id}
-            className="min-w-0 flex-1 border-0 bg-transparent p-0 text-2xl font-semibold tracking-tight text-foreground outline-none placeholder:text-muted-foreground"
-            defaultValue={item.title}
-            placeholder={t('roadmaps.itemTitlePlaceholder')}
-            aria-label={t('roadmaps.itemTitle')}
-            onBlur={(e) => {
-              const v = e.target.value.trim();
-              if (v && v !== item.title) save({ title: v });
-              else e.target.value = item.title;
-            }}
-          />
-        ) : (
-          <h1 className="min-w-0 flex-1 text-2xl font-semibold tracking-tight">
-            {item.title || t('roadmaps.untitled')}
-          </h1>
-        )}
+      {/* `items-start`, not centre: a title now wraps to two lines, and the
+          star and ⋯ belong beside its first line rather than halfway down it. */}
+      <div className="flex items-start gap-2">
+        {/* Same title field as a task or bug: a heading that wraps and can be
+            translated, an editor once you focus it (ui/EditableTitle). */}
+        <EditableTitle
+          key={item.id}
+          value={item.title}
+          onSave={(v) => save({ title: v })}
+          placeholder={canWrite ? t('roadmaps.itemTitlePlaceholder') : t('roadmaps.untitled')}
+          canWrite={canWrite}
+        />
         {/* Drawer (no topbar): favourite + ⋯ sit inline in the title row. */}
         {menuTarget === 'header' && favourite}
         {menuTarget === 'header' && overflow}
@@ -571,9 +610,10 @@ export function RoadmapItemDetail({
               onApply={seed.apply}
             />
             <RichTextEditor
-              key={`${item.id}:${seed.nonce}`}
+              key={`${item.id}:${seed.nonce}:${descGuard.nonce}`}
               value={seed.value}
-              onChange={saveDescription}
+              onChange={descGuard.draft}
+              onBlur={descGuard.commit}
               placeholder={t('roadmaps.description')}
               minHeight={80}
               images
@@ -581,6 +621,7 @@ export function RoadmapItemDetail({
               mentions
               className="border-0"
             />
+            {descGuard.dialog}
           </>
         ) : item.description ? (
           <RichText className="text-sm text-muted-foreground" html={item.description} />

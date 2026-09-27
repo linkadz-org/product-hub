@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { FileText } from 'lucide-react';
 import { Menu } from '@/components/ui';
 import { t } from '@/i18n';
@@ -83,16 +83,23 @@ export function DescriptionTemplates({
   templates,
   hasContent,
   onApply,
+  actions,
 }: {
   templates: DescriptionTemplate[];
   hasContent: boolean;
   onApply: (tpl: DescriptionTemplate) => void;
+  /** Extra controls for this description — the Edit / "Read & translate"
+   *  toggle. They share the templates' row rather than stacking a second
+   *  right-aligned strip above the same field, and the row still appears when a
+   *  surface has no templates at all. */
+  actions?: ReactNode;
 }) {
-  if (!templates.length) return null;
+  if (!templates.length) return actions ? <div className="mb-2 flex justify-end">{actions}</div> : null;
 
   if (hasContent) {
     return (
-      <div className="mb-2 flex justify-end">
+      <div className="mb-2 flex items-center justify-end gap-1">
+        {actions}
         <Menu
           align="right"
           triggerClassName="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground"
@@ -128,6 +135,7 @@ export function DescriptionTemplates({
           {t(tpl.labelKey)}
         </button>
       ))}
+      {actions && <div className="ml-auto">{actions}</div>}
     </div>
   );
 }

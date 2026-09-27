@@ -644,6 +644,17 @@ export const en = {
   'roadmaps.ganttDragHint': 'Drag a bar to move it, or an edge to change that date',
   'roadmaps.ganttSaveFailed': 'Couldn’t change those dates — put them back.',
   'roadmaps.ganttLegendMarker': 'Diamond = a task with only one date',
+  'roadmaps.timelineMode': 'Timeline view',
+  'roadmaps.timelineGantt': 'Gantt',
+  'roadmaps.timelineCalendar': 'Calendar',
+  /** The board filtered down to nothing. Separate from the sprint-scope empty
+   *  state because the way out is different: drop the filter, not the sprint. */
+  'roadmaps.filteredEmpty': 'No items match these filters',
+  'roadmaps.filteredEmptyHint':
+    'Nobody picked here is on an item in this view. Clear the filters, or widen the sprint above.',
+  'roadmaps.clearFilters': 'Clear filters',
+  'roadmaps.calendarEmpty': 'Nothing scheduled this month.',
+  'roadmaps.calendarEmptyHint': 'Move to another month, or give an item start and end dates on the Gantt.',
   'roadmaps.newColumn': 'New column',
   'roadmaps.columnName': 'Column name',
   'roadmaps.columnColor': 'Column color',
@@ -663,6 +674,13 @@ export const en = {
   'roadmaps.difficulty': 'Difficulty',
   'roadmaps.status': 'Status',
   'roadmaps.progress': 'Progress %',
+  /** Under the (read-only) progress bar — says where the number comes from, so
+   *  nobody goes looking for the slider that used to be there. */
+  'roadmaps.progressAuto': 'Counted from this item’s sub-tasks — bugs excluded.',
+  /** Toast after a status change that the board disagrees with — one tap moves
+   *  the card, ignoring it leaves the card where it is. */
+  'roadmaps.moveColumnPrompt': 'Set to {status}. Move this card to “{col}”?',
+  'roadmaps.moveColumnAction': 'Move to {col}',
   'roadmaps.sortRice': 'Sort by RICE',
   'roadmaps.notFound': 'Roadmap not found.',
   'roadmaps.itemNotFound': 'Roadmap item not found.',
@@ -1460,6 +1478,10 @@ export const en = {
   // Boards — the shared Timeline (Gantt) view on every issue board
   'boards.today': 'Today',
   'boards.resizeColumn': 'Drag to resize this column',
+  'boards.collapseAll': 'Collapse all',
+  'boards.expandAll': 'Expand all',
+  'boards.collapseRow': 'Collapse',
+  'boards.expandRow': 'Expand',
   'boards.viewTimeline': 'Timeline',
   'boards.timelineIssue': 'Issue',
   'boards.timelineEmpty': 'Nothing to schedule yet',
@@ -1469,6 +1491,29 @@ export const en = {
   'boards.timelineLegendMarker': 'Single date',
   'boards.timelineDragHint': 'Drag a bar or a diamond to reschedule, or a bar’s edge to change that date',
   'boards.timelineSaveFailed': 'Couldn’t change those dates — put them back.',
+
+  // Boards — the shared Calendar view, sibling of the Timeline
+  'boards.viewCalendar': 'Calendar',
+  'calendar.prevYear': 'Previous year',
+  'calendar.nextYear': 'Next year',
+  'calendar.prevMonth': 'Previous month',
+  'calendar.nextMonth': 'Next month',
+  'calendar.prevWeek': 'Previous week',
+  'calendar.nextWeek': 'Next week',
+  'calendar.prevDay': 'Previous day',
+  'calendar.nextDay': 'Next day',
+  'calendar.today': 'Today',
+  // How much of the calendar is on screen — the Year · Month · Week · Day switch.
+  'calendar.range': 'Calendar range',
+  'calendar.rangeYear': 'Year',
+  'calendar.rangeMonth': 'Month',
+  'calendar.rangeWeek': 'Week',
+  'calendar.rangeDay': 'Day',
+  'calendar.empty': 'Nothing scheduled this month',
+  'calendar.emptyYear': 'Nothing scheduled this year',
+  'calendar.emptyWeek': 'Nothing scheduled this week',
+  'calendar.emptyDay': 'Nothing scheduled on this day',
+  'calendar.emptyHint': 'Give an issue a start or due date and it lands on the day it’s planned for.',
 
   // Filters — the multi-select filter menu on the bug/task boards
   'filters.title': 'Filter',
@@ -1484,6 +1529,9 @@ export const en = {
   'filters.backlogItem': 'Backlog item',
   'filters.createdDate': 'Created date',
   'filters.solvedDate': 'Solved date',
+  'filters.scheduledDate': 'Scheduled',
+  // Roadmap-only: the complement of an OKR pick — work no objective asked for.
+  'filters.noOkr': 'No objective',
   'filters.dateFrom': 'From',
   'filters.dateTo': 'To',
   'filters.dateClear': 'Clear dates',
@@ -1538,8 +1586,62 @@ export const en = {
   /** Day count on a card / in a workflow stat — the unit trails the number in Korean. */
   'board.ageDays': '{n}d',
   'board.createdOn': 'Created',
+  'board.subtasks': 'Sub-tasks done',
   'tasks.addToColumn': 'Add task',
   'bugs.addToColumn': 'Add bug',
+
+  // Stability view — bugs of the chosen severities opened per period, with the
+  // still-open count behind them. The QC board's "is the app settling down?"
+  // read-out. The `sev*Hint` lines are the legend's explanation of what each
+  // severity actually means, so two people reading the chart agree on the bars.
+  'bugs.viewStability': 'Stability',
+  'bugs.stability.sevCritical': 'P0 — Critical',
+  'bugs.stability.sevCriticalHint':
+    'App down, data lost, or the main flow blocked with no way around it. Stops a release.',
+  'bugs.stability.sevHigh': 'P1 — High',
+  'bugs.stability.sevHighHint':
+    'A core feature is wrong. There is a workaround, but it hurts — fix it this cycle.',
+  'bugs.stability.sevMedium': 'P2 — Medium',
+  'bugs.stability.sevMediumHint':
+    'A secondary feature misbehaves, or the workaround is easy. Schedule it normally.',
+  'bugs.stability.sevLow': 'P3 — Low',
+  'bugs.stability.sevLowHint':
+    'Cosmetic or minor wording. Nobody is blocked — fix it when there is room.',
+  'bugs.stability.resolved': 'Solved',
+  'bugs.stability.stillOpen': 'Still open',
+  'bugs.stability.stillOpenHint':
+    'Counted bugs left unfixed when the period closed — the pile you are carrying.',
+  'bugs.stability.openNow': 'open right now',
+  'bugs.stability.period': 'Period',
+  'bugs.stability.periodLength': 'Period',
+  'bugs.stability.counting': 'Counting',
+  'bugs.stability.countingHint': 'Pick at least one severity.',
+  'bugs.stability.day': 'day',
+  'bugs.stability.days': 'days',
+  'bugs.stability.workingDays': 'Working days only',
+  'bugs.stability.workingDaysOnHint':
+    'A period is that many working days. Bugs filed at the weekend still count.',
+  'bugs.stability.workingDaysOffHint': 'A period is that many calendar days.',
+  'bugs.stability.tableView': 'Show the numbers',
+  'bugs.stability.trendOpened': 'New per period',
+  'bugs.stability.trendOpen': 'Still open',
+  'bugs.stability.chartAria':
+    'Bugs opened in each period, stacked by severity, with the number still open at the end of each period',
+  'bugs.stability.verdictImproving': 'Settling down',
+  'bugs.stability.verdictImprovingHint':
+    'Fewer bugs are being found each period, and the open pile isn’t growing.',
+  'bugs.stability.verdictSteady': 'Holding steady',
+  'bugs.stability.verdictSteadyHint': 'Bugs are arriving at about the same rate as before.',
+  'bugs.stability.verdictWorsening': 'Getting worse',
+  'bugs.stability.verdictWorseningHint':
+    'Bugs are arriving faster, or the open pile keeps growing.',
+  'bugs.stability.verdictInsufficient': 'Not enough data',
+  'bugs.stability.verdictInsufficientHint':
+    'Too few bugs in this window to call a trend. Try a longer period, or count more severities.',
+  'bugs.stability.error': 'Couldn’t load the stability chart.',
+  'bugs.stability.empty': 'No bugs of these severities in this window',
+  'bugs.stability.emptyHint':
+    'Tick more severities, or use a longer period to look further back.',
 
   // Personal board — a private, owner-managed task board (only you + admins).
   'personal.title': 'Personal',
@@ -1650,6 +1752,23 @@ export const en = {
   'editor.slashLinkPlaceholder': 'Paste a link and press Enter',
   'editor.slashPrevMonth': 'Previous month',
   'editor.slashNextMonth': 'Next month',
+
+  // Held-back save — most of a written description was about to disappear
+  // (components/EditGuard).
+  'editGuard.title': 'This would replace what you wrote',
+  'editGuard.body':
+    'The new text drops {percent}% of the saved description. Saving overwrites the original, and that cannot be undone.',
+  'editGuard.translated':
+    'This page looks translated by your browser. Turn the translation off before editing, so what you save stays in the language you wrote it in.',
+  'editGuard.hint': 'Nothing has been saved yet — the stored version is still intact.',
+  'editGuard.keep': 'Keep the saved version',
+  'editGuard.saveAnyway': 'Replace it anyway',
+
+  // The Edit toggle. What a description shows by default is the read view — no
+  // editor, so the browser is free to translate it; this opens the editor and
+  // closes it again (components/EditToggle).
+  'readMode.show': 'Read & translate',
+  'readMode.edit': 'Edit',
 
   // Enum labels — the fixed vocabularies in `types/enums.ts`. The stored value
   // never changes (a bug is `high` in every language); only the label does.
