@@ -31,31 +31,72 @@
  * mounts with, a block typed a moment ago — and treating either side's list as
  * the whole truth is how a page loses text. So `known` records every id the
  * document has actually carried; only those may be deleted on either side.
+ *
+ * **A table is read from the DOM, never from `editor.save()`.** The table tool's
+ * `getData()` drops rows that are entirely empty, so a row somebody just added is
+ * simply missing from the snapshot — reconciling that would delete their row for
+ * everyone. The DOM has every row, and `data-yrow` on each one carries the id the
+ * document knows it by, which is what lets a row be matched by identity instead of
+ * by position. See `stampRows`.
+ *
+ * **Nothing is written into an element an IME is composing in.** Telex, pinyin and
+ * every phone keyboard type through a composition the browser is anchored to
+ * mid-word; replacing that element's contents makes it commit the finished word at
+ * a position that no longer exists, and the text lands scrambled. Such a write is
+ * held back and re-applied at `compositionend` — late, but intact.
  */
 import type EditorJS from '@editorjs/editorjs';
 import * as Y from 'yjs';
 import {
   LOCAL_ORIGIN,
+  ROWS_KEY,
+  ROW_HEIGHT,
+  applyGridDiff,
   applyTextDiff,
+  cellsOf,
   fromYBlock,
+  gridFieldOf,
+  indexOfRow,
+  jsonDataOf,
+  newRowId,
   readBlocks,
+  rowIdOf,
+  rowsOf,
   sameData,
   textFieldsOf,
   textOf,
   toYBlock,
+  upgradeGrid,
+  type GridRow,
   type StoredBlock,
   type YBlock,
   type YBlocks,
+  type YRows,
 } from './blockDoc';
 import {
   blockElementOf,
   caretOffset,
+  gridCells,
+  gridRowOf,
+  gridRows,
+  holderOf,
   isTextarea,
   plainText,
+  rowHeightOf,
   setCaretOffset,
   textHolders,
   type TextHolder,
 } from './domText';
+
+/**
+ * Where a row's document id is kept in the DOM.
+ *
+ * Safe to put on `.tc-row` specifically: the table tool saves a table by reading
+ * `.tc-cell` innerHTML, so nothing on the row itself can end up as table content.
+ * (A handle inside a cell *would* — which is why the tool's own row handles live
+ * here too.)
+ */
+const ROW_ATTR = 'yrow';
 
 interface Options {
   editor: EditorJS;
@@ -128,6 +169,43 @@ export function bindEditorJs({ editor, blocks, holder, onRemote }: Options): Edi
    * somebody just typed.
    */
   const known = new Set<string>();
+  /**
+   * The editable an IME is composing in, while it is composing.
+   *
+   * Not a boolean, because "is something being composed" isn't the question — the
+   * question is whether *this* element is the one mid-word, since every other
+   * element on the page can still be written into safely.
+   */
+  let composing: TextHolder | null = null;
+  /**
+   * Where the word being composed will land, and what it will land in.
+   *
+   * A Yjs *relative* position, not an offset: if somebody edits earlier in the
+   * same cell while the word is still being typed, the document carries this
+   * anchor along with their edit, and the finished word still lands where the
+   * person meant to put it. Null when the position couldn't be pinned down — see
+   * `endComposition` for what happens then.
+   */
+  let composedIn: Y.Text | null = null;
+  let composedAt: Y.RelativePosition | null = null;
+  /**
+   * The element's value when the word started, and where in it the caret was.
+   *
+   * Enough to recover the composed run without asking the browser for it: whatever
+   * a composition produces sits between the text that was before the caret and the
+   * text that was after it, both of which a composition leaves alone. Derived
+   * rather than taken from `CompositionEvent.data` so that a composition which ends
+   * without that event — the case `endComposition` exists to survive — is handled
+   * by exactly the same arithmetic.
+   */
+  let composedBase = '';
+  let composedStart = 0;
+  /**
+   * Blocks whose remote state was held back from the DOM because of the above.
+   * Re-applied when the composition ends; a set, because a long word can outlast
+   * several remote updates and only the latest state matters.
+   */
+  const deferred = new Set<string>();
 
   const idAt = (index: number): string | null => {
     const block = editor.blocks.getBlockByIndex(index);
@@ -168,6 +246,133 @@ export function bindEditorJs({ editor, blocks, holder, onRemote }: Options): Edi
     return list;
   }
 
+  // ── Grids ────────────────────────────────────────────────────────────────
+
+  /**
+   * Whether an element is the one an IME is mid-word in.
+   *
+   * Only the two facts that are the question: something is being composed, and it
+   * is in here. Deliberately *not* also checking `document.activeElement` — an
+   * element being composed in is the focused one anyway, so the test adds nothing
+   * on the path that matters, while making the guard fail open in every
+   * environment that reports focus differently. A stale composition is guarded
+   * against by *releasing* it — see `endComposition` — not by second-guessing it
+   * here on every write.
+   */
+  function isComposing(element: TextHolder): boolean {
+    if (!composing || !composing.isConnected) return false;
+    return element === composing || element.contains(composing);
+  }
+
+  /**
+   * The Y.Text behind one editable — a table cell or a block's text field.
+   *
+   * The reverse of the two write paths, and used for one thing only: anchoring a
+   * composition. A cell is found by its *row id* rather than its position, so a row
+   * arriving above it while the word is being typed doesn't move the anchor onto
+   * somebody else's row.
+   */
+  function yTextOf(element: TextHolder): Y.Text | null {
+    const blockEl = blockElementOf(element);
+    const api = blockEl ? editor.blocks.getBlockByElement(blockEl) : undefined;
+    if (!blockEl || !api) return null;
+    const index = indexOfId(api.id);
+    if (index < 0) return null;
+    const map = blocks.get(index);
+
+    if (gridFieldOf(api.name)) {
+      const rowEl = gridRowOf(element);
+      const rows = rowsOf(map);
+      if (!rowEl || !rows) return null;
+      const at = indexOfRow(rows, rowEl.dataset[ROW_ATTR] ?? '');
+      if (at < 0) return null;
+      const cell = cellsOf(rows.get(at))?.get(gridCells(rowEl).indexOf(element as HTMLElement));
+      return cell instanceof Y.Text ? cell : null;
+    }
+
+    const field = textFieldsOf(api.name)[textHolders(blockEl).indexOf(element)];
+    const text = field ? map.get(field) : undefined;
+    return text instanceof Y.Text ? text : null;
+  }
+
+  /**
+   * Give every rendered row of a grid the id the document knows it by.
+   *
+   * Alignment is by position, which is *only* sound here: a table just rendered
+   * from the document has the document's rows, in the document's order. Once
+   * stamped, an id survives the row being typed in, resized, or pushed down by an
+   * insert above it — and that is what the read side matches on.
+   *
+   * When the two disagree on how many rows there are, a row has just been added or
+   * removed in this editor and which one is not knowable from a count, so only the
+   * unnamed rows get fresh ids. That case is a new row and nothing else, because
+   * stamping happens when a table is rendered — long before anyone can add to it.
+   */
+  function stampRows(element: HTMLElement, rows: YRows): void {
+    const dom = gridRows(element);
+    const aligned = dom.length === rows.length;
+    dom.forEach((el, i) => {
+      if (el.dataset[ROW_ATTR]) return;
+      el.dataset[ROW_ATTR] = aligned ? rowIdOf(rows.get(i)) || newRowId() : newRowId();
+    });
+  }
+
+  /** Every rendered grid, stamped. Cheap, idempotent, and run after any render. */
+  function stampGrids(): void {
+    for (let i = 0; i < blocks.length; i += 1) {
+      const map = blocks.get(i);
+      if (!gridFieldOf(String(map.get('type') ?? ''))) continue;
+      const rows = rowsOf(map);
+      const api = rows ? blockById(String(map.get('id') ?? '')) : undefined;
+      if (rows && api) stampRows(api.holder, rows);
+    }
+  }
+
+  /** A grid as it stands in the editor. Stamp first, or the ids will be fresh. */
+  const gridFromDom = (element: HTMLElement): GridRow[] =>
+    gridRows(element).map((el) => ({
+      id: el.dataset[ROW_ATTR] || newRowId(),
+      cells: gridCells(el).map((cell) => cell.innerHTML),
+      height: rowHeightOf(el) || undefined,
+    }));
+
+  /**
+   * Read a grid off the DOM and diff it into the document.
+   *
+   * Upgrades the block on the way past: a table stored before grids existed keeps
+   * its cells in `data`, and the first edit is exactly when it should stop.
+   *
+   * Does nothing when the block isn't rendered in this editor — no DOM to read,
+   * and the save snapshot is not an acceptable substitute (see the file header).
+   */
+  function pushGrid(map: YBlock, id: string): void {
+    const api = blockById(id);
+    if (!api) return;
+    upgradeGrid(map);
+    const rows = rowsOf(map);
+    if (!rows) return;
+    stampRows(api.holder, rows);
+    applyGridDiff(rows, gridFromDom(api.holder));
+  }
+
+  /**
+   * Whether a rendered table has the same shape as the document's — same rows,
+   * same columns in each, same dragged heights.
+   *
+   * Only the tool can add a row or a column to its own DOM, so a shape change is
+   * the one grid update that has to go through a re-render. Everything else, which
+   * is to say everybody's typing, is written in place.
+   */
+  function sameShape(rows: YRows, dom: HTMLElement[]): boolean {
+    if (rows.length !== dom.length) return false;
+    for (let i = 0; i < rows.length; i += 1) {
+      const cells = cellsOf(rows.get(i));
+      if (!cells || cells.length !== gridCells(dom[i]).length) return false;
+      if (Number(rows.get(i).get(ROW_HEIGHT) ?? 0) !== rowHeightOf(dom[i])) return false;
+    }
+    return true;
+  }
+
   // ── Editor.js → Y ────────────────────────────────────────────────────────
 
   /**
@@ -183,7 +388,18 @@ export function bindEditorJs({ editor, blocks, holder, onRemote }: Options): Edi
     const api = editor.blocks.getBlockByElement(element);
     if (!api) return;
     const fields = textFieldsOf(api.name);
-    if (!fields.length) return;
+    const grid = gridFieldOf(api.name);
+    if (!fields.length && !grid) return;
+
+    // This block's DOM is a word behind the document: a remote edit was held back
+    // from the element being composed in, so the element no longer says what the
+    // document says. Diffing it now would read the difference as a local deletion
+    // and take out what the other person just typed. Nothing goes out from here
+    // until the word is finished and `endComposition` merges it in by position —
+    // so peers see the word appear whole rather than letter by letter, which is
+    // the price of not overwriting them and is only paid when they are in the very
+    // same cell.
+    if (composing && deferred.has(api.id) && element.contains(composing)) return;
 
     const index = indexOfId(api.id);
     // Not in the CRDT yet — a block created a moment ago. There is no field to
@@ -197,6 +413,14 @@ export function bindEditorJs({ editor, blocks, holder, onRemote }: Options): Edi
       return;
     }
     const yBlock = blocks.get(index);
+
+    // A table. Every cell is its own Y.Text, so a keystroke reaches the document
+    // as a keystroke in one cell — which is the whole difference between four
+    // people filling in a table and three of them losing their afternoon.
+    if (grid) {
+      doc?.transact(() => pushGrid(yBlock, api.id), LOCAL_ORIGIN);
+      return;
+    }
 
     const holders = textHolders(element);
     if (holders.length < fields.length) return;
@@ -285,6 +509,10 @@ export function bindEditorJs({ editor, blocks, holder, onRemote }: Options): Edi
       if (at >= 0) blocks.delete(at, 1);
       blocks.insert(i, [toYBlock(block)]);
       known.add(block.id);
+      // A table Editor.js has only just created saves as no rows at all — every
+      // cell is empty, and `getData()` keeps no empty rows. Read the real shape
+      // off the DOM, so the person it appears for sees a table and not a gap.
+      if (gridFieldOf(block.type)) pushGrid(blocks.get(i), block.id);
     });
 
     if (blocks.length > local.length) blocks.delete(local.length, blocks.length - local.length);
@@ -294,11 +522,13 @@ export function bindEditorJs({ editor, blocks, holder, onRemote }: Options): Edi
     if (map.get('type') !== block.type) map.set('type', block.type);
 
     const fields = textFieldsOf(block.type);
-    const rest: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(block.data ?? {})) {
-      if (!fields.includes(key)) rest[key] = value;
-    }
+    const rest = jsonDataOf(block);
     if (!sameData(map.get('data'), rest)) map.set('data', rest);
+
+    // Rows and columns added or removed through the table's own toolbox arrive
+    // here rather than as an `input`, so this is where they land. Read from the
+    // DOM, never from `block.data` — the snapshot is missing any row left blank.
+    if (gridFieldOf(block.type)) pushGrid(map, block.id);
 
     for (const field of fields) {
       const text = map.get(field);
@@ -312,17 +542,20 @@ export function bindEditorJs({ editor, blocks, holder, onRemote }: Options): Edi
 
   // ── Y → Editor.js ────────────────────────────────────────────────────────
 
-  /** Write one text field into the DOM, keeping the caret where it belongs. */
-  function applyText(blockId: string, field: string, next: string): boolean {
-    const api = blockById(blockId);
-    if (!api) return false;
-    const fields = textFieldsOf(api.name);
-    const slot = fields.indexOf(field);
-    if (slot < 0) return false;
-    const holders = textHolders(api.holder);
-    const element = holders[slot];
-    if (!element) return false;
-    if (valueOf(element) === next) return true;
+  /**
+   * Put `next` into one editable, keeping the caret on the character it was on.
+   *
+   * The single place a remote edit touches the DOM, which is why the IME check
+   * lives here and nowhere else: held back rather than written, and the block is
+   * remembered so `compositionend` can finish the job. `blockId` is only for that
+   * — the write itself doesn't need to know which block it is in.
+   */
+  function writeInto(element: TextHolder, next: string, blockId: string): void {
+    if (valueOf(element) === next) return;
+    if (isComposing(element)) {
+      deferred.add(blockId);
+      return;
+    }
 
     if (isTextarea(element)) {
       const focused = document.activeElement === element;
@@ -338,7 +571,7 @@ export function bindEditorJs({ editor, blocks, holder, onRemote }: Options): Edi
       // redraw from it (the diagram's preview, the code block's height), so tell
       // them the same way a keystroke would.
       element.dispatchEvent(new Event('input', { bubbles: true }));
-      return true;
+      return;
     }
 
     const el = element as HTMLElement;
@@ -346,6 +579,18 @@ export function bindEditorJs({ editor, blocks, holder, onRemote }: Options): Edi
     const caret = caretOffset(el);
     el.innerHTML = next;
     if (caret >= 0) setCaretOffset(el, mapOffset(before, plainText(el), caret));
+  }
+
+  /** Write one text field into the DOM, keeping the caret where it belongs. */
+  function applyText(blockId: string, field: string, next: string): boolean {
+    const api = blockById(blockId);
+    if (!api) return false;
+    const fields = textFieldsOf(api.name);
+    const slot = fields.indexOf(field);
+    if (slot < 0) return false;
+    const element = textHolders(api.holder)[slot];
+    if (!element) return false;
+    writeInto(element, next, blockId);
     return true;
   }
 
@@ -433,6 +678,10 @@ export function bindEditorJs({ editor, blocks, holder, onRemote }: Options): Edi
       await editor.blocks.render({ blocks: wanted as never }).catch(() => undefined);
     }
 
+    // Anything rendered above arrived with the document's row ids but none of them
+    // in its DOM, and the read side matches rows by that id.
+    stampGrids();
+
     if (caret >= 0 && focusedId) {
       const back = blockById(focusedId);
       const el = back ? textHolders(back.holder)[0] : undefined;
@@ -441,6 +690,51 @@ export function bindEditorJs({ editor, blocks, holder, onRemote }: Options): Edi
     // Whatever was kept above is in this editor and nowhere else. Publish it,
     // or the person who wrote it is the only one who will ever see it.
     if (mine.size) enqueuePull();
+    onRemote?.();
+  }
+
+  /**
+   * A table changed. Write the cells where they stand.
+   *
+   * This is the function the whole grid shape exists to make possible. Four people
+   * filling in one table produce a remote update per keystroke, and the old
+   * behaviour — re-render the table for each — is why editing that table together
+   * felt like the page was fighting you: every remote letter put your caret back
+   * at the top of the block you were typing in.
+   *
+   * A re-render is still the answer for a row or column appearing or going, or a
+   * height being dragged, because only the tool can do those to its own DOM. Those
+   * are rare, and cost one caret rather than one per keystroke.
+   */
+  async function renderGrid(blockId: string): Promise<void> {
+    const index = indexOfId(blockId);
+    if (index < 0) return;
+    const map = blocks.get(index);
+    const api = blockById(blockId);
+    if (!api) return;
+    const block = fromYBlock(map);
+    if (api.name !== block.type) {
+      await renderStructure();
+      return;
+    }
+
+    const rows = rowsOf(map);
+    const dom = gridRows(api.holder);
+    if (rows && sameShape(rows, dom)) {
+      stampRows(api.holder, rows);
+      rows.forEach((row, r) => {
+        const cells = cellsOf(row);
+        const els = gridCells(dom[r]);
+        cells?.forEach((cell, c) => {
+          if (els[c]) writeInto(els[c], cell.toString(), blockId);
+        });
+      });
+      onRemote?.();
+      return;
+    }
+
+    await editor.blocks.update(blockId, block.data).catch(() => undefined);
+    stampGrids();
     onRemote?.();
   }
 
@@ -460,10 +754,37 @@ export function bindEditorJs({ editor, blocks, holder, onRemote }: Options): Edi
       onRemote?.();
       return;
     }
+    // A grid compares itself against the DOM rather than against `save()`: the
+    // table tool leaves entirely-empty rows out of its saved data, so a table with
+    // one blank row in it never looks equal and would re-render on every single
+    // remote keystroke — exactly the caret loss this binding exists to avoid.
+    if (gridFieldOf(block.type)) {
+      await renderGrid(blockId);
+      return;
+    }
     const current = (await api.save().catch(() => null)) as { data?: unknown } | null;
     if (sameData(current?.data, block.data)) return;
     await editor.blocks.update(blockId, block.data).catch(() => undefined);
     onRemote?.();
+  }
+
+  /**
+   * Re-apply a block's remote state after an IME finished a word in it.
+   *
+   * Whatever was held back is by now several updates old, so this re-reads the
+   * document rather than replaying anything: the same two functions the observer
+   * would have called, on the state as it stands.
+   */
+  async function refresh(blockId: string): Promise<void> {
+    const index = indexOfId(blockId);
+    if (index < 0) return;
+    const map = blocks.get(index);
+    const type = String(map.get('type') ?? '');
+    if (gridFieldOf(type)) {
+      await renderGrid(blockId);
+      return;
+    }
+    for (const field of textFieldsOf(type)) applyText(blockId, field, textOf(map, field));
   }
 
   const enqueue = (work: () => Promise<void>): void => {
@@ -521,6 +842,7 @@ export function bindEditorJs({ editor, blocks, holder, onRemote }: Options): Edi
 
     let structural = false;
     const dataChanged = new Set<string>();
+    const gridChanged = new Set<string>();
     const applied: boolean[] = [];
 
     for (const event of events) {
@@ -539,7 +861,16 @@ export function bindEditorJs({ editor, blocks, holder, onRemote }: Options): Edi
         // 'type' means the block became something else — that's a re-render.
         const keys = (event as unknown as Y.YMapEvent<unknown>).keysChanged;
         if (keys?.has('type')) structural = true;
+        else if (keys?.size === 1 && keys.has(ROWS_KEY)) gridChanged.add(id);
         else dataChanged.add(id);
+        continue;
+      }
+      // Inside a table: a cell typed in, a row added, a column removed, a height
+      // dragged. Which of those it was doesn't need working out from the event
+      // path — the grid is reconciled against the DOM as a whole, once, however
+      // many of these arrived together.
+      if (String(event.path[1]) === ROWS_KEY) {
+        gridChanged.add(id);
         continue;
       }
       // A Y.Text — the everyday case. Written straight into the DOM, now, so
@@ -562,15 +893,111 @@ export function bindEditorJs({ editor, blocks, holder, onRemote }: Options): Edi
     // would lose a table edit that arrived alongside a new block.
     if (structural) enqueue(renderStructure);
     for (const id of dataChanged) enqueue(() => renderData(id));
+    // Not when the whole structure is being rendered: that already draws the
+    // table from the document, and a grid pass behind it would only re-read what
+    // it just wrote.
+    if (!structural) for (const id of gridChanged) enqueue(() => renderGrid(id));
     if (!structural && applied.length) onRemote?.();
   };
 
   // ── Wiring ───────────────────────────────────────────────────────────────
 
   const onInput = (event: Event): void => pushTextFromDom(event.target as Node);
+
+  const onCompositionStart = (event: Event): void => {
+    composing = holderOf(event.target as Node);
+    composedIn = null;
+    composedAt = null;
+    if (!composing || !doc) return;
+
+    // A composition starts at the caret and everything it goes on to produce
+    // replaces only what it has produced so far, so one anchor is enough: the word
+    // is an insertion at this point, whatever the keyboard does to it on the way.
+    const into = yTextOf(composing);
+    const start = isTextarea(composing)
+      ? (composing.selectionStart ?? 0)
+      : caretOffset(composing as HTMLElement);
+    if (!into || start < 0) return;
+    // A cell's stored value is HTML while the caret counts plain text, and the two
+    // only agree when there is no markup to disagree about. Rather than guess at a
+    // mapping, anchor only when they are the same string; `endComposition` has a
+    // fallback for the rest.
+    if (!isTextarea(composing) && composing.innerHTML !== plainText(composing)) return;
+
+    composedIn = into;
+    composedAt = Y.createRelativePositionFromTypeIndex(into, start);
+    composedBase = valueOf(composing);
+    composedStart = start;
+  };
+
+  /**
+   * The word is finished — let go, and catch up.
+   *
+   * Two events lead here. `compositionend` is the ordinary one. `focusout` is the
+   * escape hatch: a keyboard swapped mid-word, a phone that tore the view down, a
+   * browser that simply never sent the end event — any of them would otherwise
+   * leave one cell permanently unwritable, and a cell that silently stops
+   * receiving other people's edits is worse than a scrambled word. Focus leaving
+   * an editable ends composition in every browser, so it is a sound release even
+   * when it is the only one that arrives.
+   */
+  const endComposition = (target: Node | null): void => {
+    if (!composing) return;
+    const element = composing;
+    const into = composedIn;
+    const anchor = composedAt;
+    const base = composedBase;
+    const start = composedStart;
+    composing = null;
+    composedIn = null;
+    composedAt = null;
+
+    const blockEl = blockElementOf(element);
+    const api = blockEl ? editor.blocks.getBlockByElement(blockEl) : undefined;
+    // Was a remote edit held back from this element while the word was being typed?
+    const held = !!api && deferred.has(api.id);
+
+    if (held && into && anchor && doc) {
+      // The element is missing somebody else's edit, so diffing it would read their
+      // text as a local deletion and take it out. Send the composed run on its own
+      // instead, at the point the document says it belongs — everything either side
+      // of it is theirs to keep — and let `refresh` below bring the element up to
+      // date afterwards.
+      const value = valueOf(element);
+      const word = value.slice(start, value.length - (base.length - start));
+      const at = Y.createAbsolutePositionFromRelativePosition(anchor, doc);
+      if (word && at?.type === into) doc.transact(() => into.insert(at.index, word), LOCAL_ORIGIN);
+    } else {
+      // Nothing was held back, so the element differs from the document by exactly
+      // the word just finished and the ordinary diff is exact. (Or it *was* held
+      // back but couldn't be anchored — a cell with markup in it. Then this is best
+      // effort: the word is kept, and the other person's edit to that same cell may
+      // not be. Narrow, and better than dropping what somebody just typed.)
+      pushTextFromDom(target);
+    }
+
+    if (!deferred.size) return;
+    const ids = [...deferred];
+    deferred.clear();
+    for (const id of ids) enqueue(() => refresh(id));
+  };
+
+  const onCompositionEnd = (event: Event): void => endComposition(event.target as Node);
+
+  const onFocusOut = (event: Event): void => {
+    if (holderOf(event.target as Node) === composing) endComposition(event.target as Node);
+  };
+
   // Capture, so it runs before anything the editor's own handlers do with the
   // event — and on the holder, so it covers every block including ones added later.
   holder.addEventListener('input', onInput, true);
+  // Intermediate composition states are *not* held back from the document: a
+  // half-typed word merges as cleanly as a finished one, and peers seeing it
+  // appear letter by letter is the point. What must not happen is the reverse
+  // write — see `writeInto`.
+  holder.addEventListener('compositionstart', onCompositionStart, true);
+  holder.addEventListener('compositionend', onCompositionEnd, true);
+  holder.addEventListener('focusout', onFocusOut, true);
   blocks.observeDeep(onDeep);
 
   const ready = (async () => {
@@ -585,7 +1012,13 @@ export function bindEditorJs({ editor, blocks, holder, onRemote }: Options): Edi
     const inStep =
       mounted.length === editor.blocks.getBlocksCount() &&
       mounted.every((block, i) => idAt(i) === block.id);
-    if (inStep) return;
+    if (inStep) {
+      // Rendered by the page rather than by us, so the rows still need naming —
+      // and before the first keystroke, because a table read unnamed would look
+      // like a table of brand-new rows and replace everyone else's.
+      stampGrids();
+      return;
+    }
 
     applying = true;
     try {
@@ -593,6 +1026,7 @@ export function bindEditorJs({ editor, blocks, holder, onRemote }: Options): Edi
     } finally {
       applying = false;
     }
+    stampGrids();
     onRemote?.();
   })();
 
@@ -610,7 +1044,11 @@ export function bindEditorJs({ editor, blocks, holder, onRemote }: Options): Edi
     },
     destroy: () => {
       destroyed = true;
+      composing = null;
       holder.removeEventListener('input', onInput, true);
+      holder.removeEventListener('compositionstart', onCompositionStart, true);
+      holder.removeEventListener('compositionend', onCompositionEnd, true);
+      holder.removeEventListener('focusout', onFocusOut, true);
       blocks.unobserveDeep(onDeep);
     },
   };

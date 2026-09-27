@@ -16,7 +16,22 @@
  * wrong is silent — two windows that look fine and disagree.
  */
 import * as Y from 'yjs';
-import { blocksOf, readBlocks, textOf, toYBlock, type YBlock } from '../src/blockDoc.js';
+import {
+  applyGridDiff,
+  blocksOf,
+  cellsOf,
+  newRowId,
+  readBlocks,
+  readGrid,
+  rowIdOf,
+  rowsOf,
+  textOf,
+  toYBlock,
+  toYRow,
+  upgradeGrid,
+  type YBlock,
+  type YRows,
+} from '../src/blockDoc.js';
 import { blocksToHtml, type HtmlEditorBlock } from '../src/editorjs.js';
 import { convertHtml, resetYDocFromHtml, seedYDocFromHtml, ydocToHtml } from '../src/ydoc.js';
 
@@ -60,6 +75,16 @@ function fork(a: Y.Doc): Y.Doc {
   Y.applyUpdate(b, Y.encodeStateAsUpdate(a));
   return b;
 }
+
+/** The rows of the table block at `index`. */
+const gridAt = (doc: Y.Doc, index = 0): YRows => rowsOf(blocksOf(doc).get(index))!;
+
+/** One cell of that table, as the Y.Text it has to be for two people to share it. */
+const cellAt = (doc: Y.Doc, row: number, col: number, index = 0): Y.Text =>
+  cellsOf(gridAt(doc, index).get(row))!.get(col) as Y.Text;
+
+const columnOf = (doc: Y.Doc, col: number, index = 0): string[] =>
+  readGrid(gridAt(doc, index)).content.map((line) => line[col] ?? '');
 
 const textAt = (doc: Y.Doc, index: number, field = 'text'): Y.Text =>
   blocksOf(doc).get(index).get(field) as Y.Text;
@@ -248,6 +273,164 @@ function main(): void {
     check(blocksOf(a).length === 2, 'the new block reaches the person who was typing');
     check(textOf(blocksOf(a).get(0), 'text') === 'Intro paragraph', 'without interrupting their sentence');
     check(ydocToHtml(a) === ydocToHtml(b), 'and both render the same page');
+  }
+
+  // ── Grids: a table is the one block people genuinely share ────────────────
+  // Four people filling one weekly-report table is the case that drove this
+  // shape. Every check below fails against the shape that stored a table as one
+  // JSON value in `data` — which is what made it look like the page was eating
+  // people's updates.
+  const WEEKLY =
+    '<table><tbody>' +
+    '<tr><td>@Grace</td><td>Testing Sign Up</td></tr>' +
+    '<tr><td>@Theo</td><td>Plan for new members</td></tr>' +
+    '<tr><td>@Ryan</td><td>Billing</td></tr>' +
+    '</tbody></table>';
+
+  group('a table lands as a grid, not as one blob');
+  {
+    const doc = new Y.Doc();
+    seedYDocFromHtml(doc, WEEKLY);
+    const block = blocksOf(doc).get(0);
+
+    check(rowsOf(block) !== undefined, "a table's rows are a Y.Array");
+    check(cellAt(doc, 0, 0) instanceof Y.Text, 'and every cell is a Y.Text — so two people can share one');
+    check(
+      !('content' in ((block.get('data') as object) ?? {})),
+      'the cells are not also left behind in data, where a stale write could undo them',
+    );
+
+    const ids = new Set(gridAt(doc).map((row) => rowIdOf(row)));
+    check(ids.size === 3 && !ids.has(''), 'every row carries its own id');
+    check(readGrid(gridAt(doc)).content[1]?.[0] === '@Theo', 'and the grid reads back in order');
+  }
+
+  group('two people, different rows of one table');
+  {
+    const a = new Y.Doc();
+    seedYDocFromHtml(a, WEEKLY);
+    const b = fork(a);
+
+    cellAt(a, 0, 1).insert(15, ', Sign In, Home'); // Grace fills her row
+    cellAt(b, 1, 1).insert(20, ', break tasks'); // Theo fills his, at the same time
+    exchange(a, b);
+
+    check(cellAt(a, 0, 1).toString() === 'Testing Sign Up, Sign In, Home', "Grace's line survives");
+    check(cellAt(a, 1, 1).toString() === 'Plan for new members, break tasks', "and so does Theo's");
+    check(ydocToHtml(a) === ydocToHtml(b), 'both windows agree');
+  }
+
+  group('two people, different cells of the same row');
+  {
+    const a = new Y.Doc();
+    seedYDocFromHtml(a, WEEKLY);
+    const b = fork(a);
+
+    cellAt(a, 2, 0).insert(5, ' (BE)');
+    cellAt(b, 2, 1).insert(7, ' accuracy');
+    exchange(a, b);
+
+    check(cellAt(a, 2, 0).toString() === '@Ryan (BE)', 'the first cell keeps its edit');
+    check(cellAt(a, 2, 1).toString() === 'Billing accuracy', 'and the second keeps its own');
+  }
+
+  group('two people, the same cell');
+  {
+    const a = new Y.Doc();
+    seedYDocFromHtml(a, WEEKLY);
+    const b = fork(a);
+
+    cellAt(a, 0, 0).insert(6, '!');
+    cellAt(b, 0, 0).insert(0, '>> ');
+    exchange(a, b);
+
+    check(cellAt(a, 0, 0).toString() === cellAt(b, 0, 0).toString(), 'the two windows converge');
+    check(cellAt(a, 0, 0).toString().includes('!') && cellAt(a, 0, 0).toString().includes('>>'), 'and neither keystroke is dropped');
+  }
+
+  group('two people each add a row');
+  {
+    const a = new Y.Doc();
+    seedYDocFromHtml(a, WEEKLY);
+    const b = fork(a);
+
+    gridAt(a).push([toYRow(['@Kevin', 'Resolve 6 issues'])]);
+    gridAt(b).push([toYRow(['@Linh', 'QC tickets'])]);
+    exchange(a, b);
+
+    check(gridAt(a).length === 5, 'both rows are there — neither add replaced the other');
+    const names = columnOf(a, 0);
+    check(names.includes('@Kevin') && names.includes('@Linh'), 'and both carry their own text');
+    check(ydocToHtml(a) === ydocToHtml(b), 'both windows render the same table');
+  }
+
+  group('a row height follows its row, not its position');
+  {
+    // The trap this shape exists to close: `rowHeights` used to be a row-indexed
+    // array in `data`, so one person inserting a row shifted every height onto
+    // the wrong row — a table that silently reshaped itself for everybody else.
+    const a = new Y.Doc();
+    seedYDocFromHtml(
+      a,
+      '<table><tbody><tr style="height:80px"><td>tall</td></tr><tr><td>short</td></tr></tbody></table>',
+    );
+    const b = fork(a);
+
+    gridAt(b).insert(0, [toYRow(['inserted above'])]);
+    exchange(a, b);
+
+    const { content, rowHeights } = readGrid(gridAt(a));
+    const tall = content.findIndex((line) => line[0] === 'tall');
+    check(content[0]?.[0] === 'inserted above', 'the new row lands where it was put');
+    check(rowHeights?.[tall] === 80, `the 80px still belongs to "tall" (row ${tall})`);
+    check((rowHeights?.[0] ?? 0) === 0, 'and the inserted row did not inherit it');
+  }
+
+  group('a table stored before grids existed');
+  {
+    const doc = new Y.Doc();
+    const legacy = new Y.Map<unknown>();
+    legacy.set('id', 'old-table');
+    legacy.set('type', 'table');
+    legacy.set('data', { withHeadings: false, content: [['a', 'b']], rowHeights: [40] });
+    blocksOf(doc).insert(0, [legacy as YBlock]);
+
+    check(readBlocks(blocksOf(doc))[0]?.data['content'] !== undefined, 'it still reads, straight out of data');
+    check(ydocToHtml(doc).includes('<td>a</td>'), 'and still renders — no flag day, no batch job');
+
+    check(upgradeGrid(blocksOf(doc).get(0)), 'the first edit upgrades it');
+    check(rowsOf(blocksOf(doc).get(0)) !== undefined, 'it now has rows');
+    check(readBlocks(blocksOf(doc))[0]?.data['content']?.toString() === [['a', 'b']].toString(), 'with the same cells');
+    check(readGrid(gridAt(doc)).rowHeights?.[0] === 40, 'and the row height came along');
+    check(!upgradeGrid(blocksOf(doc).get(0)), 'and upgrading twice does nothing');
+  }
+
+  group('applyGridDiff matches rows by id, not by position');
+  {
+    // The binding reads a table back out of the DOM and diffs it in. If that
+    // diff went by position, inserting a row above would look like every row's
+    // text changing at once — rewriting text nobody touched and throwing away
+    // everyone else's caret. Identity is what keeps the edit minimal.
+    const doc = new Y.Doc();
+    seedYDocFromHtml(doc, WEEKLY);
+    const rows = gridAt(doc);
+    const keptText = cellAt(doc, 1, 0); // Theo's Y.Text, before
+    const keptRowId = rowIdOf(rows.get(1));
+
+    const next = rows.map((row) => ({ id: rowIdOf(row), cells: cellsOf(row)!.map((c) => c.toString()) }));
+    next.splice(1, 0, { id: newRowId(), cells: ['@Kevin', 'Resolve 6 issues'] });
+    applyGridDiff(rows, next);
+
+    check(rows.length === 4, 'the row is inserted');
+    check(readGrid(rows).content[1]?.[0] === '@Kevin', 'in the right place');
+    check(rowIdOf(rows.get(2)) === keptRowId, 'the row below keeps its identity');
+    check(cellAt(doc, 2, 0) === keptText, 'and the very same Y.Text — untouched, so nobody loses their caret');
+
+    // And a delete is just as narrow.
+    const before = cellAt(doc, 0, 0);
+    applyGridDiff(rows, next.filter((row) => row.cells[0] !== '@Kevin'));
+    check(rows.length === 3, 'removing a row from the list deletes exactly that row');
+    check(cellAt(doc, 0, 0) === before, 'and leaves the rest alone');
   }
 
   group('a version restore reaches everyone');
