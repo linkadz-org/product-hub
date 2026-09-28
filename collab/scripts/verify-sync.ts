@@ -13,6 +13,9 @@
  *   seed        an existing page's HTML becomes a Y.Doc, so old docs aren't blank
  *   merge       two people editing different paragraphs both keep their text —
  *               the thing the old last-write-wins autosave could never do
+ *   table       and so do two people editing different cells of one table, or
+ *               adding a row at the same moment — the weekly-report case, where a
+ *               table held as one JSON value meant the last typist won the lot
  *   awareness   one client sees the other's identity on the presence channel,
  *               which is the same channel that carries caret and selection
  *   presence    /presence answers for the docs list without opening a socket
@@ -26,7 +29,15 @@ import jwt from 'jsonwebtoken';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import { roomName, type RoleValue } from '../src/auth.js';
-import { blocksOf, textFieldsOf } from '../src/blockDoc.js';
+import {
+  blocksOf,
+  cellsOf,
+  readGrid,
+  rowsOf,
+  textFieldsOf,
+  toYRow,
+  type YRows,
+} from '../src/blockDoc.js';
 import { env } from '../src/env.js';
 import { closeMongo, connectMongo, crdt, pages } from '../src/mongo.js';
 import { createCollabServer } from '../src/server.js';
@@ -132,10 +143,10 @@ function connect(token: string, room: string): Client {
 }
 
 /**
- * Every Y.Text in the document, in block order — the runs of prose a person
- * types into, and the only parts that merge character by character. A list's
- * items or a table's cells are plain JSON on their block and deliberately absent
- * here (see `blockDoc.ts`).
+ * Every Y.Text in the document, in block order — the runs of prose a person types
+ * into. A table's cells are Y.Text too and merge the same way, but they hang off
+ * `rows` rather than off the block, so they are reached through `gridOf` below. A
+ * list's items really are plain JSON on their block (see `blockDoc.ts`).
  */
 function textNodes(doc: Y.Doc): Y.Text[] {
   const found: Y.Text[] = [];
@@ -153,6 +164,25 @@ function plainText(doc: Y.Doc): string {
     .map((text) => text.toString())
     .join('\n');
 }
+
+/** The first grid block's rows — the seeded table, on whichever client. */
+function gridOf(doc: Y.Doc): YRows {
+  for (const block of blocksOf(doc)) {
+    const rows = rowsOf(block);
+    if (rows) return rows;
+  }
+  throw new Error('the document has no table');
+}
+
+/** One cell, as the person typing in it holds it. */
+const cellOf = (doc: Y.Doc, row: number, col: number): Y.Text =>
+  cellsOf(gridOf(doc).get(row))?.get(col) as Y.Text;
+
+/** The whole table as one readable line, for asserting on and for failure output. */
+const gridText = (doc: Y.Doc): string =>
+  readGrid(gridOf(doc))
+    .content.map((line) => line.join(' | '))
+    .join(' / ');
 
 // ── the run ────────────────────────────────────────────────────────────────
 async function main(): Promise<void> {
@@ -206,6 +236,49 @@ async function main(): Promise<void> {
       );
     });
     check('both edits survive on both clients', merged, plainText(ada.doc));
+
+    // ── concurrent edits inside one table ──────────────────────────────────
+    //
+    // The case this was built for. A weekly report is one table several people
+    // fill in at once, and a table used to be a single JSON value on its block —
+    // so whoever typed last replaced every cell the others had just written. It
+    // did not look like a conflict; it looked like the page forgetting.
+    console.log('\nconcurrent edits in one table');
+    check('the seeded table arrived as a grid of cells', gridOf(ada.doc).length === 2, gridText(ada.doc));
+    check('and the second client has the same grid', gridText(bob.doc) === gridText(ada.doc));
+
+    // Three cells at once, two of them in the same row, none of them round-tripped
+    // before the next was typed.
+    cellOf(ada.doc, 1, 1).insert(3, ' down to 22%');
+    cellOf(bob.doc, 1, 0).insert(7, ' step');
+    cellOf(bob.doc, 0, 1).insert(8, ' (week 39)');
+
+    const cellsMerged = await waitFor(() => {
+      const a = gridText(ada.doc);
+      return (
+        a === gridText(bob.doc) &&
+        a.includes('down to 22%') &&
+        a.includes('Address step') &&
+        a.includes('(week 39)')
+      );
+    });
+    check('every cell edit survives on both clients', cellsMerged, gridText(ada.doc));
+
+    // Two people adding a row at the same moment. Both rows have to exist
+    // afterwards: with a table as one value, one of them simply never happened.
+    gridOf(ada.doc).push([toYRow(['Payment', '17%'])]);
+    gridOf(bob.doc).push([toYRow(['Delivery', '9%'])]);
+
+    const rowsMerged = await waitFor(() => {
+      const a = gridText(ada.doc);
+      return a === gridText(bob.doc) && a.includes('Payment') && a.includes('Delivery');
+    });
+    check('two rows added at the same time both survive', rowsMerged, gridText(ada.doc));
+    check(
+      'and both clients agree on the table, row for row',
+      gridOf(ada.doc).length === 4 && gridOf(bob.doc).length === 4,
+      `${gridOf(ada.doc).length} / ${gridOf(bob.doc).length}`,
+    );
 
     // ── awareness: the channel that carries caret + selection ──────────────
     console.log('\nawareness (cursor / selection channel)');
@@ -299,6 +372,19 @@ async function main(): Promise<void> {
     const mirroredHtml = stored.page?.content ?? '';
     check('mirror kept ada\'s edit', mirroredHtml.includes('[ada was here]'), mirroredHtml);
     check("mirror kept bob's edit", mirroredHtml.includes('[bob was here]'));
+    // The point of the grid, stated where the rest of the app would notice it
+    // missing: every cell and both new rows are in the HTML the PDF export, the
+    // public share page and MCP read.
+    check(
+      "mirror kept every cell the two of them typed in",
+      ['down to 22%', 'Address step', '(week 39)'].every((cell) => mirroredHtml.includes(cell)),
+      mirroredHtml.match(/<table[\s\S]*?<\/table>/)?.[0],
+    );
+    check(
+      'mirror kept both rows that were added at once',
+      mirroredHtml.includes('Payment') && mirroredHtml.includes('Delivery'),
+      mirroredHtml.match(/<table[\s\S]*?<\/table>/)?.[0],
+    );
     check('mirror dropped the read-only edit', !mirroredHtml.includes('[dev edit]'));
     check('mirror is html the read view can render', /<h[1-6]|<p>/.test(mirroredHtml));
     check('mirror carries no editor-internal classes', !mirroredHtml.includes('bn-'));
@@ -321,7 +407,9 @@ async function main(): Promise<void> {
     survives('and its source is still readable', 'graph TD');
     survives('a table header row is still a <thead>', '<thead>');
     survives('a header cell keeps its scope', '<th scope="col">Step</th>');
-    survives('a row header keeps its scope', '<th scope="row">Address</th>');
+    // Edited above, and still a row header: a cell typed into is still the same
+    // cell, so the accessibility markup that made it a header survives with it.
+    survives('a row header keeps its scope', '<th scope="row">Address step</th>');
     survives('an image keeps its url', 'src="/uploads/checkout.png"');
     survives('an image keeps its caption', '<figcaption>The address step</figcaption>');
     survives('a toggle is still a <details>', 'class="rte-toggle"');

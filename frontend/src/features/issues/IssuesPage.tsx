@@ -1,16 +1,17 @@
 import { Fragment, useEffect, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { CalendarRange, LayoutGrid, List } from 'lucide-react';
+import { CalendarDays, CalendarRange, LayoutGrid, List } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { AssigneeBadge } from '@/components/AssigneeBadge';
-import { BoardSkeleton, ListSkeleton, TimelineSkeleton } from '@/components/Skeletons';
+import { BoardSkeleton, CalendarSkeleton, ListSkeleton, TimelineSkeleton } from '@/components/Skeletons';
 import { BOARD_GUTTER, IssueBoardLayout } from '@/components/IssueBoardLayout';
-import { KanbanBoard, KanbanCardToolbar } from '@/components/KanbanBoard';
+import { KanbanBoard, KanbanCardToolbar, SubtaskCount } from '@/components/KanbanBoard';
 import { Icon } from '@/components/Icon';
 import { IssueTimelineView } from '@/features/issues/IssueTimelineView';
 import { SubIssueTree, TreeChevron } from '@/features/issues/SubIssueTree';
 import { useIssueTree } from '@/features/issues/issueTree';
+import { IssueCalendarView } from '@/features/issues/IssueCalendarView';
 import { SortMenu } from '@/features/issues/SortMenu';
 import { applyIssueSort, useIssueSort } from '@/features/issues/useIssueSort';
 import { LabelChips } from '@/features/labels/LabelChips';
@@ -245,7 +246,7 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
     mine: isAll ? undefined : user?.id ?? '__none__',
     search: search || undefined,
     status: filters.status,
-    // Assignee, creator and the two date windows — the block every board shares.
+    // Assignee, creator and the three date windows — the block every board shares.
     ...shared,
     // Filtering by assignee only means something when the list isn't already one
     // person's (the API's `mine` wins over it anyway).
@@ -434,6 +435,7 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
           { value: 'board', label: t('tasks.viewBoard'), icon: <LayoutGrid /> },
           { value: 'list', label: t('tasks.viewList'), icon: <List /> },
           { value: 'timeline', label: t('boards.viewTimeline'), icon: <CalendarRange /> },
+          { value: 'calendar', label: t('boards.viewCalendar'), icon: <CalendarDays /> },
         ],
       }}
       actions={
@@ -447,6 +449,8 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
           <ListSkeleton inset />
         ) : view === 'timeline' ? (
           <TimelineSkeleton />
+        ) : view === 'calendar' ? (
+          <CalendarSkeleton />
         ) : (
           <BoardSkeleton columns={columns.length || 4} />
         )
@@ -523,6 +527,10 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
             isBug={isBug}
           />
         </div>
+      ) : view === 'calendar' ? (
+        <div className={cn('min-h-0 flex-1 overflow-y-auto pb-6 pt-1', BOARD_GUTTER)}>
+          <IssueCalendarView items={items} issueType={issueType} />
+        </div>
       ) : (
         <div className={cn('min-h-0 flex-1 overflow-y-auto pb-6 pt-1', BOARD_GUTTER)}>
           <IssueTimelineView items={items} issueType={issueType} />
@@ -585,11 +593,6 @@ function IssueList({
             <Icon name="tasks" size={14} className="shrink-0 text-muted-foreground" />
           )}
           <span className="min-w-0 flex-1 truncate text-sm">{it.title}</span>
-          {kids.length > 0 && (
-            <span className="shrink-0 text-[11px] text-muted-foreground">
-              {t('boards.timelineSubCount').replace('{n}', String(kids.length))}
-            </span>
-          )}
           {cfg && (
             <span className="hidden shrink-0 items-center gap-1 text-[11px] text-muted-foreground sm:flex">
               <span className="size-2 rounded-full" style={{ backgroundColor: cfg.color }} aria-hidden />
@@ -604,6 +607,11 @@ function IssueList({
             labels={labelsFor(it.teamId)}
             max={3}
             className="hidden shrink-0 sm:flex"
+          />
+          <SubtaskCount
+            done={it.subtaskDoneCount}
+            total={it.subtaskCount}
+            className="hidden shrink-0 text-[11px] tabular-nums text-muted-foreground sm:flex"
           />
           {it.shortId && (
             <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{it.shortId}</span>

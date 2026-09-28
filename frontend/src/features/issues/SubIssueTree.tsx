@@ -194,22 +194,14 @@ export function TreeRowLead({ rt }: { rt?: RowTree }) {
   return rt.reserve ? <span className="-ml-2 -mr-1 size-5 shrink-0" aria-hidden /> : null;
 }
 
-/** "N sub-issues" and, on a nested row, its own status — after the title. */
+/** A nested row's own status, after the title. The sub-issue count is the row's
+ *  `SubtaskCount` chip ("done/total"), so it isn't repeated here. */
 export function TreeRowMeta({ rt }: { rt?: RowTree }) {
-  if (!rt) return null;
+  if (!rt?.status) return null;
   return (
-    <>
-      {rt.kids > 0 && (
-        <span className="shrink-0 text-[11px] text-muted-foreground">
-          {t('boards.timelineSubCount').replace('{n}', String(rt.kids))}
-        </span>
-      )}
-      {rt.status && (
-        <span className="hidden shrink-0 items-center gap-1 text-[11px] text-muted-foreground sm:flex">
-          <span className="size-2 rounded-full" style={{ backgroundColor: rt.status.color }} aria-hidden />
-          {rt.status.label}
-        </span>
-      )}
-    </>
+    <span className="hidden shrink-0 items-center gap-1 text-[11px] text-muted-foreground sm:flex">
+      <span className="size-2 rounded-full" style={{ backgroundColor: rt.status.color }} aria-hidden />
+      {rt.status.label}
+    </span>
   );
 }

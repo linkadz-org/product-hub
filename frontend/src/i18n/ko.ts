@@ -626,6 +626,15 @@ export const ko: Record<I18nKey, string> = {
   'roadmaps.ganttDragHint': '막대를 끌면 이동하고, 끝을 끌면 그 날짜가 바뀝니다',
   'roadmaps.ganttSaveFailed': '날짜를 변경하지 못했습니다 — 되돌립니다.',
   'roadmaps.ganttLegendMarker': '다이아몬드 = 날짜가 하나뿐인 태스크',
+  'roadmaps.timelineMode': '타임라인 보기',
+  'roadmaps.timelineGantt': '간트',
+  'roadmaps.timelineCalendar': '캘린더',
+  'roadmaps.filteredEmpty': '필터와 일치하는 항목이 없습니다',
+  'roadmaps.filteredEmptyHint':
+    '선택한 사람이 이 화면의 항목에 없습니다. 필터를 해제하거나 위에서 스프린트 범위를 넓혀보세요.',
+  'roadmaps.clearFilters': '필터 해제',
+  'roadmaps.calendarEmpty': '이번 달에 예정된 일정이 없습니다.',
+  'roadmaps.calendarEmptyHint': '다른 달로 이동하거나, 간트에서 항목에 시작일과 종료일을 지정하세요.',
   'roadmaps.newColumn': '새 컬럼',
   'roadmaps.columnName': '컬럼 이름',
   'roadmaps.columnColor': '컬럼 색상',
@@ -645,6 +654,9 @@ export const ko: Record<I18nKey, string> = {
   'roadmaps.difficulty': '난이도',
   'roadmaps.status': '상태',
   'roadmaps.progress': '진행률 %',
+  'roadmaps.progressAuto': '하위 작업 기준으로 자동 계산됩니다 (버그 제외).',
+  'roadmaps.moveColumnPrompt': '{status}(으)로 변경했습니다. 이 카드를 “{col}” 컬럼으로 옮길까요?',
+  'roadmaps.moveColumnAction': '“{col}”(으)로 이동',
   'roadmaps.sortRice': 'RICE 순 정렬',
   'roadmaps.notFound': '로드맵을 찾을 수 없습니다.',
   'roadmaps.itemNotFound': '로드맵 항목을 찾을 수 없습니다.',
@@ -1403,6 +1415,10 @@ export const ko: Record<I18nKey, string> = {
   // Boards — the shared Timeline (Gantt) view on every issue board
   'boards.today': '오늘',
   'boards.resizeColumn': '드래그해서 열 너비 조절',
+  'boards.collapseAll': '모두 접기',
+  'boards.expandAll': '모두 펼치기',
+  'boards.collapseRow': '접기',
+  'boards.expandRow': '펼치기',
   'boards.viewTimeline': '타임라인',
   'boards.timelineIssue': '이슈',
   'boards.timelineEmpty': '아직 일정을 잡을 항목이 없습니다',
@@ -1419,6 +1435,29 @@ export const ko: Record<I18nKey, string> = {
   'boards.timelineCollapseAll': '모두 접기',
   'boards.timelineSubCount': '하위 이슈 {n}개',
 
+  // Boards — 타임라인과 짝을 이루는 공용 캘린더 뷰
+  'boards.viewCalendar': '캘린더',
+  'calendar.prevYear': '이전 해',
+  'calendar.nextYear': '다음 해',
+  'calendar.prevMonth': '이전 달',
+  'calendar.nextMonth': '다음 달',
+  'calendar.prevWeek': '이전 주',
+  'calendar.nextWeek': '다음 주',
+  'calendar.prevDay': '이전 날',
+  'calendar.nextDay': '다음 날',
+  'calendar.today': '오늘',
+  // 화면에 보이는 범위 — 연 · 월 · 주 · 일 전환
+  'calendar.range': '캘린더 범위',
+  'calendar.rangeYear': '연',
+  'calendar.rangeMonth': '월',
+  'calendar.rangeWeek': '주',
+  'calendar.rangeDay': '일',
+  'calendar.empty': '이번 달에 예정된 항목이 없습니다',
+  'calendar.emptyYear': '올해 예정된 항목이 없습니다',
+  'calendar.emptyWeek': '이번 주에 예정된 항목이 없습니다',
+  'calendar.emptyDay': '이 날에 예정된 항목이 없습니다',
+  'calendar.emptyHint': '이슈에 시작일이나 마감일을 넣으면 해당 날짜에 표시됩니다.',
+
   // Filters — the multi-select filter menu on the bug/task boards
   'filters.title': '필터',
   'filters.clearAll': '모두 지우기',
@@ -1433,6 +1472,9 @@ export const ko: Record<I18nKey, string> = {
   'filters.backlogItem': '백로그 항목',
   'filters.createdDate': '등록일',
   'filters.solvedDate': '해결일',
+  'filters.scheduledDate': '일정',
+  // 로드맵 전용: OKR에 연결되지 않은 항목
+  'filters.noOkr': '목표 없음',
   'filters.dateFrom': '시작',
   'filters.dateTo': '종료',
   'filters.dateClear': '날짜 지우기',
@@ -1487,8 +1529,58 @@ export const ko: Record<I18nKey, string> = {
   /** Day count on a card / in a workflow stat — the unit trails the number in Korean. */
   'board.ageDays': '{n}일',
   'board.createdOn': '생성일',
+  'board.subtasks': '완료된 하위 작업',
   'tasks.addToColumn': '태스크 추가',
   'bugs.addToColumn': '버그 추가',
+
+  // 안정성 뷰 — 선택한 심각도의 버그가 기간별로 얼마나 등록됐는지와, 그 시점의
+  // 미해결 건수. `sev*Hint`는 범례에서 각 심각도가 어떤 버그인지 설명합니다.
+  'bugs.viewStability': '안정성',
+  'bugs.stability.sevCritical': 'P0 — 치명적',
+  'bugs.stability.sevCriticalHint':
+    '앱이 죽거나 데이터가 사라지거나, 우회 방법 없이 주요 흐름이 막힙니다. 릴리스를 멈추는 버그입니다.',
+  'bugs.stability.sevHigh': 'P1 — 높음',
+  'bugs.stability.sevHighHint':
+    '핵심 기능이 잘못 동작합니다. 우회는 가능하지만 불편해서, 이번 사이클에 고쳐야 합니다.',
+  'bugs.stability.sevMedium': 'P2 — 보통',
+  'bugs.stability.sevMediumHint':
+    '부가 기능이 어긋나거나 우회가 쉬운 경우입니다. 일반 일정에 넣어 처리합니다.',
+  'bugs.stability.sevLow': 'P3 — 낮음',
+  'bugs.stability.sevLowHint': '표시나 문구 수준의 문제로 아무도 막히지 않습니다. 여유 있을 때 고칩니다.',
+  'bugs.stability.resolved': '해결됨',
+  'bugs.stability.stillOpen': '미해결',
+  'bugs.stability.stillOpenHint':
+    '구간이 끝난 시점에 아직 고쳐지지 않은 집계 대상 버그 — 지금 안고 있는 빚입니다.',
+  'bugs.stability.openNow': '건이 열려 있습니다',
+  'bugs.stability.period': '기간',
+  'bugs.stability.periodLength': '기간',
+  'bugs.stability.counting': '집계 대상',
+  'bugs.stability.countingHint': '심각도를 하나 이상 선택하세요.',
+  'bugs.stability.day': '일',
+  'bugs.stability.days': '일',
+  'bugs.stability.workingDays': '평일만 계산',
+  'bugs.stability.workingDaysOnHint':
+    '한 구간을 평일 기준으로 셉니다. 주말에 등록된 버그도 그대로 집계됩니다.',
+  'bugs.stability.workingDaysOffHint': '한 구간을 달력 날짜 기준으로 셉니다.',
+  'bugs.stability.tableView': '숫자로 보기',
+  'bugs.stability.trendOpened': '구간당 신규',
+  'bugs.stability.trendOpen': '미해결',
+  'bugs.stability.chartAria':
+    '구간별로 등록된 버그를 심각도별로 쌓은 막대와, 각 구간 종료 시점의 미해결 건수',
+  'bugs.stability.verdictImproving': '안정되는 중',
+  'bugs.stability.verdictImprovingHint':
+    '구간이 지날수록 버그가 줄고, 미해결 건수도 늘지 않고 있습니다.',
+  'bugs.stability.verdictSteady': '변화 없음',
+  'bugs.stability.verdictSteadyHint': '버그가 이전과 비슷한 속도로 등록되고 있습니다.',
+  'bugs.stability.verdictWorsening': '나빠지는 중',
+  'bugs.stability.verdictWorseningHint':
+    '버그가 더 빠르게 등록되거나, 미해결 건수가 계속 늘고 있습니다.',
+  'bugs.stability.verdictInsufficient': '데이터 부족',
+  'bugs.stability.verdictInsufficientHint':
+    '이 구간에는 추세를 판단할 만큼의 버그가 없습니다. 기간을 늘리거나 심각도를 더 선택해 보세요.',
+  'bugs.stability.error': '안정성 차트를 불러오지 못했습니다.',
+  'bugs.stability.empty': '이 구간에는 해당 심각도의 버그가 없습니다',
+  'bugs.stability.emptyHint': '심각도를 더 선택하거나, 기간을 늘려 더 이전까지 살펴보세요.',
 
   // Personal board — a private, owner-managed task board (only you + admins).
   'personal.title': '개인',
@@ -1597,6 +1689,23 @@ export const ko: Record<I18nKey, string> = {
   'editor.slashDate': '날짜',
   'editor.slashNoResults': '일치하는 항목이 없습니다',
   'editor.slashLinkPlaceholder': '링크를 붙여넣고 Enter를 누르세요',
+  // Held-back save — most of a written description was about to disappear
+  // (components/EditGuard).
+  'editGuard.title': '작성한 내용을 덮어쓰게 됩니다',
+  'editGuard.body':
+    '새 내용이 저장된 설명의 {percent}%를 지웁니다. 저장하면 원본을 덮어쓰며 되돌릴 수 없습니다.',
+  'editGuard.translated':
+    '브라우저 번역이 켜져 있는 것 같습니다. 번역을 끄고 편집하면 작성한 언어 그대로 저장됩니다.',
+  'editGuard.hint': '아직 저장되지 않았습니다 — 저장된 내용은 그대로입니다.',
+  'editGuard.keep': '저장된 내용 유지',
+  'editGuard.saveAnyway': '그래도 덮어쓰기',
+
+  // The Edit toggle. What a description shows by default is the read view — no
+  // editor, so the browser is free to translate it; this opens the editor and
+  // closes it again (components/EditToggle).
+  'readMode.show': '읽기·번역',
+  'readMode.edit': '편집',
+
   'editor.slashPrevMonth': '이전 달',
   'editor.slashNextMonth': '다음 달',
 

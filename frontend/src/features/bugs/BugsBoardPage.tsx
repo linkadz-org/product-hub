@@ -1,16 +1,17 @@
 import type { ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { CalendarRange, LayoutGrid, List } from 'lucide-react';
+import { Activity, CalendarDays, CalendarRange, LayoutGrid, List } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { Button, Checkbox } from '@/components/ui';
 import { AssigneeBadge } from '@/components/AssigneeBadge';
-import { BoardSkeleton, ListSkeleton, TimelineSkeleton } from '@/components/Skeletons';
+import { BoardSkeleton, CalendarSkeleton, ListSkeleton, TimelineSkeleton } from '@/components/Skeletons';
 import { cn } from '@/lib/utils';
 import { t } from '@/i18n';
 import { BOARD_GUTTER, IssueBoardLayout } from '@/components/IssueBoardLayout';
 import { IssueTimelineView } from '@/features/issues/IssueTimelineView';
 import { SubIssueTree, renderIssueTree, rowIndent, TreeRowLead, TreeRowMeta, type IssueTreeCtl, type RowTree } from '@/features/issues/SubIssueTree';
 import { useIssueTree } from '@/features/issues/issueTree';
+import { IssueCalendarView } from '@/features/issues/IssueCalendarView';
 import { SortMenu } from '@/features/issues/SortMenu';
 import { applyIssueSort, useIssueSort } from '@/features/issues/useIssueSort';
 import { SavedViewBar } from '@/features/saved-views/SavedViewBar';
@@ -18,7 +19,13 @@ import { useSavedView } from '@/features/saved-views/useSavedView';
 import { teamScope } from '@/features/saved-views/scope';
 import { Icon } from '@/components/Icon';
 import { BackLink } from '@/components/BackLink';
-import { BoardCard, BoardCardAge, KanbanBoard, KanbanCardToolbar } from '@/components/KanbanBoard';
+import {
+  BoardCard,
+  BoardCardAge,
+  KanbanBoard,
+  KanbanCardToolbar,
+  SubtaskCount,
+} from '@/components/KanbanBoard';
 import { LabelChips } from '@/features/labels/LabelChips';
 import { FilterMenu, type FilterCategory } from '@/components/FilterMenu';
 import { applyBoardView, useBoardView, useFilterParams, useSearchParam, type BoardView } from '@/components/filterParams';
@@ -37,6 +44,7 @@ import {
 import type { TaskLabelConfig } from '@/types/enums';
 import type { BugDto, CycleDto, TeamDto } from '@/types/dto';
 import { useBugs, useDeleteBug, useSetBugStatus } from './api';
+import { StabilityView } from './StabilityView';
 import { useTeamStatuses, useTeamStatusesLookup, useTeamLabelsLookup } from '@/features/teams/api';
 import { TeamShareMenu } from '@/features/teams/TeamShareMenu';
 import {
@@ -99,9 +107,12 @@ export function BugCard({
       metaTrailing={
         <>
           <CarryOverBadge count={bug.carryOverCount} />
+          <SubtaskCount done={bug.subtaskDoneCount} total={bug.subtaskCount} />
           <BoardCardAge createdAt={bug.createdAt} />
         </>
       }
+      // See the task card: a bar on a leaf would only restate the column.
+      progress={bug.subtaskCount ? bug.progress : undefined}
     />
   );
 }
@@ -137,6 +148,10 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
   // Board is default and kept out of the URL; ?view=list | ?view=timeline are shareable.
   const [view, setView] = useBoardView();
   const isList = view === 'list';
+  // The Stability tab is a chart over the board's whole history, not a list of
+  // issues — so none of the toolbar's narrowing controls apply to it (see the
+  // toolbar props below), and it renders before the list's loading/empty gates.
+  const isStability = view === 'stability';
   // List-view ordering only (see `SortMenu`), and opt-in: until the user picks
   // one, neither param is sent, so board, timeline and a fresh list all keep the
   // ordering they have today. It rides in ?sort=&dir= like `view` above, so a
@@ -221,7 +236,7 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
     search: search || undefined,
     status: filters.status as BugStatus[] | undefined,
     severity: filters.severity as BugSeverity[] | undefined,
-    // Assignee, creator and the two date windows — the block every board shares.
+    // Assignee, creator and the three date windows — the block every board shares.
     ...issueSharedFilterParams(filters),
     // A ?projectId= in the URL scopes the whole board; the filter narrows within it.
     projectId: projectId ? [projectId] : filters.projectId,
@@ -299,17 +314,26 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
             : t('bugs.title'))
       }
       subtitle={teamName ? t('teams.issuesSubtitle') : undefined}
-      search={{ value: search, onChange: setSearch, placeholder: t('bugs.search') }}
+      // Search and Filter narrow a *list*. The Stability tab is an aggregate over
+      // every serious bug the board has ever had, so both stand down there rather
+      // than sitting inert above a chart they don't touch — which is also what
+      // leaves that tab with no toolbar row at all (see `IssueBoardLayout`).
+      search={
+        isStability ? undefined : { value: search, onChange: setSearch, placeholder: t('bugs.search') }
+      }
       filters={
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <FilterMenu size="default" categories={filterCategories} value={filters} onChange={setFilters} />
-        </div>
+        isStability ? undefined : (
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <FilterMenu size="default" categories={filterCategories} value={filters} onChange={setFilters} />
+          </div>
+        )
       }
       // Every row here is a bug, so severity is always a real ordering — and on a
       // list grouped by status column it orders *within* each column, which is how
       // the criticals sitting in "Open" surface.
       sort={isList ? <SortMenu value={sort} onChange={setSort} severity /> : undefined}
       filtersEnd={
+        isStability ? undefined : (
         <>
           {/* Only a team board can save a view: the scope key is the team's, and
               it's what sends the view back to *this* board when reopened. The
@@ -339,8 +363,13 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
           )}
           <CycleFilterSelect team={shareTeam} value={cycleParam} onChange={setCycleParam} />
         </>
+        )
       }
-      banner={<CycleBoardBanner team={shareTeam} value={cycleParam} onChange={setCycleParam} />}
+      banner={
+        isStability ? undefined : (
+          <CycleBoardBanner team={shareTeam} value={cycleParam} onChange={setCycleParam} />
+        )
+      }
       view={{
         value: view,
         onChange: (v) => setView(v as BoardView),
@@ -348,6 +377,8 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
           { value: 'board', label: t('tasks.viewBoard'), icon: <LayoutGrid /> },
           { value: 'list', label: t('tasks.viewList'), icon: <List /> },
           { value: 'timeline', label: t('boards.viewTimeline'), icon: <CalendarRange /> },
+          { value: 'calendar', label: t('boards.viewCalendar'), icon: <CalendarDays /> },
+          { value: 'stability', label: t('bugs.viewStability'), icon: <Activity /> },
         ],
       }}
       actions={
@@ -361,11 +392,20 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
         ) : undefined
       }
     >
-      {isLoading ? (
+      {/* Ahead of the list's loading/empty gates on purpose: the chart reads the
+          board's whole history, so it has something to say even when the current
+          list is empty — and it fetches its own aggregate, not these rows. */}
+      {isStability ? (
+        <div className={cn('min-h-0 flex-1 overflow-y-auto pb-6 pt-4', BOARD_GUTTER)}>
+          <StabilityView teamId={teamId} projectId={projectId} />
+        </div>
+      ) : isLoading ? (
         view === 'list' ? (
           <ListSkeleton inset />
         ) : view === 'timeline' ? (
           <TimelineSkeleton />
+        ) : view === 'calendar' ? (
+          <CalendarSkeleton />
         ) : (
           <BoardSkeleton columns={columns.length || 4} />
         )
@@ -450,6 +490,10 @@ export function BugsBoardPage({ teamId, teamName, titleIcon, shareTeam }: BugsBo
             // ⌘/middle-click instead of being swallowed by a click handler.
             selection={bulkEnabled ? selection : undefined}
           />
+        </div>
+      ) : view === 'calendar' ? (
+        <div className={cn('min-h-0 flex-1 overflow-y-auto pb-6 pt-1', BOARD_GUTTER)}>
+          <IssueCalendarView items={bugs} issueType={TeamIssueType.BUG} />
         </div>
       ) : (
         <div className={cn('min-h-0 flex-1 overflow-y-auto pb-6 pt-1', BOARD_GUTTER)}>
@@ -586,6 +630,11 @@ function BugRow({
           title and the assignee first. */}
       <IssueCycleChip cycle={cycle} className="hidden shrink-0 sm:flex" />
       <LabelChips keys={bug.labelKeys} labels={labels} max={3} className="hidden shrink-0 sm:flex" />
+      <SubtaskCount
+        done={bug.subtaskDoneCount}
+        total={bug.subtaskCount}
+        className="hidden shrink-0 text-[11px] tabular-nums text-muted-foreground sm:flex"
+      />
       {bug.shortId && (
         <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{bug.shortId}</span>
       )}

@@ -1,14 +1,21 @@
 import type { ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { CalendarRange, LayoutGrid, List } from 'lucide-react';
+import { CalendarDays, CalendarRange, LayoutGrid, List } from 'lucide-react';
 import { Badge, Button, Checkbox, Switch } from '@/components/ui';
 import { AssigneeBadge } from '@/components/AssigneeBadge';
-import { BoardSkeleton, ListSkeleton, TimelineSkeleton } from '@/components/Skeletons';
+import { BoardSkeleton, CalendarSkeleton, ListSkeleton, TimelineSkeleton } from '@/components/Skeletons';
 import { BOARD_GUTTER, IssueBoardLayout } from '@/components/IssueBoardLayout';
-import { BoardCard, BoardCardAge, KanbanBoard, KanbanCardToolbar } from '@/components/KanbanBoard';
+import {
+  BoardCard,
+  BoardCardAge,
+  KanbanBoard,
+  KanbanCardToolbar,
+  SubtaskCount,
+} from '@/components/KanbanBoard';
 import { IssueTimelineView } from '@/features/issues/IssueTimelineView';
 import { SubIssueTree, renderIssueTree, rowIndent, TreeRowLead, TreeRowMeta, type IssueTreeCtl, type RowTree } from '@/features/issues/SubIssueTree';
 import { useIssueTree } from '@/features/issues/issueTree';
+import { IssueCalendarView } from '@/features/issues/IssueCalendarView';
 import { SortMenu } from '@/features/issues/SortMenu';
 import { applyIssueSort, useIssueSort } from '@/features/issues/useIssueSort';
 import { SavedViewBar } from '@/features/saved-views/SavedViewBar';
@@ -145,7 +152,7 @@ export function MyTasksPage({ teamId, teamName, titleIcon, shareTeam }: MyTasksP
     // Inside a team the list is the team's issues; standalone it's *my* queue.
     mine: teamId ? undefined : user?.id ?? '__none__',
     status: filters.status as TaskStatus[] | undefined,
-    // Assignee, creator and the two date windows — the block every board shares.
+    // Assignee, creator and the three date windows — the block every board shares.
     ...issueSharedFilterParams(filters),
     roadmapItemId: filters.roadmapItemId,
     projectId: filters.projectId,
@@ -310,6 +317,7 @@ export function MyTasksPage({ teamId, teamName, titleIcon, shareTeam }: MyTasksP
           { value: 'board', label: t('tasks.viewBoard'), icon: <LayoutGrid /> },
           { value: 'list', label: t('tasks.viewList'), icon: <List /> },
           { value: 'timeline', label: t('boards.viewTimeline'), icon: <CalendarRange /> },
+          { value: 'calendar', label: t('boards.viewCalendar'), icon: <CalendarDays /> },
         ],
       }}
       actions={
@@ -328,6 +336,8 @@ export function MyTasksPage({ teamId, teamName, titleIcon, shareTeam }: MyTasksP
           <ListSkeleton inset />
         ) : view === 'timeline' ? (
           <TimelineSkeleton />
+        ) : view === 'calendar' ? (
+          <CalendarSkeleton />
         ) : (
           <BoardSkeleton columns={columns.length || 4} />
         )
@@ -411,6 +421,10 @@ export function MyTasksPage({ teamId, teamName, titleIcon, shareTeam }: MyTasksP
             selection={bulkEnabled ? selection : undefined}
           />
         </div>
+      ) : view === 'calendar' ? (
+        <div className={cn('min-h-0 flex-1 overflow-y-auto pb-6 pt-1', BOARD_GUTTER)}>
+          <IssueCalendarView items={visibleTasks} issueType={TeamIssueType.TASK} />
+        </div>
       ) : (
         <div className={cn('min-h-0 flex-1 overflow-y-auto pb-6 pt-1', BOARD_GUTTER)}>
           <IssueTimelineView items={visibleTasks} issueType={TeamIssueType.TASK} />
@@ -469,9 +483,14 @@ export function TaskCard({
       metaTrailing={
         <>
           <CarryOverBadge count={task.carryOverCount} />
+          <SubtaskCount done={task.subtaskDoneCount} total={task.subtaskCount} />
           <BoardCardAge createdAt={task.createdAt} />
         </>
       }
+      // The bar only means something when there are sub-tasks to measure: on a
+      // leaf `progress` is just the status restated, and a card already says that
+      // by which column it's in.
+      progress={task.subtaskCount ? task.progress : undefined}
     />
   );
 }
@@ -597,6 +616,11 @@ function TaskRow({
           {task.roadmapItemLabel}
         </Badge>
       )}
+      <SubtaskCount
+        done={task.subtaskDoneCount}
+        total={task.subtaskCount}
+        className="hidden shrink-0 text-[11px] tabular-nums text-muted-foreground sm:flex"
+      />
       {task.shortId && (
         <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{task.shortId}</span>
       )}

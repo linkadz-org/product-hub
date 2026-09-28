@@ -4,6 +4,7 @@ import type { SavedViewDto } from '@/types/dto';
 import { IssueKind } from '@/types/enums';
 import type { FilterSelections } from '@/components/FilterMenu';
 import { isIssueSortField, type IssueSort } from '@/features/issues/useIssueSort';
+import type { SavedBoardView } from '@/components/filterParams';
 
 /** The board snapshot sent to `POST`/`PATCH /v1/saved-views` — the nested
  *  shape `CreateSavedViewDto.query` / `UpdateSavedViewDto.query` expects on
@@ -11,7 +12,7 @@ import { isIssueSortField, type IssueSort } from '@/features/issues/useIssueSort
  *  and `SavedViewMapper.toDto`). */
 export interface SavedViewQuery {
   kind: IssueKind;
-  view: 'board' | 'list' | 'timeline';
+  view: SavedBoardView;
   filters: FilterSelections;
   sort: IssueSort | null;
   search: string;
@@ -71,7 +72,7 @@ export function useDeleteSavedView() {
  *  any component so it can be unit-tested without rendering. */
 export function buildSavedViewQuery(state: {
   kind: IssueKind;
-  view: 'board' | 'list' | 'timeline';
+  view: SavedBoardView;
   filters: FilterSelections;
   sort: IssueSort | null;
   search: string;
@@ -89,13 +90,13 @@ export function buildSavedViewQuery(state: {
  *  stored row looked like. */
 export interface AppliedSavedView {
   kind: IssueKind;
-  view: 'board' | 'list' | 'timeline';
+  view: SavedBoardView;
   filters: FilterSelections;
   sort: IssueSort | null;
   search: string;
 }
 
-const VALID_VIEWS = new Set(['board', 'list', 'timeline']);
+const VALID_VIEWS = new Set(['board', 'list', 'timeline', 'calendar']);
 
 function isFilterSelections(value: unknown): value is FilterSelections {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -126,7 +127,7 @@ export function sanitizeSavedViewQuery(raw: unknown): AppliedSavedView {
   const r = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   return {
     kind: r.kind === 'bug' ? IssueKind.BUG : IssueKind.TASK,
-    view: VALID_VIEWS.has(r.view as string) ? (r.view as 'board' | 'list' | 'timeline') : 'board',
+    view: VALID_VIEWS.has(r.view as string) ? (r.view as SavedBoardView) : 'board',
     filters: isFilterSelections(r.filters) ? r.filters : {},
     sort: isIssueSort(r.sort) ? r.sort : null,
     search: typeof r.search === 'string' ? r.search : '',

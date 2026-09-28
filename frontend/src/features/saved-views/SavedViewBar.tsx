@@ -20,6 +20,7 @@ import { t } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
 import type { FilterSelections } from '@/components/FilterMenu';
+import { savedBoardView, type BoardView } from '@/components/filterParams';
 import type { IssueSort } from '@/features/issues/useIssueSort';
 import type { SavedViewDto } from '@/types/dto';
 import type { IssueKind } from '@/types/enums';
@@ -33,7 +34,11 @@ import { groupSavedViews, savedViewHref } from './scope';
 
 interface SavedViewBarProps {
   kind: IssueKind;
-  view: 'board' | 'list' | 'timeline';
+  /** The board's current view. Takes the full `BoardView` so every board can
+   *  hand its state straight over; a non-listing view (the bug board's
+   *  Stability chart) is narrowed to `board` on the way into the query — there
+   *  are no filters, search or sort on a chart to save. */
+  view: BoardView;
   filters: FilterSelections;
   sort: IssueSort | null;
   search: string;
@@ -86,7 +91,7 @@ export function SavedViewBar({
   const [name, setName] = useState('');
   const [shared, setShared] = useState(false);
 
-  const query = buildSavedViewQuery({ kind, view, filters, sort, search });
+  const query = buildSavedViewQuery({ kind, view: savedBoardView(view), filters, sort, search });
   const modified =
     !!activeView &&
     JSON.stringify(query) !==

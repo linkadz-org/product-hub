@@ -12,6 +12,7 @@ import {
   UpdateIssueUseCase,
   SetIssueStatusUseCase,
   DeleteIssueUseCase,
+  GetBugStabilityUseCase,
 } from './use-cases';
 
 const useCases = [
@@ -21,6 +22,7 @@ const useCases = [
   UpdateIssueUseCase,
   SetIssueStatusUseCase,
   DeleteIssueUseCase,
+  GetBugStabilityUseCase,
 ];
 
 @Module({

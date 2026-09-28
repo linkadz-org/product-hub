@@ -19,10 +19,40 @@ export type TextHolder = HTMLElement | HTMLTextAreaElement;
 export const isTextarea = (el: Element | null): el is HTMLTextAreaElement =>
   !!el && el.tagName === 'TEXTAREA';
 
+/** What an editable looks like, wherever a tool puts one. */
+const EDITABLE = '[contenteditable="true"], textarea';
+
 /** The editables inside a block, in the order tools render them. */
 export function textHolders(block: HTMLElement): TextHolder[] {
-  return Array.from(block.querySelectorAll<TextHolder>('[contenteditable="true"], textarea'));
+  return Array.from(block.querySelectorAll<TextHolder>(EDITABLE));
 }
+
+/** The editable a node sits in, or null — the block element's counterpart. */
+export const holderOf = (node: Node | null): TextHolder | null =>
+  (node instanceof Element ? node : node?.parentElement)?.closest<TextHolder>(EDITABLE) ?? null;
+
+/**
+ * A table's rows and cells, named the way the table tool names them.
+ *
+ * These two selectors are the table tool's own: `getData()` collects a table by
+ * reading `.tc-cell` innerHTML out of each `.tc-row`, so reading it the same way
+ * here is what makes the CRDT's copy and the tool's saved copy identical strings
+ * rather than two renderings of the same table. `:scope >` throughout, so a table
+ * pasted inside a cell can never be read as rows of its parent.
+ */
+export const gridRows = (block: HTMLElement): HTMLElement[] =>
+  Array.from(block.querySelectorAll<HTMLElement>('.tc-table > .tc-row'));
+
+export const gridCells = (row: HTMLElement): HTMLElement[] =>
+  Array.from(row.querySelectorAll<HTMLElement>(':scope > .tc-cell'));
+
+/** The row a cell sits in, or null — how a single cell is traced back to its row id. */
+export const gridRowOf = (node: Node | null): HTMLElement | null =>
+  (node instanceof Element ? node : node?.parentElement)?.closest<HTMLElement>('.tc-row') ?? null;
+
+/** A row's dragged height in px, as the tool stores it — 0 when natural. */
+export const rowHeightOf = (row: HTMLElement): number =>
+  Math.round(parseFloat(row.style.minHeight) || 0);
 
 /** The block element a node sits in, or null when it isn't in one. */
 export const blockElementOf = (node: Node | null): HTMLElement | null =>
