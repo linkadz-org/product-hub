@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Badge } from '@/components/ui';
+import { Badge, BrandMark } from '@/components/ui';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { t } from '@/i18n';
 
@@ -13,7 +13,7 @@ export function PublicShell({ children, title }: { children: ReactNode; title?: 
     <div className="flex min-h-[100dvh] flex-col bg-background text-foreground">
       <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center border-b bg-background px-4 sm:px-6">
         <div className="flex flex-1 items-center gap-2 font-semibold tracking-tight text-foreground">
-          <span className="text-primary">◑</span> product-hub
+          <BrandMark className="size-[22px]" /> product-hub
         </div>
         {title && (
           <h1 className="flex-1 truncate text-center text-sm font-medium text-foreground">{title}</h1>

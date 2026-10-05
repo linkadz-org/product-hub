@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ChevronsLeft, ChevronsRight, MoreHorizontal, Plus, Star } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
+import { BrandMark } from '@/components/ui';
 import { findAreaId, NAV_AREAS } from '@/layouts/sidebar/menuConfig';
 import { t } from '@/i18n';
 import { useInbox } from '@/features/inbox/api';
@@ -413,9 +414,9 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
           to="/"
           onClick={goFromPanel}
           title={t('app.name')}
-          className="grid h-12 shrink-0 place-items-center border-b border-sidebar-border text-lg text-primary"
+          className="grid h-12 shrink-0 place-items-center border-b border-sidebar-border"
         >
-          <span aria-hidden>◑</span>
+          <BrandMark className="size-7" />
           <span className="sr-only">{t('app.name')}</span>
         </Link>
 

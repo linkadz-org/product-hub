@@ -9,6 +9,7 @@ export { ColorSelect, type ColorOption, type ColorSelectProps } from './ColorSel
 export { SymbolPicker, type SymbolPickerProps } from './SymbolPicker';
 export { Combobox, type ComboboxOption, type ComboboxProps } from './Combobox';
 export { DotLabel } from './DotLabel';
+export { BrandMark } from './BrandMark';
 export { DatePicker, type DatePickerProps } from './DatePicker';
 export {
   DateRangePicker,

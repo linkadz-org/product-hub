@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ChevronsLeft, ChevronsRight, MoreHorizontal, Plus, Star } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
+import { BrandMark } from '@/components/ui';
 import { NAV_GROUPS } from '@/layouts/sidebar/classicMenuConfig';
 import { t } from '@/i18n';
 import { useInbox } from '@/features/inbox/api';
@@ -113,9 +114,7 @@ export function ClassicSidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
             collapsed && 'md:hidden',
           )}
         >
-          <span className="shrink-0 text-base text-primary" aria-hidden>
-            ◑
-          </span>
+          <BrandMark className="size-5" />
           <span className="truncate">{t('app.name')}</span>
         </Link>
 
