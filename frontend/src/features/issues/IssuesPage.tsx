@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { Fragment, useEffect, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { CalendarDays, CalendarRange, LayoutGrid, List } from 'lucide-react';
@@ -9,6 +9,8 @@ import { BOARD_GUTTER, IssueBoardLayout } from '@/components/IssueBoardLayout';
 import { KanbanBoard, KanbanCardToolbar, SubtaskCount } from '@/components/KanbanBoard';
 import { Icon } from '@/components/Icon';
 import { IssueTimelineView } from '@/features/issues/IssueTimelineView';
+import { SubIssueTree, TreeChevron } from '@/features/issues/SubIssueTree';
+import { useIssueTree } from '@/features/issues/issueTree';
 import { IssueCalendarView } from '@/features/issues/IssueCalendarView';
 import { SortMenu } from '@/features/issues/SortMenu';
 import { applyIssueSort, useIssueSort } from '@/features/issues/useIssueSort';
@@ -259,6 +261,9 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
     dir: isList && sort ? sort.dir : undefined,
   });
   const items = data?.items ?? [];
+  // Hierarchy: the board and list show only top-level issues (a filtered-out parent
+  // is fetched back in), and each branch opens on demand — see `useIssueTree`.
+  const tree = useIssueTree(items);
   // Each card/row names its own cycle — at the default all-cycles scope that's the
   // only place it's stated. Resolved per-row like the labels above.
   const cycleFor = useCycleLookup(items.map((it) => it.teamId));
@@ -266,7 +271,7 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
   // status present on a fetched issue but missing from the default team's set is
   // appended (see `extendColumns`).
   const columns = isAll
-    ? extendColumns(defaultColumns, items, (teamId) => statusesFor(teamId, issueType))
+    ? extendColumns(defaultColumns, tree.roots, (teamId) => statusesFor(teamId, issueType))
     : defaultColumns;
   // The API caps a page at 100 (`PaginationDto`), like every other board here —
   // say so rather than looking complete.
@@ -368,6 +373,20 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
   // One detail URL for both kinds — `/issues/<ref>` works out the kind itself.
   const openIssue = (it: IssueDto) => navigate(`/issues/${it.shortId || it.id}`);
 
+  /** A card's sub-issues, or nothing when it has none. */
+  const subTree = (it: IssueDto) =>
+    tree.childrenOf.has(it.id) ? (
+      <SubIssueTree
+        issue={it}
+        childrenOf={tree.childrenOf}
+        expanded={tree.expanded}
+        toggle={tree.toggle}
+        issueType={issueType}
+        statusesFor={statusesFor}
+        onOpen={openIssue}
+      />
+    ) : undefined;
+
   return (
     <IssueBoardLayout
       title={isAll ? t('issues.allTitle') : t('tasks.assignedToMe')}
@@ -449,7 +468,7 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
       ) : view === 'board' ? (
         <KanbanBoard
           columns={columns}
-          items={items}
+          items={tree.roots}
           getId={(it) => it.id}
           getColumnKey={(it) => it.status}
           // IssueDto is a documented superset of Task/BugDto, but widens
@@ -462,6 +481,7 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
                 labels={labelsFor(it.teamId)}
                 cycle={cycleFor(it.cycleId)}
                 overlay={overlay}
+                footer={subTree(it)}
               />
             ) : (
               <TaskCard
@@ -469,6 +489,7 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
                 labels={labelsFor(it.teamId)}
                 cycle={cycleFor(it.cycleId)}
                 overlay={overlay}
+                footer={subTree(it)}
               />
             )
           }
@@ -496,7 +517,10 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
       ) : view === 'list' ? (
         <div className={cn('min-h-0 flex-1 overflow-y-auto pb-6', BOARD_GUTTER)}>
           <IssueList
-            items={items}
+            items={tree.roots}
+            tree={tree}
+            issueType={issueType}
+            statusesFor={statusesFor}
             columns={columns}
             labelsFor={labelsFor}
             cycleFor={cycleFor}
@@ -522,17 +546,87 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
  * a new tab and the row's URL can be copied. */
 function IssueList({
   items,
+  tree,
+  issueType,
+  statusesFor,
   columns,
   labelsFor,
   cycleFor,
   isBug,
 }: {
+  /** The top-level issues; everything below them comes from `tree`. */
   items: IssueDto[];
+  tree: { childrenOf: Map<string, IssueDto[]>; expanded: Set<string>; toggle: (id: string) => void };
+  issueType: TeamIssueType;
+  statusesFor: (teamId: string | undefined, issueType: TeamIssueType) => TeamStatusConfig[];
   columns: TeamStatusConfig[];
   labelsFor: (teamId: string | undefined) => TaskLabelConfig[];
   cycleFor: (cycleId: string | undefined) => CycleDto | undefined;
   isBug: boolean;
 }) {
+  /** One row, then — while its branch is open — its children, indented. Children
+   *  sit under their parent whatever their own status, so they say which it is. */
+  const renderRow = (it: IssueDto, depth: number): ReactNode => {
+    const kids = tree.childrenOf.get(it.id) ?? [];
+    const open = tree.expanded.has(it.id);
+    const cfg = depth > 0 ? statusesFor(it.teamId, issueType).find((c) => c.key === it.status) : undefined;
+    return (
+      <Fragment key={it.id}>
+        <Link
+          to={`/issues/${it.shortId || it.id}`}
+          className="flex w-full items-center gap-3 rounded-md py-3 pr-4 text-left text-foreground transition-colors hover:bg-accent [&:not(:last-child)]:border-b"
+          style={{ paddingLeft: 16 + depth * 24 }}
+        >
+          {/* Once anything has children every row keeps the slot, so titles line up. */}
+          {kids.length > 0 ? (
+            <TreeChevron expanded={open} onToggle={() => tree.toggle(it.id)} className="-ml-2 -mr-1" />
+          ) : (
+            tree.childrenOf.size > 0 && <span className="-ml-2 -mr-1 size-5 shrink-0" aria-hidden />
+          )}
+          {isBug && it.severity ? (
+            <span
+              className="size-2 shrink-0 rounded-full"
+              style={{ backgroundColor: BUG_SEVERITY_COLOR[it.severity] }}
+              title={BUG_SEVERITY_LABEL[it.severity]}
+            />
+          ) : (
+            <Icon name="tasks" size={14} className="shrink-0 text-muted-foreground" />
+          )}
+          <span className="min-w-0 flex-1 truncate text-sm">{it.title}</span>
+          {cfg && (
+            <span className="hidden shrink-0 items-center gap-1 text-[11px] text-muted-foreground sm:flex">
+              <span className="size-2 rounded-full" style={{ backgroundColor: cfg.color }} aria-hidden />
+              {cfg.label}
+            </span>
+          )}
+          {/* Hidden on mobile, like the labels beside it — a row has room
+              for the title and the assignee first. */}
+          <IssueCycleChip cycle={cycleFor(it.cycleId)} className="hidden shrink-0 sm:flex" />
+          <LabelChips
+            keys={it.labelKeys}
+            labels={labelsFor(it.teamId)}
+            max={3}
+            className="hidden shrink-0 sm:flex"
+          />
+          <SubtaskCount
+            done={it.subtaskDoneCount}
+            total={it.subtaskCount}
+            className="hidden shrink-0 text-[11px] tabular-nums text-muted-foreground sm:flex"
+          />
+          {it.shortId && (
+            <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{it.shortId}</span>
+          )}
+          <AssigneeBadge
+            assignees={it.assignees}
+            unassignedLabel={t('tasks.unassigned')}
+            className="max-w-[35%] shrink-0"
+          />
+        </Link>
+        {open && kids.map((k) => renderRow(k, depth + 1))}
+      </Fragment>
+    );
+  };
+
   return (
     <div className="flex flex-col gap-6">
       {columns.map((col) => {
@@ -546,49 +640,7 @@ function IssueList({
               <span className="text-xs tabular-nums text-muted-foreground">{list.length}</span>
             </div>
             <div className="rounded-xl border bg-card p-2 text-card-foreground shadow-sm">
-              {list.map((it) => (
-                <Link
-                  key={it.id}
-                  to={`/issues/${it.shortId || it.id}`}
-                  className="flex w-full items-center gap-3 rounded-md px-4 py-3 text-left text-foreground transition-colors hover:bg-accent [&:not(:last-child)]:border-b"
-                >
-                  {isBug && it.severity ? (
-                    <span
-                      className="size-2 shrink-0 rounded-full"
-                      style={{ backgroundColor: BUG_SEVERITY_COLOR[it.severity] }}
-                      title={BUG_SEVERITY_LABEL[it.severity]}
-                    />
-                  ) : (
-                    <Icon name="tasks" size={14} className="shrink-0 text-muted-foreground" />
-                  )}
-                  <span className="min-w-0 flex-1 truncate text-sm">{it.title}</span>
-                  {/* Hidden on mobile, like the labels beside it — a row has room
-                      for the title and the assignee first. */}
-                  <IssueCycleChip
-                    cycle={cycleFor(it.cycleId)}
-                    className="hidden shrink-0 sm:flex"
-                  />
-                  <LabelChips
-                    keys={it.labelKeys}
-                    labels={labelsFor(it.teamId)}
-                    max={3}
-                    className="hidden shrink-0 sm:flex"
-                  />
-                  <SubtaskCount
-                    done={it.subtaskDoneCount}
-                    total={it.subtaskCount}
-                    className="hidden shrink-0 text-[11px] tabular-nums text-muted-foreground sm:flex"
-                  />
-                  {it.shortId && (
-                    <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{it.shortId}</span>
-                  )}
-                  <AssigneeBadge
-                    assignees={it.assignees}
-                    unassignedLabel={t('tasks.unassigned')}
-                    className="max-w-[35%] shrink-0"
-                  />
-                </Link>
-              ))}
+              {list.map((it) => renderRow(it, 0))}
             </div>
           </section>
         );

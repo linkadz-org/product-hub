@@ -1,5 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
+import type { ListResponse } from '@/types/dto';
 
 /** The minimum an issue needs for tree maths — every list DTO already has it. */
 export interface TreeIssue {
@@ -156,4 +158,96 @@ export function subtreeIds<T extends TreeIssue>(items: T[], id: string): Set<str
     }
   }
   return out;
+}
+
+/**
+ * The parents (and grandparents…) of `items` that aren't in `items` themselves.
+ *
+ * A filtered list ("Assigned to me", a team, a search…) often holds a child but not
+ * its parent, and a child with no parent on screen can only sit at the root — the
+ * flat list a hierarchy view exists to replace. So the missing ancestors are fetched
+ * and shown as the roots the children hang under. One query: it walks up in batches
+ * (one `ids` request per level), so the cost is the tree's depth, not its width.
+ * Keyed under `['issues', …]` so it refetches whenever the lists beside it do.
+ */
+export function useAncestors<T extends { id: string; parentId?: string }>(
+  items: T[],
+  enabled = true,
+): T[] {
+  const have = new Set(items.map((i) => i.id));
+  const missing = [
+    ...new Set(items.map((i) => i.parentId).filter((id): id is string => !!id && !have.has(id))),
+  ].sort();
+  const active = enabled && missing.length > 0;
+  const { data } = useQuery({
+    queryKey: ['issues', 'ancestors', missing],
+    enabled: active,
+    placeholderData: keepPreviousData,
+    queryFn: async () => {
+      const found = new Map<string, T>();
+      let wanted = missing;
+      // Depth cap: a corrupt parent loop can't keep this walking.
+      for (let level = 0; level < 8 && wanted.length; level++) {
+        const res = await apiGet<ListResponse<T>>('/issues', { limit: LEVEL_LIMIT, ids: wanted });
+        wanted = [];
+        for (const issue of res.items) {
+          if (found.has(issue.id) || have.has(issue.id)) continue;
+          found.set(issue.id, issue);
+          const up = issue.parentId;
+          if (up && !found.has(up) && !have.has(up)) wanted.push(up);
+        }
+      }
+      // `{ items }`, not a bare array: the optimistic status swap maps `.items` over
+      // every cache entry under `['issues']`, and a bare array would crash it.
+      return { items: [...found.values()] };
+    },
+  });
+  return active ? (data?.items ?? []) : [];
+}
+
+/**
+ * Everything a hierarchical list/board needs, in one hook: the listed issues plus
+ * their missing ancestors (`all`), the top level (`roots`), each issue's direct
+ * children, and which branches are open. Collapsed by default — a view opens as the
+ * top-level picture and you drill into the branch you're reading.
+ *
+ * A parent loop leaves members with no root above them; they're surfaced as roots
+ * rather than silently dropped.
+ */
+export function useIssueTree<T extends TreeIssue>(listed: T[], enabled = true) {
+  const ancestors = useAncestors(listed, enabled);
+  const all = useMemo(() => {
+    if (!ancestors.length) return listed;
+    const have = new Set(listed.map((i) => i.id));
+    return [...listed, ...ancestors.filter((a) => !have.has(a.id))];
+  }, [listed, ancestors]);
+
+  const { roots, childrenOf } = useMemo(() => {
+    const childrenOf = groupByParent(all);
+    const roots = rootsOf(all);
+    const reachable = new Set<string>();
+    const reach = (id: string) => {
+      if (reachable.has(id)) return;
+      reachable.add(id);
+      for (const c of childrenOf.get(id) ?? []) reach(c.id);
+    };
+    roots.forEach((r) => reach(r.id));
+    for (const i of all) {
+      if (!reachable.has(i.id)) {
+        roots.push(i);
+        reach(i.id);
+      }
+    }
+    return { roots, childrenOf };
+  }, [all]);
+
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggle = (id: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+
+  return { all, roots, childrenOf, expanded, toggle };
 }
