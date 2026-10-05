@@ -4,6 +4,7 @@ import { X } from 'lucide-react';
 import { t } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { Button } from './Button';
+import { keepOpenOnToastClick } from './sonner';
 
 interface DrawerProps {
   open: boolean;
@@ -46,6 +47,7 @@ export function Drawer({
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
         <DialogPrimitive.Content
           aria-describedby={undefined}
+          onInteractOutside={keepOpenOnToastClick}
           className={cn(
             'fixed inset-y-0 right-0 z-50 flex h-full w-full flex-col border-l bg-background shadow-xl outline-none',
             'duration-300 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right',

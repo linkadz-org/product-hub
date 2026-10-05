@@ -10,8 +10,11 @@ function Toaster(props: ToasterProps) {
       className="toaster group"
       toastOptions={{
         classNames: {
+          // `pointer-events-auto`: an open modal (Dialog, Drawer) sets
+          // `pointer-events: none` on <body>, and toasts live outside it — so
+          // without this a toast shown over a modal is visible but click-through.
           toast:
-            'group toast group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg',
+            'group toast pointer-events-auto group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg',
           description: 'group-[.toast]:text-muted-foreground',
           // `!` is load-bearing. Sonner injects its own stylesheet at runtime —
           // i.e. after ours — so its `[data-sonner-toast] [data-button]`
@@ -30,4 +33,15 @@ function Toaster(props: ToasterProps) {
   );
 }
 
-export { Toaster };
+/**
+ * Pass as a modal's `onInteractOutside`. Toasts render outside every modal, so
+ * Radix counts a click on one as "outside" and closes the modal — clicking
+ * "Later" on a toast shouldn't throw away the panel you're working in.
+ */
+function keepOpenOnToastClick(event: Event) {
+  if ((event.target as Element | null)?.closest?.('[data-sonner-toaster]')) {
+    event.preventDefault();
+  }
+}
+
+export { Toaster, keepOpenOnToastClick };

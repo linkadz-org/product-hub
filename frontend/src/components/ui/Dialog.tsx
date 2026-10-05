@@ -4,6 +4,7 @@ import { Maximize2, Minimize2, X } from 'lucide-react';
 import { t } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { Button } from './Button';
+import { keepOpenOnToastClick } from './sonner';
 
 /** Square ghost icon button, matching the workspace topbar's close/menu buttons
  * (28px box, 16px icon — `Button` already forces `svg` to `size-4`). */
@@ -70,6 +71,7 @@ export function Dialog({
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
         <DialogPrimitive.Content
           aria-describedby={undefined}
+          onInteractOutside={keepOpenOnToastClick}
           className={cn(
             'fixed inset-0 z-50 m-auto grid h-fit max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg grid-rows-[auto_1fr_auto] overflow-hidden rounded-lg border bg-background shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
             className,
