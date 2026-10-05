@@ -1491,6 +1491,11 @@ export const en = {
   'boards.timelineLegendMarker': 'Single date',
   'boards.timelineDragHint': 'Drag a bar or a diamond to reschedule, or a bar’s edge to change that date',
   'boards.timelineSaveFailed': 'Couldn’t change those dates — put them back.',
+  'boards.timelineExpand': 'Show sub-issues',
+  'boards.timelineCollapse': 'Hide sub-issues',
+  'boards.timelineExpandAll': 'Expand all',
+  'boards.timelineCollapseAll': 'Collapse all',
+  'boards.timelineSubCount': '{n} sub-issues',
 
   // Boards — the shared Calendar view, sibling of the Timeline
   'boards.viewCalendar': 'Calendar',

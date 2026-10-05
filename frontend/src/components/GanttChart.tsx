@@ -161,8 +161,17 @@ export interface GanttRow {
    * so all three surfaces stay one treatment. Wraps when the rail is narrow.
    */
   meta?: ReactNode;
-  /** 0 = top-level, 1 = an indented child (e.g. a task under a roadmap item). */
+  /** 0 = top-level, 1 = an indented child (e.g. a task under a roadmap item),
+   *  2+ = deeper levels of a tree (each indents one more step). */
   depth?: number;
+  /**
+   * Makes the row part of an **expandable tree**: a chevron slot leads the rail
+   * cell. `onToggle` present → a working chevron for a row that has children;
+   * absent → an empty slot, so leaf rows stay aligned with their siblings.
+   * The chevron is its own button beside the row's cell (a button can't nest
+   * inside the cell's button), so toggling never opens the detail.
+   */
+  tree?: { expanded?: boolean; onToggle?: () => void; label?: string };
   /** Leading dot before the label — a status/severity colour. */
   dotColor?: string;
   /** Click **anywhere in the row's rail cell** (opens a detail — usually a peek
@@ -637,15 +646,18 @@ function GanttRowView({
   // than a target per line, so there are no dead gaps left between them.
   const cellCls = cn(
     'flex min-w-0 flex-1 flex-col justify-center gap-0.5',
-    // With a chevron gutter the rail already pays for the left inset, so the cell
-    // only adds the child's extra step; without one the padding is the indent.
+    // A collapsible chart owns a fixed chevron gutter, so the cell only adds the
+    // child's extra step. Otherwise a tree row's indent lives on its own gutter
+    // (below): 16px × depth + 8px lands depth 1 on the 24px the timeline always had.
     indented
       ? child
         ? 'py-1.5 pl-3 pr-3'
         : 'py-2 pl-0 pr-3'
       : child
-        ? 'py-1.5 pl-6 pr-3'
-        : 'px-3 py-2',
+        ? 'py-1.5 pl-2 pr-3'
+        : row.tree
+          ? 'py-2 pl-1 pr-3'
+          : 'px-3 py-2',
     interactive &&
       'text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
   );
@@ -671,8 +683,8 @@ function GanttRowView({
             already a link or a button, and a button inside one isn't a thing.
             Childless rows still get the empty gutter so every title starts at the
             same x — a ragged left edge reads as broken indentation. */}
-        {indented &&
-          (childCount ? (
+        {indented ? (
+          childCount ? (
             <button
               type="button"
               onClick={onToggle}
@@ -687,7 +699,33 @@ function GanttRowView({
             </button>
           ) : (
             <span className="w-6 shrink-0" aria-hidden />
-          ))}
+          )
+        ) : (
+          (child || row.tree) && (
+            <div
+              className="flex shrink-0 items-center"
+              style={{ paddingLeft: (row.depth ?? 0) * 16 + (row.tree && !child ? 8 : 0) }}
+            >
+              {row.tree &&
+                (row.tree.onToggle ? (
+                  <button
+                    type="button"
+                    onClick={row.tree.onToggle}
+                    aria-expanded={!!row.tree.expanded}
+                    aria-label={row.tree.label}
+                    title={row.tree.label}
+                    className="grid size-5 place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <ChevronRight
+                      className={cn('size-3.5 transition-transform', row.tree.expanded && 'rotate-90')}
+                    />
+                  </button>
+                ) : (
+                  <span className="size-5" aria-hidden />
+                ))}
+            </div>
+          )
+        )}
         {cell}
       </div>
 

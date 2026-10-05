@@ -13,6 +13,8 @@ import {
   SubtaskCount,
 } from '@/components/KanbanBoard';
 import { IssueTimelineView } from '@/features/issues/IssueTimelineView';
+import { SubIssueTree, renderIssueTree, rowIndent, TreeRowLead, TreeRowMeta, type IssueTreeCtl, type RowTree } from '@/features/issues/SubIssueTree';
+import { useIssueTree } from '@/features/issues/issueTree';
 import { IssueCalendarView } from '@/features/issues/IssueCalendarView';
 import { SortMenu } from '@/features/issues/SortMenu';
 import { applyIssueSort, useIssueSort } from '@/features/issues/useIssueSort';
@@ -35,7 +37,7 @@ import { useAuth } from '@/lib/auth';
 import { useUsers } from '@/features/users/api';
 import { useProjects } from '@/features/projects/api';
 import { useRoadmaps } from '@/features/roadmaps/api';
-import { useTeamStatuses, useTeamLabelsLookup } from '@/features/teams/api';
+import { useTeamStatuses, useTeamStatusesLookup, useTeamLabelsLookup } from '@/features/teams/api';
 import { TeamShareMenu } from '@/features/teams/TeamShareMenu';
 import {
   CarryOverBadge,
@@ -171,6 +173,10 @@ export function MyTasksPage({ teamId, teamName, titleIcon, shareTeam }: MyTasksP
   // only place it's stated. Resolved per-row like the labels above, and scoped to
   // the teams actually on this board (this one spans teams when standalone).
   const cycleFor = useCycleLookup(tasks.map((tk) => tk.teamId));
+  // Hierarchy: board and list show top-level tasks only (a filtered-out parent is
+  // fetched back in) and each branch opens on demand — see `useIssueTree`.
+  const tree = useIssueTree(visibleTasks);
+  const statusesFor = useTeamStatusesLookup();
   const setStatus = useSetTaskStatus();
   const remove = useDeleteTask();
 
@@ -347,7 +353,7 @@ export function MyTasksPage({ teamId, teamName, titleIcon, shareTeam }: MyTasksP
       ) : view === 'board' ? (
         <KanbanBoard
           columns={columns}
-          items={visibleTasks}
+          items={tree.roots}
           getId={(tk) => tk.id}
           getColumnKey={(tk) => tk.status}
           renderCard={(task, overlay) => (
@@ -356,6 +362,19 @@ export function MyTasksPage({ teamId, teamName, titleIcon, shareTeam }: MyTasksP
               labels={labelsFor(task.teamId)}
               cycle={cycleFor(task.cycleId)}
               overlay={overlay}
+              footer={
+                tree.childrenOf.has(task.id) ? (
+                  <SubIssueTree
+                    issue={task}
+                    childrenOf={tree.childrenOf}
+                    expanded={tree.expanded}
+                    toggle={tree.toggle}
+                    issueType={TeamIssueType.TASK}
+                    statusesFor={statusesFor}
+                    onOpen={(tk) => navigate(`/issues/${tk.shortId || tk.id}`)}
+                  />
+                ) : undefined
+              }
             />
           )}
           onMove={onMove}
@@ -389,7 +408,13 @@ export function MyTasksPage({ teamId, teamName, titleIcon, shareTeam }: MyTasksP
           )}
         >
           <TaskList
-            tasks={visibleTasks}
+            tasks={tree.roots}
+            tree={{
+              childrenOf: tree.childrenOf,
+              expanded: tree.expanded,
+              toggle: tree.toggle,
+              statusFor: (tk) => statusesFor(tk.teamId, TeamIssueType.TASK).find((c) => c.key === tk.status),
+            }}
             columns={columns}
             labelsFor={labelsFor}
             cycleFor={cycleFor}
@@ -426,6 +451,7 @@ export function TaskCard({
   labels,
   cycle,
   overlay = false,
+  footer,
 }: {
   task: TaskDto;
   labels?: TaskLabelConfig[];
@@ -433,11 +459,14 @@ export function TaskCard({
    *  — a hook per card isn't legal and the rows can span teams. */
   cycle?: CycleDto;
   overlay?: boolean;
+  /** Sub-issue tree, shown in the card's footer strip. */
+  footer?: ReactNode;
 }) {
   const done = task.status === TaskStatus.DONE;
   return (
     <BoardCard
       overlay={overlay}
+      footer={footer}
       title={task.title}
       titleClassName={done ? 'text-muted-foreground line-through' : undefined}
       labels={
@@ -477,6 +506,7 @@ export function TaskList({
   cycleFor,
   onOpen,
   selection,
+  tree,
 }: {
   tasks: TaskDto[];
   columns: TeamStatusConfig[];
@@ -487,6 +517,9 @@ export function TaskList({
   onOpen?: (task: TaskDto) => void;
   /** When present, each row gets a checkbox and each column a select-all. */
   selection?: IssueSelection;
+  /** Nest sub-tasks under their parent (`tasks` is then just the top level). Left
+   *  off — the public board — and the list stays flat, exactly as before. */
+  tree?: IssueTreeCtl<TaskDto>;
 }) {
   return (
     <div className="flex flex-col gap-6">
@@ -515,16 +548,27 @@ export function TaskList({
               <span className="text-xs tabular-nums text-muted-foreground">{list.length}</span>
             </div>
             <div className="rounded-xl border bg-card p-2 text-card-foreground shadow-sm">
-              {list.map((task) => (
-                <TaskRow
-                  key={task.id}
-                  task={task}
-                  labels={labelsFor(task.teamId)}
-                  cycle={cycleFor?.(task.cycleId)}
-                  onOpen={onOpen}
-                  selection={selection}
-                />
-              ))}
+              {tree
+                ? renderIssueTree(list, tree, (task, rt) => (
+                    <TaskRow
+                      task={task}
+                      labels={labelsFor(task.teamId)}
+                      cycle={cycleFor?.(task.cycleId)}
+                      onOpen={onOpen}
+                      selection={selection}
+                      rt={rt}
+                    />
+                  ))
+                : list.map((task) => (
+                    <TaskRow
+                      key={task.id}
+                      task={task}
+                      labels={labelsFor(task.teamId)}
+                      cycle={cycleFor?.(task.cycleId)}
+                      onOpen={onOpen}
+                      selection={selection}
+                    />
+                  ))}
             </div>
           </section>
         );
@@ -541,15 +585,19 @@ function TaskRow({
   cycle,
   onOpen,
   selection,
+  rt,
 }: {
   task: TaskDto;
   labels: TaskLabelConfig[];
   cycle?: CycleDto;
   onOpen?: (task: TaskDto) => void;
   selection?: IssueSelection;
+  /** Where the row sits when the list is a tree. */
+  rt?: RowTree;
 }) {
   const content = (
     <>
+      <TreeRowLead rt={rt} />
       <span
         className={cn(
           'min-w-0 flex-1 truncate text-sm',
@@ -558,6 +606,7 @@ function TaskRow({
       >
         {task.title}
       </span>
+      <TreeRowMeta rt={rt} />
       {/* Hidden on mobile, like the labels beside it — a row has room for the
           title and the assignee first. */}
       <IssueCycleChip cycle={cycle} className="hidden shrink-0 sm:flex" />
@@ -590,11 +639,11 @@ function TaskRow({
     selection?.isSelected(task.id) && 'bg-accent',
   );
   const clickable = onOpen ? (
-    <button type="button" onClick={() => onOpen(task)} className={className}>
+    <button type="button" onClick={() => onOpen(task)} className={className} style={rowIndent(rt)}>
       {content}
     </button>
   ) : (
-    <Link to={`/issues/${task.shortId || task.id}`} className={className}>
+    <Link to={`/issues/${task.shortId || task.id}`} className={className} style={rowIndent(rt)}>
       {content}
     </Link>
   );
