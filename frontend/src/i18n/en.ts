@@ -1852,6 +1852,7 @@ export const en = {
   'enum.roadmapItemStatus.idea': 'Idea',
   'enum.roadmapItemStatus.planned': 'Planned',
   'enum.roadmapItemStatus.inProgress': 'In progress',
+  'enum.roadmapItemStatus.onHold': 'On hold',
   'enum.roadmapItemStatus.done': 'Done',
 
   'enum.roadmapDifficulty.easy': 'Easy',

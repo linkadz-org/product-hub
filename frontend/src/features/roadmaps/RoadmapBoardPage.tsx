@@ -64,6 +64,9 @@ const STATUS_VARIANT: Record<RoadmapItemStatus, 'muted' | 'warning' | 'success'>
   [RoadmapItemStatus.IDEA]: 'muted',
   [RoadmapItemStatus.PLANNED]: 'muted',
   [RoadmapItemStatus.IN_PROGRESS]: 'warning',
+  // Grey, not amber: In progress already owns the amber badge, and a parked item
+  // should read as quiet on the card — the same way the timeline greys it out.
+  [RoadmapItemStatus.ON_HOLD]: 'muted',
   [RoadmapItemStatus.DONE]: 'success',
 };
 

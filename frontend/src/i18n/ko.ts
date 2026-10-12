@@ -1786,6 +1786,7 @@ export const ko: Record<I18nKey, string> = {
   'enum.roadmapItemStatus.idea': '아이디어',
   'enum.roadmapItemStatus.planned': '계획됨',
   'enum.roadmapItemStatus.inProgress': '진행 중',
+  'enum.roadmapItemStatus.onHold': '보류',
   'enum.roadmapItemStatus.done': '완료',
 
   'enum.roadmapDifficulty.easy': '쉬움',

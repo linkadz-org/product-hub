@@ -184,6 +184,13 @@ export interface GanttRow {
   /** Shown in the track when the row has neither a bar nor a marker. */
   emptyText?: string;
   /**
+   * **Greys the row out** — rail and track — for something listed but not live
+   * (a roadmap item on hold). Still clickable and draggable: it's dimmed, not
+   * disabled. Applied to the contents, never the sticky rail itself, whose
+   * opaque background is what hides bars scrolling underneath it.
+   */
+  muted?: boolean;
+  /**
    * Makes this row's bar **draggable** (whole bar → shifts both dates) and
    * **resizable** (either edge → moves that date). Called once on release with
    * the new window, day-aligned; omit and the bar is read-only.
@@ -660,6 +667,7 @@ function GanttRowView({
           : 'px-3 py-2',
     interactive &&
       'text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+    row.muted && 'opacity-60 grayscale',
   );
   const cell = row.href ? (
     <Link to={row.href} className={cellCls}>
@@ -731,7 +739,10 @@ function GanttRowView({
 
       {/* Timeline track — the drag maths measures this element to turn pixels
           into days, so a bar must stay a direct child of it. */}
-      <div data-gantt-track className={cn('relative', row.bar ? 'h-10' : 'h-8')}>
+      <div
+        data-gantt-track
+        className={cn('relative', row.bar ? 'h-10' : 'h-8', row.muted && 'opacity-50 grayscale')}
+      >
         {row.bar ? (
           <GanttBarView bar={row.bar} pct={pct} spanMs={spanMs} onChange={row.onBarChange} />
         ) : row.marker && isEpoch(row.marker.at) ? (

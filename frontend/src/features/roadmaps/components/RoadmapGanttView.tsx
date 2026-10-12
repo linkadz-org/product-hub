@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { MoveHorizontal, Target } from 'lucide-react';
+import { MoveHorizontal, PauseCircle, Target } from 'lucide-react';
 import { toast } from 'sonner';
 import { t } from '@/i18n';
 import { formatDate } from '@/lib/format';
@@ -24,6 +24,7 @@ import {
   CycleStatus,
   ROADMAP_ITEM_STATUS_COLOR,
   ROADMAP_ITEM_STATUS_LABEL,
+  RoadmapItemStatus,
   TeamIssueType,
   type TaskLabelConfig,
 } from '@/types/enums';
@@ -125,10 +126,18 @@ export function chartedItems(
  * its own — you could not read "what's still just an idea?" off the month
  * without opening things. Telling runs apart is what the *label* and the lane
  * packing are for; colour is worth more spent on state.
+ *
+ * **On hold is the exception: grey, not its amber chip colour.** A parked item
+ * is still charted so nobody forgets it exists, but a coloured bar claims the
+ * slot is being worked — grey says "listed, not live".
  */
 export function itemColor(item: RoadmapItem): string {
+  if (isOnHold(item)) return 'hsl(var(--muted-foreground))';
   return ROADMAP_ITEM_STATUS_COLOR[item.status] ?? 'hsl(var(--muted-foreground))';
 }
+
+/** Paused on purpose — charted greyed out, below everything live. */
+export const isOnHold = (item: RoadmapItem) => item.status === RoadmapItemStatus.ON_HOLD;
 
 interface RoadmapGanttProps {
   /** All roadmap items — filtered to the "Now" column here unless a sprint scope
@@ -249,6 +258,9 @@ export function RoadmapGantt({
   function itemRows(item: RoadmapItem, tasks: TaskDto[], keyPrefix: string): GanttRow[] {
     const out: GanttRow[] = [];
     const { start, end } = itemWindow(item, tasks);
+    // A parked item greys out along with every task under it — a bright task bar
+    // beneath a grey item would still read as live work.
+    const muted = isOnHold(item);
 
     const itemSprints = sprintsForItem?.(item.id) ?? [];
     const itemRow: GanttRow = {
@@ -298,6 +310,7 @@ export function RoadmapGantt({
       ),
       onClick: () => onOpenItem(item.id),
       bar: { start, end, color: itemColor(item), progress: item.progress },
+      muted,
     };
     // Dragging an item's bar commits the window it's showing — including a derived
     // one, which is the point: the derived bar is the proposal, the drag accepts it.
@@ -315,6 +328,7 @@ export function RoadmapGantt({
       const row: GanttRow = {
         id: `${keyPrefix}${item.id}:${tk.id}`,
         depth: 1,
+        muted,
         dotColor: st.color,
         label: tk.title,
         // Same chips a task carries on the issue timeline, so a linked task reads
@@ -392,6 +406,13 @@ export function RoadmapGantt({
     );
   }
 
+  // On-hold items leave the live reading entirely — out of the sprint groups and
+  // the flat list — and come back as one greyed "On hold" section at the very
+  // bottom. Still on the chart (parked work you can't see is work you forget),
+  // just never mixed in with what is actually moving.
+  const held = shown.filter(isOnHold);
+  const live = shown.filter((i) => !isOnHold(i));
+
   const rows: GanttRow[] = [];
   if (groupBySprint) {
     // Newest sprint first — the one you're in leads, and scrolling down walks back
@@ -400,7 +421,7 @@ export function RoadmapGantt({
     // sprint's slice of the work. That split is the whole answer to "what did that
     // sprint build?" — one row per item would blur the two together.
     for (const sprint of sprints ?? []) {
-      const groupItems = shown.filter((i) =>
+      const groupItems = live.filter((i) =>
         (sprintsForItem?.(i.id) ?? []).some((s) => s.key === sprint.key),
       );
       if (groupItems.length === 0) continue;
@@ -423,7 +444,7 @@ export function RoadmapGantt({
     // Trailing, because it's the leftovers — items whose work nobody has put in a
     // sprint yet. Named rather than merged into the last one, so a planning gap is
     // a thing you see instead of a thing you deduce.
-    const loose = shown.filter((i) => (sprintsForItem?.(i.id) ?? []).length === 0);
+    const loose = live.filter((i) => (sprintsForItem?.(i.id) ?? []).length === 0);
     if (loose.length > 0) {
       const slices = loose.map((i) => ({ item: i, tasks: tasksOf(i) }));
       rows.push({
@@ -434,7 +455,25 @@ export function RoadmapGantt({
       for (const { item, tasks } of slices) rows.push(...itemRows(item, tasks, 'none:'));
     }
   } else {
-    for (const item of shown) rows.push(...itemRows(item, tasksOf(item), ''));
+    for (const item of live) rows.push(...itemRows(item, tasksOf(item), ''));
+  }
+  if (held.length > 0) {
+    const slices = held.map((i) => ({ item: i, tasks: tasksOf(i) }));
+    const label = ROADMAP_ITEM_STATUS_LABEL[RoadmapItemStatus.ON_HOLD];
+    rows.push({
+      id: 'group:on-hold',
+      label,
+      group: (
+        <>
+          <PauseCircle className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+          <span className="whitespace-nowrap text-sm font-semibold text-muted-foreground">{label}</span>
+          <span className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">
+            {held.length}
+          </span>
+        </>
+      ),
+    });
+    for (const { item, tasks } of slices) rows.push(...itemRows(item, tasks, 'hold:'));
   }
 
   // Bands cover only the stretch the rows actually occupy (plus the scoped sprint,

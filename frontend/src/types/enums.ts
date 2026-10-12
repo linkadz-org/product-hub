@@ -240,6 +240,9 @@ export enum RoadmapItemStatus {
   IDEA = 'idea',
   PLANNED = 'planned',
   IN_PROGRESS = 'in-progress',
+  /** Paused — still wanted, deliberately not being worked on right now. Timelines
+   *  grey it out and sink it to the bottom instead of charting it as live work. */
+  ON_HOLD = 'on-hold',
   DONE = 'done',
 }
 
@@ -506,6 +509,7 @@ export const ROADMAP_ITEM_STATUSES: RoadmapItemStatus[] = [
   RoadmapItemStatus.IDEA,
   RoadmapItemStatus.PLANNED,
   RoadmapItemStatus.IN_PROGRESS,
+  RoadmapItemStatus.ON_HOLD,
   RoadmapItemStatus.DONE,
 ];
 
@@ -513,16 +517,19 @@ export const ROADMAP_ITEM_STATUS_LABEL: Record<RoadmapItemStatus, string> = {
   [RoadmapItemStatus.IDEA]: t('enum.roadmapItemStatus.idea'),
   [RoadmapItemStatus.PLANNED]: t('enum.roadmapItemStatus.planned'),
   [RoadmapItemStatus.IN_PROGRESS]: t('enum.roadmapItemStatus.inProgress'),
+  [RoadmapItemStatus.ON_HOLD]: t('enum.roadmapItemStatus.onHold'),
   [RoadmapItemStatus.DONE]: t('enum.roadmapItemStatus.done'),
 };
 
 /** Status dot colour (semantic tokens — no new brand colours). Idea = not
- * committed, Planned = brand focus; In progress/Done deliberately match
- * `TASK_STATUS_COLOR`, so the same state reads the same across features. */
+ * committed, Planned = brand focus, On hold = warning (the same token a Blocked
+ * test result uses); In progress/Done deliberately match `TASK_STATUS_COLOR`,
+ * so the same state reads the same across features. */
 export const ROADMAP_ITEM_STATUS_COLOR: Record<RoadmapItemStatus, string> = {
   [RoadmapItemStatus.IDEA]: 'hsl(var(--muted-foreground))',
   [RoadmapItemStatus.PLANNED]: 'hsl(var(--primary))',
   [RoadmapItemStatus.IN_PROGRESS]: 'hsl(var(--info))',
+  [RoadmapItemStatus.ON_HOLD]: 'hsl(var(--warning))',
   [RoadmapItemStatus.DONE]: 'hsl(var(--success))',
 };
 

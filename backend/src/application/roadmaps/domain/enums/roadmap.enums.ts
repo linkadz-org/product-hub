@@ -16,6 +16,9 @@ export enum RoadmapItemStatus {
   IDEA = 'idea',
   PLANNED = 'planned',
   IN_PROGRESS = 'in-progress',
+  /** Paused — still wanted, deliberately not being worked on right now. Timelines
+   *  grey it out and sink it to the bottom instead of charting it as live work. */
+  ON_HOLD = 'on-hold',
   DONE = 'done',
 }
 
