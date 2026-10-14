@@ -363,11 +363,16 @@ export class McpServerFactory {
         description:
           'Find existing tasks and bugs by title or reference. Use it before creating to avoid filing ' +
           'a duplicate, or to quote an issue back to the user. Pass `parent` to list an issue’s ' +
-          'subtasks, or `backlog` to list every ticket filed under a roadmap backlog item.',
+          'subtasks, `backlog` to list every ticket filed under a roadmap backlog item, or `assignee` ' +
+          'to list issues assigned to an owner by name, email, or user id.',
         inputSchema: {
           search: z.string().optional().describe('Free text matched against title and reference'),
           kind: z.nativeEnum(IssueKind).optional(),
           team: z.string().optional().describe('Team name or id'),
+          assignee: z
+            .string()
+            .optional()
+            .describe('Owner/assignee name, email, or user id'),
           parent: z
             .string()
             .optional()
@@ -463,7 +468,8 @@ export class McpServerFactory {
         description:
           'Read a single task or bug by its reference — each team mints its own prefix, so refs look ' +
           'like "ENG-14" or "QC-8" (list_workspace shows each team) — or by id. Returns its status, team, ' +
-          'assignees, description, labels, its subtasks and its most recent comments (the total is ' +
+          'assignees, description, labels, its subtasks and recent comment excerpts (up to 1,000 ' +
+          'characters each; the total is ' +
           'commentCount; use list_comments for the whole thread). Call this before update_issue or ' +
           'delete_issue so you edit from the current state.',
         inputSchema: {
@@ -592,7 +598,8 @@ export class McpServerFactory {
         description:
           'Read the full comment thread on a task or bug by its ref ("ENG-14") or id. Each line shows ' +
           'the comment id (pass it to update_comment/delete_comment), the author, when it was posted ' +
-          'and an excerpt; replies are shown indented under the comment they answer.',
+          'and an excerpt of up to 1,000 characters; replies are shown indented under the comment ' +
+          'they answer.',
         inputSchema: {
           issue: z.string().describe('Issue ref — the owning team’s prefix and number, e.g. ENG-14 or QC-8 — or id'),
         },
