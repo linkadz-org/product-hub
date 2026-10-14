@@ -180,7 +180,7 @@ export class McpCommentDto {
   @ApiProperty()
   authorName: string;
 
-  @ApiProperty({ description: 'Plain-text excerpt of the body (~280 chars)' })
+  @ApiProperty({ description: 'Plain-text excerpt of the body (up to 1,000 chars)' })
   excerpt: string;
 
   @ApiProperty({ description: 'Root comment id when this is a reply; empty for top-level' })
@@ -207,7 +207,7 @@ export class McpCommentResultDto {
   @ApiProperty()
   authorName: string;
 
-  @ApiProperty({ description: 'Plain-text excerpt of the body (~280 chars)' })
+  @ApiProperty({ description: 'Plain-text excerpt of the body (up to 1,000 chars)' })
   excerpt: string;
 
   @ApiProperty({ description: 'Root comment id when this is a reply; empty for top-level' })

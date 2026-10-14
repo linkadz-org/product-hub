@@ -5,6 +5,7 @@ import { ApiKeyScope } from '@application/api-keys/domain/api-key.enums';
 import {
   McpAddCommentUseCase,
   McpDeleteCommentUseCase,
+  McpListCommentsUseCase,
   type McpActor,
 } from './mcp.use-cases';
 
@@ -42,11 +43,11 @@ const people = [
 ];
 
 describe('McpAddCommentUseCase', () => {
-  const build = (ownerRole = Role.TESTER) => {
+  const build = (ownerRole = Role.TESTER, createdBody = 'Looks broken') => {
     const createdComment = {
       id: { toString: () => 'comment-1' },
       authorName: 'Ada',
-      body: 'Looks broken',
+      body: createdBody,
       parentId: '',
     };
     const createComment = {
@@ -121,6 +122,19 @@ describe('McpAddCommentUseCase', () => {
     expect(createComment.execute.mock.calls[0][0].dto.body).toBe('<p>already <b>html</b></p>');
   });
 
+  it('accepts and returns comment text longer than 300 characters', async () => {
+    const text = 'x'.repeat(600);
+    const storedBody = `<p>${text}</p>`;
+    const { useCase, createComment } = build(Role.TESTER, storedBody);
+
+    const result = await useCase.execute({ actor, dto: { issue: REF, body: text } });
+
+    expect(result.isSuccess).toBe(true);
+    expect(createComment.execute.mock.calls[0][0].dto.body).toBe(storedBody);
+    expect(result.getValue().excerpt).toBe(text);
+    expect(result.getValue().excerpt.length).toBeGreaterThan(300);
+  });
+
   it('fails with the valid people when a mention cannot be resolved', async () => {
     const { useCase, createComment } = build();
 
@@ -133,6 +147,37 @@ describe('McpAddCommentUseCase', () => {
     expect(result.error).toContain('Nobody');
     expect(result.error).toContain('Jane Doe');
     expect(createComment.execute).not.toHaveBeenCalled();
+  });
+});
+
+describe('McpListCommentsUseCase', () => {
+  it('returns comment text longer than 300 characters', async () => {
+    const text = 'x'.repeat(600);
+    const issueWithId = { ...fakeIssue, id: { toString: () => UUID } };
+    const comment = {
+      id: { toString: () => 'comment-long' },
+      authorName: 'Ada',
+      body: `<p>${text}</p>`,
+      parentId: '',
+      createdAt: new Date('2026-10-14T00:00:00.000Z'),
+      updatedAt: new Date('2026-10-14T00:00:00.000Z'),
+    };
+    const getIssue = {
+      execute: jest.fn().mockResolvedValue(Result.ok({ issue: issueWithId })),
+    };
+    const getComments = { execute: jest.fn().mockResolvedValue(Result.ok([comment])) };
+    const users = { findById: jest.fn().mockResolvedValue({ role: Role.TESTER }) };
+    const useCase = new McpListCommentsUseCase(
+      getIssue as never,
+      getComments as never,
+      users as never,
+    );
+
+    const result = await useCase.execute({ actor, dto: { issue: REF } });
+
+    expect(result.isSuccess).toBe(true);
+    expect(result.getValue()[0].excerpt).toBe(text);
+    expect(result.getValue()[0].excerpt.length).toBeGreaterThan(300);
   });
 });
 
