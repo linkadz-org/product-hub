@@ -1375,6 +1375,7 @@ export class McpSearchIssuesUseCase
     private readonly getIssues: GetIssuesUseCase,
     private readonly getRoadmaps: GetRoadmapsUseCase,
     @Inject(IIssueRepository) private readonly issues: IIssueRepository,
+    @Inject(IUserRepository) private readonly users: IUserRepository,
   ) {}
 
   async execute({
@@ -1396,6 +1397,22 @@ export class McpSearchIssuesUseCase
         );
       }
       teamId = team.id.toString();
+    }
+
+    let assigneeId: string | undefined;
+    if (dto.assignee) {
+      const people = await this.users.findByTenant(actor.tenantId, ALL_USERS);
+      const person = resolvePerson(people.data, dto.assignee);
+      if (!person) {
+        return Result.fail(
+          didYouMean(
+            'assignee',
+            dto.assignee,
+            people.data.map((user) => user.name),
+          ),
+        );
+      }
+      assigneeId = person.id.toString();
     }
 
     // parent: list an issue's subtasks. Resolve the ref to a uuid — parentId is
@@ -1428,6 +1445,7 @@ export class McpSearchIssuesUseCase
         search: dto.search,
         kind: dto.kind ? [dto.kind] : undefined,
         teamId,
+        assigneeId: assigneeId ? [assigneeId] : undefined,
         parentId,
         roadmapItemId,
         page: 1,

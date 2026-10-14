@@ -363,11 +363,16 @@ export class McpServerFactory {
         description:
           'Find existing tasks and bugs by title or reference. Use it before creating to avoid filing ' +
           'a duplicate, or to quote an issue back to the user. Pass `parent` to list an issue’s ' +
-          'subtasks, or `backlog` to list every ticket filed under a roadmap backlog item.',
+          'subtasks, `backlog` to list every ticket filed under a roadmap backlog item, or `assignee` ' +
+          'to list issues assigned to an owner by name, email, or user id.',
         inputSchema: {
           search: z.string().optional().describe('Free text matched against title and reference'),
           kind: z.nativeEnum(IssueKind).optional(),
           team: z.string().optional().describe('Team name or id'),
+          assignee: z
+            .string()
+            .optional()
+            .describe('Owner/assignee name, email, or user id'),
           parent: z
             .string()
             .optional()
