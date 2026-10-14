@@ -178,9 +178,8 @@ const ALL_USERS = { page: 1, limit: 100 } as QueryUserDto;
  *  assistant's context. Beyond this a client pages with search_issues/list_comments. */
 const INLINE_CAP = 20;
 
-/** How much of a comment body a tool reply carries — enough to recognise it,
- *  short enough that a long thread can't flood the assistant's context. */
-const COMMENT_EXCERPT = 280;
+/** Show enough comment text to read normal discussion while keeping thread replies bounded. */
+const COMMENT_EXCERPT = 1000;
 
 /** Upper bound on comments `list_comments` returns. `get_issue` shows the last
  *  {@link INLINE_CAP}; the fuller list returns the most recent of these — still
