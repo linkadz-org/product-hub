@@ -59,6 +59,19 @@ describe('McpServerFactory.create — registered tools', () => {
       expect.arrayContaining(['list_workspace', 'create_issue', 'update_issue', 'add_comment']),
     );
   });
+
+  it('lets search_issues filter tasks by owner name, email, or id', () => {
+    const server = factory().create({ actor, apiUrl: 'https://api.example.com/v1/mcp' });
+    const tools = (server as unknown as {
+      _registeredTools: Record<
+        string,
+        { inputSchema: { shape: Record<string, unknown> }; description: string }
+      >;
+    })._registeredTools;
+
+    expect(tools.search_issues.inputSchema.shape).toHaveProperty('assignee');
+    expect(tools.search_issues.description).toContain('assignee');
+  });
 });
 
 describe('McpServerFactory.describeBugStats — scope line date filter', () => {

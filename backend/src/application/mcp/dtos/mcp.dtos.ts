@@ -596,6 +596,13 @@ export class McpSearchIssuesDto {
   team?: string;
 
   @ApiPropertyOptional({
+    description: 'Assignee name, email, or user id — filters issues assigned to that owner.',
+  })
+  @IsOptional()
+  @IsString()
+  assignee?: string;
+
+  @ApiPropertyOptional({
     description: "Parent issue ref (ENG-14) or id — lists that issue's subtasks.",
   })
   @IsOptional()

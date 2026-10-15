@@ -178,9 +178,8 @@ const ALL_USERS = { page: 1, limit: 100 } as QueryUserDto;
  *  assistant's context. Beyond this a client pages with search_issues/list_comments. */
 const INLINE_CAP = 20;
 
-/** How much of a comment body a tool reply carries — enough to recognise it,
- *  short enough that a long thread can't flood the assistant's context. */
-const COMMENT_EXCERPT = 280;
+/** Show enough comment text to read normal discussion while keeping thread replies bounded. */
+const COMMENT_EXCERPT = 1000;
 
 /** Upper bound on comments `list_comments` returns. `get_issue` shows the last
  *  {@link INLINE_CAP}; the fuller list returns the most recent of these — still
@@ -1375,6 +1374,7 @@ export class McpSearchIssuesUseCase
     private readonly getIssues: GetIssuesUseCase,
     private readonly getRoadmaps: GetRoadmapsUseCase,
     @Inject(IIssueRepository) private readonly issues: IIssueRepository,
+    @Inject(IUserRepository) private readonly users: IUserRepository,
   ) {}
 
   async execute({
@@ -1396,6 +1396,22 @@ export class McpSearchIssuesUseCase
         );
       }
       teamId = team.id.toString();
+    }
+
+    let assigneeId: string | undefined;
+    if (dto.assignee) {
+      const people = await this.users.findByTenant(actor.tenantId, ALL_USERS);
+      const person = resolvePerson(people.data, dto.assignee);
+      if (!person) {
+        return Result.fail(
+          didYouMean(
+            'assignee',
+            dto.assignee,
+            people.data.map((user) => user.name),
+          ),
+        );
+      }
+      assigneeId = person.id.toString();
     }
 
     // parent: list an issue's subtasks. Resolve the ref to a uuid — parentId is
@@ -1428,6 +1444,7 @@ export class McpSearchIssuesUseCase
         search: dto.search,
         kind: dto.kind ? [dto.kind] : undefined,
         teamId,
+        assigneeId: assigneeId ? [assigneeId] : undefined,
         parentId,
         roadmapItemId,
         page: 1,
