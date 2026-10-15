@@ -26,7 +26,8 @@ interface Spot {
  * clicking it opens the same lightbox the read view uses, seeded with every image
  * in the surface so ←/→ still walk the document.
  *
- * The button is rendered through a portal to `<body>`, never into the editor's
+ * The button is rendered through a portal to `<body>` (or the enclosing dialog,
+ * when the editor sits in one), never into the editor's
  * DOM: markup injected inside a block would be saved back into the document's
  * HTML (and a table cell would keep it). Which also means it can't be clipped by
  * a scroll container and lands in app scope, clear of `.report-workspace` token
@@ -152,7 +153,11 @@ export function useImageZoom(containerRef: { current: HTMLElement | null }) {
           >
             <ZoomIn className="size-4" />
           </button>,
-          document.body,
+          // Inside a modal (the issue peek drawer) the button must live in the
+          // dialog's own subtree: on `<body>` it would sit under the dialog's
+          // z-50, Radix blocks pointer events outside the content, and a click
+          // there would count as "outside" and close the drawer.
+          containerRef.current?.closest<HTMLElement>('[role="dialog"]') ?? document.body,
         )
       : null;
 
