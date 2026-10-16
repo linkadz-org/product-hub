@@ -23,6 +23,8 @@
 import Table from '@editorjs/table';
 import type { API, BlockAPI, SanitizerConfig } from '@editorjs/editorjs';
 import { t } from '@/i18n';
+import { columnRelativeWidth, columnWidth, trackTableScroll } from '../tableScroll';
+import { bindCellPaste } from './cellPaste';
 import { bindCellKeys } from './inputRules';
 import { SlashMenu, type SlashMenuConfig } from './SlashMenu';
 import { INLINE_SANITIZE } from './sanitize';
@@ -31,6 +33,16 @@ import { INLINE_SANITIZE } from './sanitize';
 const MIN_COL_PCT = 5;
 /** Pixels. Roughly one line of text plus the cell's padding. */
 const MIN_ROW_PX = 28;
+/**
+ * Pixels per column, on average, before the table stops squeezing and starts
+ * scrolling sideways instead. Enough for a short sentence to wrap into a few
+ * lines rather than one word per line.
+ */
+const MIN_AVG_COL_PX = 120;
+/** The stock `--cell-size`: the "+ column" track on the table's right. */
+const ADD_COLUMN_PX = 34;
+/** A table can be widened to this many % of the page, and no further. */
+const MAX_TABLE_PCT = 500;
 /** Keyboard nudge — % for a column, px for a row. */
 const KEY_COL_STEP = 2;
 const KEY_ROW_STEP = 8;
@@ -56,6 +68,11 @@ export interface ResizableTableData {
   colWidths?: number[];
   /** Row heights in px, index-aligned with `content`. `0` = natural height. */
   rowHeights?: number[];
+  /**
+   * The table's width as % of the page, when it has been dragged out wider than
+   * the page (always > 100). Absent = exactly as wide as the page.
+   */
+  tableWidth?: number;
 }
 
 /** The bits of the stock tool's internal `Table` this needs to reach. */
@@ -80,6 +97,30 @@ function normalize(widths: number[]): number[] {
   const total = widths.reduce((a, b) => a + b, 0);
   if (!total) return widths.map(() => 100 / widths.length);
   return widths.map((w) => (w / total) * 100);
+}
+
+/**
+ * Column `index`'s right edge moved by `deltaPx`: that column takes the delta
+ * and the rest keep their pixel widths, so the table grows past `fit` (the
+ * page) up to `max`. Below `fit` a neighbour absorbs the gap — the next column,
+ * or the one before for the last — so the table always reaches the page edge.
+ */
+export function resizeColumnPx(
+  startPx: number[],
+  index: number,
+  deltaPx: number,
+  { fit, max, min }: { fit: number; max: number; min: number },
+): number[] {
+  const px = [...startPx];
+  px[index] = Math.max(min, startPx[index] + deltaPx);
+  const others = px.reduce((a, b) => a + b, 0) - px[index];
+  if (others + px[index] > max) px[index] = Math.max(min, max - others);
+  const total = px.reduce((a, b) => a + b, 0);
+  if (total < fit) {
+    const neighbour = index + 1 < px.length ? index + 1 : index - 1;
+    px[neighbour >= 0 ? neighbour : index] += fit - total;
+  }
+  return px;
 }
 
 /** Round for storage: one decimal is finer than any screen, and keeps HTML short. */
@@ -127,6 +168,12 @@ export class ResizableTableTool extends Table {
 
   private colWidths: number[] | null = null;
   private rowHeights: number[] | null = null;
+  /** % of the page, > 100 — see `ResizableTableData.tableWidth`. */
+  private tableWidth: number | null = null;
+  /** Watches the page and the table, to switch sideways scrolling on and off. */
+  /** The block's outer element — the stock container inside a scroll frame. */
+  private frame: HTMLDivElement | null = null;
+  private untrackScroll: (() => void) | null = null;
   /**
    * Held on the instance rather than in `this.data`, because the stock tool
    * *replaces* `this.data` wholesale when a table is pasted in — anything of ours
@@ -150,7 +197,7 @@ export class ResizableTableTool extends Table {
       const { people, images } = opts.config ?? {};
       this.slash = new SlashMenu({ host: 'cell', people, images, onChange: () => this.changed() });
     }
-    const { colWidths, rowHeights, withHeadingsColumn } = opts.data ?? {};
+    const { colWidths, rowHeights, withHeadingsColumn, tableWidth } = opts.data ?? {};
     this.headingColumn = !!withHeadingsColumn;
     // Only trust a full, sane set — a partial array would mis-size every column
     // after the gap.
@@ -160,10 +207,21 @@ export class ResizableTableTool extends Table {
     if (Array.isArray(rowHeights) && rowHeights.some((h) => h > 0)) {
       this.rowHeights = rowHeights.map((h) => (h > 0 ? h : 0));
     }
+    // Only meaningful with column widths to spread across it.
+    if (this.colWidths && typeof tableWidth === 'number' && tableWidth > 100) {
+      this.tableWidth = Math.min(MAX_TABLE_PCT, tableWidth);
+    }
   }
 
   render(): HTMLDivElement {
     const container = super.render() as HTMLDivElement;
+    // The stock container is the box that scrolls sideways; the frame around it
+    // holds what must *not* scroll with the table — the ‹ › buttons.
+    const frame = document.createElement('div');
+    frame.appendChild(container);
+    this.untrackScroll?.();
+    this.untrackScroll = trackTableScroll(frame, container, () => this.wrapEl);
+    this.frame = frame;
     // The stock render() builds a fresh internal table each time (onPaste calls
     // it again), so everything below re-attaches to the new DOM.
     this.applyColWidths();
@@ -174,7 +232,20 @@ export class ResizableTableTool extends Table {
       this.syncHandles();
       this.wireCellTools();
     }
-    return container;
+    return frame;
+  }
+
+  /**
+   * The stock `onPaste` swaps the old table's wrapper for a fresh `render()` —
+   * which now returns a whole frame, so it would land *inside* the old one.
+   * Put it in the old frame's place instead.
+   */
+  onPaste(event: CustomEvent) {
+    const old = this.frame;
+    (Table.prototype as { onPaste?: (e: CustomEvent) => void }).onPaste?.call(this, event);
+    if (old && this.frame && old !== this.frame && old.contains(this.frame)) {
+      old.replaceWith(this.frame);
+    }
   }
 
   /**
@@ -263,6 +334,7 @@ export class ResizableTableTool extends Table {
     const n = this.columnCount();
     if (n < 2) return;
     this.colWidths = Array.from({ length: n }, () => 100 / n);
+    this.tableWidth = null;
     this.applyColWidths();
     this.syncHandles();
     this.changed();
@@ -275,6 +347,7 @@ export class ResizableTableTool extends Table {
    */
   destroy() {
     this.slash?.destroy();
+    this.untrackScroll?.();
     (Table.prototype as { destroy?: () => void }).destroy?.call(this);
   }
 
@@ -287,6 +360,7 @@ export class ResizableTableTool extends Table {
       ...saved,
       ...(this.headingColumn ? { withHeadingsColumn: true } : {}),
       ...(this.colWidths ? { colWidths: this.colWidths.map(round1) } : {}),
+      ...(this.colWidths && this.tableWidth ? { tableWidth: round1(this.tableWidth) } : {}),
       ...(heights.some((h) => h > 0) ? { rowHeights: heights } : {}),
     };
   }
@@ -343,6 +417,21 @@ export class ResizableTableTool extends Table {
       el.style.removeProperty('--rte-cols');
       el.classList.remove('rte-table--sized');
     }
+    this.applyTableWidth();
+  }
+
+  /**
+   * How wide the whole table is: the page's width, or the % it was dragged out
+   * to — and never so narrow that its columns average under `MIN_AVG_COL_PX`.
+   * Past either, the table is wider than the page and `trackTableScroll` turns
+   * on sideways scrolling. Set on `.tc-wrap`, whose first grid track is the table.
+   */
+  private applyTableWidth() {
+    const wrap = this.wrapEl;
+    if (!wrap) return;
+    const extra = this.isReadOnly() ? 0 : ADD_COLUMN_PX;
+    wrap.style.width = columnRelativeWidth(this.tableWidth ?? 100);
+    wrap.style.minWidth = `${this.columnCount() * MIN_AVG_COL_PX + extra}px`;
   }
 
   /** `min-height`, not `height`: a row may never be shorter than its own text. */
@@ -373,6 +462,7 @@ export class ResizableTableTool extends Table {
    */
   private syncHandles() {
     if (this.dragging) return;
+    this.applyTableWidth();
     this.syncColumnHandles();
     this.syncRowHandles();
   }
@@ -401,6 +491,15 @@ export class ResizableTableTool extends Table {
       handle.style.left = `${cumulative}%`;
       this.attachColumnDrag(handle, i);
       this.overlay.appendChild(handle);
+    }
+    // …and one on the right edge, which moves the *table's* edge: the last
+    // column grows and the table with it, out past the page if need be.
+    if (widths.length > 1) {
+      const edge = this.makeHandle('col', t('editor.resizeTable'));
+      edge.classList.add('rte-table-handle--edge');
+      edge.style.left = '100%';
+      this.attachColumnDrag(edge, widths.length - 1);
+      this.overlay.appendChild(edge);
     }
   }
 
@@ -458,34 +557,51 @@ export class ResizableTableTool extends Table {
     });
   }
 
-  /** Boundary `index` separates column `index` from column `index + 1`. */
+  /**
+   * Dragging the right edge of column `index` — every inner boundary, and the
+   * table's own right edge (`index` = last column).
+   *
+   * Like Notion, not like a spreadsheet gridline: the column under the pointer
+   * changes width and every other column keeps its width in pixels, so widening
+   * one column grows the table — out past the page, which then scrolls
+   * sideways — instead of squeezing its neighbour. Only when the table would
+   * end up *narrower* than the page does a neighbour take up the slack (the
+   * next column, or for the last one the column before it), because a table
+   * never stops short of the page's right edge.
+   */
   private attachColumnDrag(handle: HTMLElement, index: number) {
     let startX = 0;
-    let start: number[] = [];
-    let tableW = 1;
+    let startPx: number[] = [];
+    let page = 1;
 
     const resize = (deltaPx: number) => {
-      const widths = [...start];
-      const pair = widths[index] + widths[index + 1];
-      // The pair's total is fixed, so the table never grows or shrinks — the
-      // boundary just moves, exactly like dragging a spreadsheet's gridline.
-      const next = Math.min(
-        pair - MIN_COL_PCT,
-        Math.max(MIN_COL_PCT, widths[index] + (deltaPx / tableW) * 100),
-      );
-      widths[index] = next;
-      widths[index + 1] = pair - next;
-      this.colWidths = widths;
+      const extra = this.isReadOnly() ? 0 : ADD_COLUMN_PX;
+      // Table px, not wrap px: the wrap also holds the "+ column" track.
+      const fit = Math.max(1, page - extra);
+      const px = resizeColumnPx(startPx, index, deltaPx, {
+        fit,
+        max: (page * MAX_TABLE_PCT) / 100 - extra,
+        min: (MIN_COL_PCT / 100) * fit,
+      });
+      const tablePx = Math.max(fit, px.reduce((a, b) => a + b, 0));
+      this.colWidths = normalize(px);
+      const pct = ((tablePx + extra) / page) * 100;
+      this.tableWidth = pct > 100.5 ? pct : null;
       this.applyColWidths();
-      handle.style.left = `${widths.slice(0, index + 1).reduce((a, b) => a + b, 0)}%`;
+      this.positionColumnHandles();
+    };
+
+    const begin = () => {
+      const tablePx = this.tableEl?.getBoundingClientRect().width || 1;
+      startPx = this.effectiveWidths().map((w) => (w / 100) * tablePx);
+      page = this.pageWidth();
     };
 
     this.drag(
       handle,
       (e) => {
         startX = e.clientX;
-        start = this.effectiveWidths();
-        tableW = this.tableEl?.getBoundingClientRect().width || 1;
+        begin();
       },
       (e) => resize(e.clientX - startX),
     );
@@ -493,11 +609,37 @@ export class ResizableTableTool extends Table {
     handle.addEventListener('keydown', (e) => {
       if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
       e.preventDefault();
-      start = this.effectiveWidths();
-      tableW = this.tableEl?.getBoundingClientRect().width || 1;
-      resize(((e.key === 'ArrowLeft' ? -KEY_COL_STEP : KEY_COL_STEP) / 100) * tableW);
+      begin();
+      const step = (KEY_COL_STEP / 100) * page;
+      resize(e.key === 'ArrowLeft' ? -step : step);
       this.changed();
     });
+  }
+
+  /**
+   * Moves the existing column handles to the current boundaries. Mid-drag the
+   * handles can't be rebuilt — the one under the pointer holds the capture —
+   * and with px-based resizing every boundary after the dragged one moves.
+   */
+  private positionColumnHandles() {
+    if (!this.overlay) return;
+    const widths = this.effectiveWidths();
+    const handles = this.overlay.querySelectorAll<HTMLElement>(
+      '.rte-table-handle--col:not(.rte-table-handle--edge)',
+    );
+    let cumulative = 0;
+    handles.forEach((handle, i) => {
+      cumulative += widths[i] ?? 0;
+      handle.style.left = `${cumulative}%`;
+    });
+  }
+
+  /**
+   * The width a table that fits exactly would have — the text column, which is
+   * the frame. Not the scroll box: that one widens when the table bleeds.
+   */
+  private pageWidth(): number {
+    return (this.frame && columnWidth(this.frame)) || 1;
   }
 
   private attachRowDrag(handle: HTMLElement, row: HTMLElement, index: number) {
@@ -552,6 +694,9 @@ export class ResizableTableTool extends Table {
       onChange: () => this.changed(),
       addRowBelow: () => this.addRowBelowCaret(),
     });
+    // Paste stays in the cell — Editor.js would split a multi-line paste into
+    // paragraphs and put them under the table.
+    bindCellPaste(wrap, { onChange: () => this.changed() });
 
     // Click the box, not the text: a checklist item is an ordinary editable line,
     // so only the marker strip toggles it — measured off the item's own left edge
@@ -628,6 +773,7 @@ export class ResizableTableTool extends Table {
         // Down to a single column there is no boundary left to drag, so the
         // custom widths are dropped rather than kept as a dormant 100%.
         this.colWidths = widths.length > 1 ? normalize(widths) : null;
+        if (!this.colWidths) this.tableWidth = null;
         this.applyColWidths();
       }
       this.syncHandles();

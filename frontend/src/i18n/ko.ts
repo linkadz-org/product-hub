@@ -525,6 +525,10 @@ export const ko: Record<I18nKey, string> = {
   'docs.collab.offline': '다시 연결 중…',
   'docs.collab.editing': '접속 중',
   'docs.collab.live': '실시간',
+  'docs.collab.denied':
+    '실시간 편집 서버가 이 세션을 거부했습니다. 다시 로그인해 보세요. 마지막으로 저장된 버전을 표시합니다.',
+  'docs.collab.unreachable':
+    '실시간 편집 서버에 아직 연결할 수 없습니다. 계속 시도 중입니다 — collab 서비스가 실행 중인지 확인하세요.',
   'docs.collab.liveHint': '변경 사항은 자동으로 저장되며 입력하는 즉시 모두에게 보입니다.',
   'docs.collapseRail': '페이지 숨기기',
   'docs.expandRail': '페이지 보기',
@@ -1666,6 +1670,9 @@ export const ko: Record<I18nKey, string> = {
   'editor.removeBorder': '테두리 빼기',
   'editor.resizeColumn': '드래그해서 열 너비 조절',
   'editor.resizeRow': '드래그해서 행 높이 조절',
+  'editor.scrollTableLeft': '표 왼쪽으로 스크롤',
+  'editor.scrollTableRight': '표 오른쪽으로 스크롤',
+  'editor.resizeTable': '드래그해서 표 너비 넓히기',
   'editor.diagramSource': '머메이드 다이어그램 소스',
   'editor.diagramFailed': '다이어그램을 그릴 수 없습니다',
   'editor.diagramDrawing': '그리는 중…',

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, type MouseEvent } from 'react';
 import { cn } from '@/lib/utils';
 import { enhanceCodeBlocks } from '@/lib/enhanceCodeBlocks';
+import { enhanceTables } from '@/lib/enhanceTables';
 import { foldListIndents, normalizeSpaces } from '@/lib/editorjs';
 import { renderMermaidBlocks } from '@/lib/mermaid';
 // The read-only view paints editor output — code-copy buttons and mermaid
@@ -52,6 +53,8 @@ export function RichText({ html, className }: RichTextProps) {
     normalizeSpaces(root);
     foldListIndents(root);
     enhanceCodeBlocks(root);
+    // Wide tables scroll inside their own box instead of widening the page.
+    const untrackTables = enhanceTables(root);
     // Diagrams are stored as source, so the picture only exists once it's drawn.
     // Fire-and-forget: mermaid loads lazily and a failure prints in its own box.
     void renderMermaidBlocks(root);
@@ -61,6 +64,7 @@ export function RichText({ html, className }: RichTextProps) {
         a.setAttribute('rel', 'noopener noreferrer');
       }
     });
+    return untrackTables;
   }, [html]);
 
   const onClick = useCallback(

@@ -197,7 +197,12 @@ export function useCollabSession({
       token,
       document: doc,
       awareness,
-      onStatus: ({ status: s }) => setStatus(s === 'connected' ? 'connected' : 'offline'),
+      // A refusal is final: the socket drops right after it, and that drop must
+      // not turn "denied" back into a "reconnecting…" that never ends.
+      onStatus: ({ status: s }) =>
+        setStatus((prev) =>
+          prev === 'denied' ? prev : s === 'connected' ? 'connected' : 'offline',
+        ),
       onSynced: () => setSynced(true),
       // The server refuses a room that belongs to another workspace, and refuses
       // an expired token. Neither is retryable, so say so instead of spinning.

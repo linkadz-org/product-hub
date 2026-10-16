@@ -161,6 +161,9 @@ function printCss(input: DocPagePrintInput): string {
     .rich-text-content .rte-mention { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
     .rich-text-content .rte-date { background: var(--muted); color: var(--muted-fg); }
     .rich-text-content table { border-collapse: collapse; width: 100%; }
+    /* A table widened past the page on screen scrolls there; paper can't, so it
+       is fitted back to the page (the inline width would otherwise win). */
+    .rich-text-content table[style] { width: 100% !important; min-width: 0 !important; }
     .rich-text-content :is(td, th) { border: 1px solid var(--border); padding: 0.4rem 0.6rem; overflow-wrap: break-word; }
     .rich-text-content th { text-align: left; font-weight: 600; }
     /* A doubled gridline where the headers stop — the read view's rule, kept in

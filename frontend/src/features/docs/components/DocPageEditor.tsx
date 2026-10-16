@@ -17,9 +17,18 @@ import {
   Loader2,
   Paintbrush,
   Pencil,
+  ShieldAlert,
+  WifiOff,
   X,
 } from 'lucide-react';
-import { Button, Drawer, RichText, RichTextEditor, SymbolPicker } from '@/components/ui';
+import {
+  Alert,
+  AlertDescription,
+  Button,
+  Drawer,
+  RichText, RichTextEditor,
+  SymbolPicker,
+} from '@/components/ui';
 import { MediaUploader } from '@/components/MediaUploader';
 import { useHtmlSaveGuard } from '@/components/EditGuard';
 import { useEditToggle } from '@/components/EditToggle';
@@ -67,6 +76,9 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved';
 
 /** Typing pauses this long before a save goes out. */
 const AUTOSAVE_MS = 900;
+
+/** How long the first sync may take before the page admits it can't reach the server. */
+const COLLAB_SLOW_MS = 8_000;
 
 type PagePatch = {
   title?: string;
@@ -177,6 +189,19 @@ export function DocPageEditor({
    * moment is an edit to an empty document that then merges with the real one.
    */
   const collabReady = !!collab && collab.synced;
+  /**
+   * The provider keeps retrying an unreachable server forever, so without a
+   * deadline the skeleton below is all anyone ever sees. Past it the skeleton
+   * stays (the first sync is still what makes typing safe) but says why.
+   */
+  const collabWaiting = !!collab && !collab.synced && collab.status !== 'denied';
+  const [collabSlow, setCollabSlow] = useState(false);
+  useEffect(() => {
+    setCollabSlow(false);
+    if (!collabWaiting) return;
+    const id = window.setTimeout(() => setCollabSlow(true), COLLAB_SLOW_MS);
+    return () => window.clearTimeout(id);
+  }, [collabWaiting]);
   const { data: comments } = useDocComments(page.docId, page.id);
   /** The box the highlights are measured and painted in. */
   const [box, setBox] = useState<HTMLDivElement | null>(null);
@@ -773,8 +798,28 @@ export function DocPageEditor({
                   session={collab}
                   onComment={canComment ? commentOnRange : undefined}
                 />
+              ) : collab.status === 'denied' ? (
+                /* Refused by the sync server — an expired token, or one it can't
+                   verify. Not retryable, so show the stored body read-only rather
+                   than a skeleton that never resolves; there is no editor to
+                   fall back to without risking a write over the shared room. */
+                <>
+                  <Alert variant="warning" className="mb-4">
+                    <ShieldAlert className="size-4" aria-hidden />
+                    <AlertDescription>{t('docs.collab.denied')}</AlertDescription>
+                  </Alert>
+                  <RichText html={page.content} className="doc-page-read" />
+                </>
               ) : (
-                <ProseSkeleton />
+                <>
+                  {collabSlow && (
+                    <Alert variant="warning" className="mb-4">
+                      <WifiOff className="size-4" aria-hidden />
+                      <AlertDescription>{t('docs.collab.unreachable')}</AlertDescription>
+                    </Alert>
+                  )}
+                  <ProseSkeleton />
+                </>
               )
             ) : canWrite ? (
               <RichTextEditor

@@ -178,6 +178,130 @@
   overflow-wrap: break-word;
 }
 
+/* Wide tables scroll sideways instead of squeezing (lib/tableScroll, used by
+   lib/editor/ResizableTableTool and lib/enhanceTables). A table is wider than
+   the page when it was dragged out, or when its columns would average under
+   120px — and only then does its box become a scroll box: a box that scrolls
+   also clips, and a table that fits shouldn't pay for that.
+
+   A wide table first breaks out of the text column on both sides, centred on
+   the page pane and up to 90% of it (`--rte-bleed-l` / `-r`, measured in JS),
+   and only scrolls past that. The table's own width is written against the
+   column, so the bleed shows more of it without stretching it. */
+.rte-table-frame {
+  position: relative;
+}
+.rte-table-scroll.is-overflowing {
+  overflow-x: auto;
+  margin-left: calc(-1 * var(--rte-bleed-l, 0px));
+  margin-right: calc(-1 * var(--rte-bleed-r, 0px));
+  /* The edge fade: while there's more table off to a side, that side fades out.
+     A mask, not an overlay colour, so it matches any background in either
+     theme. Two layers — the fade, and an unmasked strip at the bottom so the
+     scrollbar itself never fades. */
+  --rte-fade-l: 0px;
+  --rte-fade-r: 0px;
+  -webkit-mask-image:
+    linear-gradient(to right, transparent, #000 var(--rte-fade-l), #000 calc(100% - var(--rte-fade-r)), transparent),
+    linear-gradient(#000, #000);
+  mask-image:
+    linear-gradient(to right, transparent, #000 var(--rte-fade-l), #000 calc(100% - var(--rte-fade-r)), transparent),
+    linear-gradient(#000, #000);
+  -webkit-mask-size: 100% calc(100% - 12px), 100% 12px;
+  mask-size: 100% calc(100% - 12px), 100% 12px;
+  -webkit-mask-position: top, bottom;
+  mask-position: top, bottom;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+.rte-table-frame.can-scroll-left > .rte-table-scroll {
+  --rte-fade-l: calc(var(--rte-fade-inset, 0px) + 48px);
+}
+.rte-table-frame.can-scroll-right > .rte-table-scroll {
+  --rte-fade-r: 48px;
+}
+
+/* ‹ › — outside the scroll box, so they stay put while the table moves. The
+   rail is sticky against the page pane: on a table taller than the screen the
+   buttons ride along near the top of what's visible rather than scrolling off
+   with the first row. */
+.rte-table-nav {
+  position: absolute;
+  inset: 0 calc(-1 * var(--rte-bleed-r, 0px)) 0 calc(-1 * var(--rte-bleed-l, 0px));
+  pointer-events: none;
+  z-index: 2;
+}
+.rte-table-nav__rail {
+  position: sticky;
+  top: 0.75rem;
+  height: 0;
+}
+.rte-table-nav__btn {
+  position: absolute;
+  top: var(--rte-nav-top, 6px);
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid hsl(var(--border));
+  border-radius: 9999px;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+  cursor: pointer;
+  pointer-events: auto;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s ease, visibility 0.15s;
+}
+.rte-table-nav__btn:hover {
+  background: hsl(var(--accent));
+}
+.rte-table-nav__btn--prev {
+  left: 6px;
+}
+.rte-table-nav__btn--next {
+  right: 6px;
+}
+.rte-table-frame.can-scroll-left .rte-table-nav__btn--prev,
+.rte-table-frame.can-scroll-right .rte-table-nav__btn--next {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* In the editor the stock row toggler sits 30px left of the table and the
+   column toggler 30px above it, both outside the block — and a scroll box
+   clips. Padding cancelled by an equal negative margin widens the clip box to
+   reach them without moving the table a pixel. */
+.rich-text-editor .rte-table-scroll.is-overflowing {
+  padding-left: 30px;
+  margin-left: calc(-30px - var(--rte-bleed-l, 0px));
+  padding-top: calc(0.4em + 8px);
+  margin-top: -8px;
+  --rte-fade-inset: 30px;
+}
+.rich-text-editor .rte-table-frame {
+  --rte-nav-top: calc(0.4em + 6px);
+}
+/* An open row/column menu runs down past a short table's bottom edge. Room for
+   it while it's open — again without pushing the next block down — and lifted
+   so it paints over that block rather than under it. The fade would cut the
+   menu off at the edges, so it's dropped while one is open. */
+.rich-text-editor .rte-table-scroll.is-overflowing:has(.tc-popover--opened) {
+  position: relative;
+  z-index: 3;
+  padding-bottom: calc(0.4em + 12rem);
+  margin-bottom: -12rem;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+/* Read-only, the stock wrapper still reserves the "+ column" track beside the
+   table, which would scroll as 34px of nothing past the last column. */
+.rich-text-editor .rte-table-scroll .tc-wrap--readonly {
+  grid-template-columns: 100% 0;
+}
+
 /* Column handles live in an overlay on `.tc-wrap`: `.tc-table`'s children are
    counted as rows by the stock tool, so nothing else may go in there.
 

@@ -57,6 +57,9 @@ export type HtmlEditorBlock =
         // on a table nobody has resized.
         colWidths?: number[];
         rowHeights?: number[];
+        // A table dragged out wider than the page, as % of it (> 100) — the
+        // `<table>`'s own `width`. Absent on a table that fits.
+        tableWidth?: number;
       };
     }
   | {
@@ -507,14 +510,17 @@ export function htmlToBlocks(html: string): HtmlEditorBlock[] {
         parseLength((c as HTMLElement).style?.width, '%'),
       );
       const rowHeights = rowEls.map((tr) => parseLength((tr as HTMLElement).style?.height, 'px'));
+      const tableWidth = parseLength((el as HTMLElement).style?.width, '%');
+      const sizedCols = colWidths.length > 1 && colWidths.every((w) => w > 0);
       blocks.push({
         type: 'table',
         data: {
           withHeadings: hasTh,
           ...(hasThColumn ? { withHeadingsColumn: true } : {}),
           content,
-          ...(colWidths.length > 1 && colWidths.every((w) => w > 0) ? { colWidths } : {}),
+          ...(sizedCols ? { colWidths } : {}),
           ...(rowHeights.some((h) => h > 0) ? { rowHeights } : {}),
+          ...(sizedCols && tableWidth > 100 ? { tableWidth } : {}),
         },
       });
       continue;
@@ -655,8 +661,11 @@ function renderBlock(b: HtmlEditorBlock): string {
     const cols = widths.length
       ? `<colgroup>${widths.map((w) => `<col style="width:${w}%">`).join('')}</colgroup>`
       : '';
+    // Wider than the page only with widths to spread across it; the read view
+    // scrolls it sideways (`lib/enhanceTables`).
+    const tableWidth = widths.length && (b.data.tableWidth ?? 0) > 100 ? b.data.tableWidth : 100;
     const open = widths.length
-      ? '<table style="table-layout:fixed;width:100%">'
+      ? `<table style="table-layout:fixed;width:${tableWidth}%">`
       : '<table>';
     // A header cell is written as a real `<th>` with a `scope`, not as a styled
     // `<td>`: it's what a screen reader needs to announce "Revenue, Q3" instead

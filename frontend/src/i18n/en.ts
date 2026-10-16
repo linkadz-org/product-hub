@@ -543,6 +543,10 @@ export const en = {
   'docs.collab.offline': 'Reconnecting…',
   'docs.collab.editing': 'here now',
   'docs.collab.live': 'Live',
+  'docs.collab.denied':
+    'Live editing refused this session — try signing in again. Showing the last saved version.',
+  'docs.collab.unreachable':
+    'Can’t reach the live-editing server yet. Still trying — check that the collab service is running.',
   'docs.collab.liveHint': 'Changes save themselves and everyone sees them as you type.',
   'docs.collapseRail': 'Hide pages',
   'docs.expandRail': 'Show pages',
@@ -1732,6 +1736,9 @@ export const en = {
   'editor.removeBorder': 'Remove border',
   'editor.resizeColumn': 'Drag to resize column',
   'editor.resizeRow': 'Drag to resize row',
+  'editor.scrollTableLeft': 'Scroll table left',
+  'editor.scrollTableRight': 'Scroll table right',
+  'editor.resizeTable': 'Drag to widen the table',
   'editor.diagramSource': 'Mermaid diagram source',
   'editor.diagramFailed': 'Could not draw this diagram',
   'editor.diagramDrawing': 'Drawing…',
