@@ -1,10 +1,9 @@
-import { useState } from 'react';
 import { t } from '@/i18n';
 import { formatDate } from '@/lib/format';
 import { AssigneeBadge } from '@/components/AssigneeBadge';
 import { CalendarView, type CalendarEvent } from '@/components/CalendarView';
 import { GanttChip } from '@/components/GanttChart';
-import { useCalendarPeriod } from '@/components/filterParams';
+import { useCalendarPeriod, usePeekParam } from '@/components/filterParams';
 import { LabelChips } from '@/features/labels/LabelChips';
 import { TeamChip, type TeamChipTeam } from '@/features/teams/TeamChip';
 import { useTeamLabelsLookup, useTeamLookup, useTeamStatusesLookup } from '@/features/teams/api';
@@ -76,7 +75,11 @@ export function IssueCalendarView({
   const labelsFor = labelsForOverride ?? labelsForHook;
   const teamFor = teamForOverride ?? teamForHook;
   const { range, anchor, setRange, setAnchor } = useCalendarPeriod();
-  const [peek, setPeek] = useState<IssuePeek | null>(null);
+  // The open row lives in the URL (`?peek=ENG-12`), so the link to it is shareable.
+  // A caller that opens rows itself (the public board) never reads it.
+  const [peekRef, setPeekRef] = usePeekParam();
+  const peek: IssuePeek | null =
+    peekRef && !onOpenItem ? { id: peekRef, issueType, href: `/issues/${peekRef}` } : null;
 
   // Name the team only on a board whose rows actually span teams — the same rule
   // the timeline's rail follows.
@@ -84,8 +87,7 @@ export function IssueCalendarView({
 
   const open =
     onOpenItem ??
-    ((issue: IssueTimelineItem) =>
-      setPeek({ id: issue.id, issueType, href: `/issues/${issue.shortId || issue.id}` }));
+    ((issue: IssueTimelineItem) => setPeekRef(issue.shortId || issue.id));
 
   const events: CalendarEvent[] = items
     .filter((i) => i.startDate || endOf(i))
@@ -151,7 +153,7 @@ export function IssueCalendarView({
       />
       {/* Never opened when the caller passed `onOpenItem` — a public board has no
           account to fetch a detail with, and opens its own dialog instead. */}
-      <IssuePeekDrawer peek={peek} onClose={() => setPeek(null)} />
+      <IssuePeekDrawer peek={peek} onClose={() => setPeekRef(null)} />
     </>
   );
 }

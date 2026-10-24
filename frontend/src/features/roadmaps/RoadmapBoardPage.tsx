@@ -20,7 +20,7 @@ import { firstImageUrl } from '@/lib/editorjs';
 import { t } from '@/i18n';
 import { BOARD_GUTTER, IssueBoardLayout } from '@/components/IssueBoardLayout';
 import { FilterMenu } from '@/components/FilterMenu';
-import { useFilterParams } from '@/components/filterParams';
+import { PEEK_PARAM, useFilterParams } from '@/components/filterParams';
 import { useUsers } from '@/features/users/api';
 import { filterRoadmapItems, hasRoadmapFilters, roadmapFilterCategories } from './roadmapFilters';
 import { BoardCard, BoardCardAge, KanbanBoard, KanbanCardToolbar } from '@/components/KanbanBoard';
@@ -223,6 +223,8 @@ function RoadmapBoard({ roadmap }: { roadmap: RoadmapDto }) {
     const next = new URLSearchParams(searchParams);
     if (v === 'board') next.delete('view');
     else next.set('view', v);
+    // The drawer belongs to the timeline; leaving it closes the drawer.
+    next.delete(PEEK_PARAM);
     setSearchParams(next, { replace: true });
   };
 

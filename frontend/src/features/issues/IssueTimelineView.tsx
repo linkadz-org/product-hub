@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { t } from '@/i18n';
 import { formatDate } from '@/lib/format';
 import { AssigneeBadge } from '@/components/AssigneeBadge';
+import { usePeekParam } from '@/components/filterParams';
 import { GanttChart, GanttChip, firstEpoch, isEpoch, toEpoch, type GanttRow } from '@/components/GanttChart';
 import { LabelChips } from '@/features/labels/LabelChips';
 import { TeamChip, type TeamChipTeam } from '@/features/teams/TeamChip';
@@ -141,7 +142,11 @@ export function IssueTimelineView({
   const statusesFor = statusesForOverride ?? statusesForHook;
   const labelsFor = labelsForOverride ?? labelsForHook;
   const teamFor = teamForOverride ?? teamForHook;
-  const [peek, setPeek] = useState<IssuePeek | null>(null);
+  // The open row lives in the URL (`?peek=ENG-12`), so the link to it is shareable.
+  // A caller that opens rows itself (the public board) never reads it.
+  const [peekRef, setPeekRef] = usePeekParam();
+  const peek: IssuePeek | null =
+    peekRef && !onOpenItem ? { id: peekRef, issueType, href: `/issues/${peekRef}` } : null;
 
   // A filtered list ("Assigned to me", a team, a search…) often holds a child but
   // not its parent, and a child with no parent on screen can only sit at the root —
@@ -233,8 +238,7 @@ export function IssueTimelineView({
   // branches on task vs bug to build a link.
   const open =
     onOpenItem ??
-    ((issue: IssueTimelineItem) =>
-      setPeek({ id: issue.id, issueType, href: `/issues/${issue.shortId || issue.id}` }));
+    ((issue: IssueTimelineItem) => setPeekRef(issue.shortId || issue.id));
 
   // Flatten the tree into the rows on screen: siblings in date order, a parent's
   // children right beneath it while it's open. `seen` keeps a corrupt parent loop
@@ -385,7 +389,7 @@ export function IssueTimelineView({
       />
       {/* Never opened when the caller passed `onOpenItem` — a public board has no
           account to fetch a detail with, and opens its own dialog instead. */}
-      <IssuePeekDrawer peek={peek} onClose={() => setPeek(null)} />
+      <IssuePeekDrawer peek={peek} onClose={() => setPeekRef(null)} />
     </>
   );
 }

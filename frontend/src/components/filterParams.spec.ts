@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyBoardView,
   applyFilterParams,
   applySearchParam,
   filterParamName,
@@ -103,5 +104,13 @@ describe('applySearchParam', () => {
 describe('filterParamName', () => {
   it('tên param = tiền tố + id của category', () => {
     expect(filterParamName('status')).toBe('f.status');
+  });
+});
+
+describe('applyBoardView', () => {
+  it('closes an open peek when the view changes, keeping everything else', () => {
+    const p = new URLSearchParams('view=timeline&peek=ENG-12&q=login');
+    applyBoardView(p, 'calendar');
+    expect(p.toString()).toBe('view=calendar&q=login');
   });
 });

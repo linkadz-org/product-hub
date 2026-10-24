@@ -123,6 +123,10 @@ export function savedBoardView(view: BoardView): SavedBoardView {
 /** The view switch's param. Board is the default and stays *out* of the URL. */
 export const VIEW_PARAM = 'view';
 
+/** What a timeline/calendar row opened in its peek drawer — the item's ref
+ *  (`ENG-12`, `RM-88`), or its uuid when it has none. */
+export const PEEK_PARAM = 'peek';
+
 /** Read the picked view. Anything unrecognised — a stale link, a hand-edited
  *  URL — reads as the board, the same degrade-to-default rule the sort and the
  *  filters follow. */
@@ -138,6 +142,9 @@ export function readBoardView(params: URLSearchParams): BoardView {
 export function applyBoardView(params: URLSearchParams, view: BoardView): void {
   if (view === 'board') params.delete(VIEW_PARAM);
   else params.set(VIEW_PARAM, view);
+  // A peek is opened from one view's rows; switching view closes it rather than
+  // leaving a drawer to spring back open the next time you return.
+  params.delete(PEEK_PARAM);
 }
 
 /**
@@ -165,6 +172,34 @@ export function useBoardView(): [BoardView, (next: BoardView) => void] {
     [setParams],
   );
   return [view, setView];
+}
+
+/**
+ * The peek drawer's open item, held in the URL.
+ *
+ * In the URL so a link to it is a link to *that* task on *that* timeline: copy it,
+ * reload, or send it to a teammate and the drawer opens on the same row, with
+ * the chart still behind it. Written with `replace` like the view and the month —
+ * opening a row doesn't add a page you'd have to Back out of.
+ */
+export function usePeekParam(): [string | null, (ref: string | null) => void] {
+  const [params, setParams] = useSearchParams();
+  const ref = params.get(PEEK_PARAM) || null;
+  const setRef = useCallback(
+    (next: string | null) => {
+      setParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          if (next) p.set(PEEK_PARAM, next);
+          else p.delete(PEEK_PARAM);
+          return p;
+        },
+        { replace: true },
+      );
+    },
+    [setParams],
+  );
+  return [ref, setRef];
 }
 
 /**

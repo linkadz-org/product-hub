@@ -38,6 +38,7 @@ import {
 } from '../useRoadmapSprints';
 import { IssuePeekDrawer, type IssuePeek } from '@/features/issues/IssuePeekDrawer';
 import { RoadmapItemPeekDrawer, type RoadmapItemPeek } from './RoadmapItemPeekDrawer';
+import { usePeekParam } from '@/components/filterParams';
 
 /** The window a bar was dragged to, in the ISO day shape the API stores. The same
  *  two fields on a task and on a backlog item, so one drag handler shape serves both. */
@@ -626,9 +627,19 @@ export function RoadmapGanttView({
   const { sprintsForItem, sprintForTask } = useRoadmapSprints(roadmapId);
   const update = useUpdateTask();
   const replaceItems = useReplaceRoadmapItems();
-  // What a row click opens — one drawer per kind, only ever one of them at a time.
-  const [taskPeek, setTaskPeek] = useState<IssuePeek | null>(null);
-  const [itemPeek, setItemPeek] = useState<RoadmapItemPeek | null>(null);
+  // What a row click opens, by ref in the URL (`?peek=RM-88`, `?peek=ENG-12`) so
+  // the link is shareable. One param, so only ever one drawer at a time; which
+  // one is decided by whether the ref names one of this roadmap's items.
+  const [peekRef, setPeekRef] = usePeekParam();
+  const isItemRef = !!peekRef && allItems.some((i) => i.shortId === peekRef || i.id === peekRef);
+  const itemPeek: RoadmapItemPeek | null =
+    peekRef && isItemRef
+      ? { roadmapId, itemId: peekRef, href: `/roadmaps/${roadmapId}/items/${peekRef}` }
+      : null;
+  const taskPeek: IssuePeek | null =
+    peekRef && !isItemRef
+      ? { id: peekRef, issueType: TeamIssueType.TASK, href: `/issues/${peekRef}` }
+      : null;
   // Dates just dragged, applied over the fetched task until the refetch agrees:
   // the update isn't optimistic, so without this the bar would spring back to
   // where it started for the length of the round-trip.
@@ -702,14 +713,7 @@ export function RoadmapGanttView({
         // Same "done" the boards and the sprint banner use, so a group header
         // can't disagree with the strip above it about what shipped.
         taskDone={(tk) => tk.status === doneKeyOf(statusesFor(tk.teamId, TeamIssueType.TASK))}
-        onOpenItem={(id) => {
-          const it = items.find((i) => i.id === id);
-          setItemPeek({
-            roadmapId,
-            itemId: id,
-            href: `/roadmaps/${roadmapId}/items/${it?.shortId || id}`,
-          });
-        }}
+        onOpenItem={(id) => setPeekRef(items.find((i) => i.id === id)?.shortId || id)}
         tasksByItem={tasksByItem}
         isLoading={isLoading}
         taskStatus={(tk) => {
@@ -720,19 +724,13 @@ export function RoadmapGanttView({
         }}
         taskLabels={(tk) => labelsFor(tk.teamId)}
         taskTeam={(tk) => teamFor(tk.teamId)}
-        onOpenTask={(tk) =>
-          setTaskPeek({
-            id: tk.id,
-            issueType: TeamIssueType.TASK,
-            href: `/issues/${tk.shortId || tk.id}`,
-          })
-        }
+        onOpenTask={(tk) => setPeekRef(tk.shortId || tk.id)}
         onTaskDatesChange={canWrite ? reschedule : undefined}
         onItemDatesChange={canWrite ? rescheduleItem : undefined}
       />
 
-      <IssuePeekDrawer peek={taskPeek} onClose={() => setTaskPeek(null)} />
-      <RoadmapItemPeekDrawer peek={itemPeek} onClose={() => setItemPeek(null)} />
+      <IssuePeekDrawer peek={taskPeek} onClose={() => setPeekRef(null)} />
+      <RoadmapItemPeekDrawer peek={itemPeek} onClose={() => setPeekRef(null)} />
     </>
   );
 }

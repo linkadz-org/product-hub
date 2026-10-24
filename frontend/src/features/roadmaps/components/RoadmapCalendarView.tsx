@@ -1,11 +1,11 @@
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Target } from 'lucide-react';
 import { t } from '@/i18n';
 import { formatDate } from '@/lib/format';
 import { AssigneeBadge } from '@/components/AssigneeBadge';
 import { CalendarView, type CalendarEvent } from '@/components/CalendarView';
 import { GanttChip } from '@/components/GanttChart';
-import { useCalendarPeriod } from '@/components/filterParams';
+import { useCalendarPeriod, usePeekParam } from '@/components/filterParams';
 import { ROADMAP_ITEM_STATUS_COLOR, ROADMAP_ITEM_STATUS_LABEL } from '@/types/enums';
 import type { RoadmapColumn, RoadmapItem, TaskDto } from '@/types/dto';
 import { sprintChipLabel, type RoadmapSprint, type SprintScope } from '../useRoadmapSprints';
@@ -77,16 +77,15 @@ export function RoadmapCalendarView({
   toolbar,
 }: RoadmapCalendarViewProps) {
   const { range, anchor, setRange, setAnchor } = useCalendarPeriod();
-  const [peek, setPeek] = useState<RoadmapItemPeek | null>(null);
+  // The open item lives in the URL (`?peek=RM-88`), the same param the Gantt
+  // uses — so flipping Gantt ↔ Calendar keeps the drawer on the same item.
+  const [peekRef, setPeekRef] = usePeekParam();
+  const peek: RoadmapItemPeek | null =
+    peekRef && !onOpenItem && roadmapId
+      ? { roadmapId, itemId: peekRef, href: `/roadmaps/${roadmapId}/items/${peekRef}` }
+      : null;
 
-  const open =
-    onOpenItem ??
-    ((item: RoadmapItem) =>
-      setPeek({
-        roadmapId: roadmapId ?? '',
-        itemId: item.id,
-        href: `/roadmaps/${roadmapId}/items/${item.shortId || item.id}`,
-      }));
+  const open = onOpenItem ?? ((item: RoadmapItem) => setPeekRef(item.shortId || item.id));
 
   const narrowed = !!groupBySprint || !!filtered || (!!scope && scope.kind !== 'all');
   const shown = chartedItems(items, columns, narrowed);
@@ -173,7 +172,7 @@ export function RoadmapCalendarView({
       />
       {/* Only when this view opens items itself. A public share has no account to
           fetch a detail with, so it hands us `onOpenItem` and shows its own dialog. */}
-      {!onOpenItem && <RoadmapItemPeekDrawer peek={peek} onClose={() => setPeek(null)} />}
+      {!onOpenItem && <RoadmapItemPeekDrawer peek={peek} onClose={() => setPeekRef(null)} />}
     </>
   );
 }

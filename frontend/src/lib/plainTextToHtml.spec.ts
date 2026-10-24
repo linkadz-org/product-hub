@@ -16,7 +16,7 @@ describe('plainTextToHtml', () => {
   });
 
   it('opens a plain-text value in the editor one paragraph per line', () => {
-    const texts = htmlToBlocks('Dòng 1\nDòng 2').map((b) => b.data.text);
+    const texts = htmlToBlocks('Dòng 1\nDòng 2').map((b) => (b.data as { text?: string }).text);
     expect(texts).toEqual(['Dòng 1', 'Dòng 2']);
   });
 });
