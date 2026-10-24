@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -483,6 +483,40 @@ export class McpCreateBacklogItemDto {
   @IsOptional()
   @IsString()
   endDate?: string;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Image URLs from upload_file / create_upload_url, appended to the description',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  images?: string[];
+}
+
+/** Read one backlog item in full — description included. */
+export class McpGetBacklogItemDto {
+  @ApiProperty({ description: 'Backlog item ref (RM-12) or id' })
+  @IsString()
+  @IsNotEmpty()
+  item: string;
+}
+
+/**
+ * Edit one backlog item. Every field is optional and only what is sent changes;
+ * `description` REPLACES the body, and `images` are appended to whichever body
+ * the item ends up with. The item stays on its roadmap — `phase` moves it
+ * between that roadmap's columns.
+ */
+export class McpUpdateBacklogItemDto extends PartialType(
+  OmitType(McpCreateBacklogItemDto, ['roadmap'] as const),
+) {
+  // Optional at the DTO layer because the REST route supplies it from the `:item`
+  // path segment; the JSON-RPC tool requires it via its own zod schema.
+  @ApiPropertyOptional({ description: 'Backlog item ref (RM-12) or id' })
+  @IsOptional()
+  @IsString()
+  item?: string;
 }
 
 /**

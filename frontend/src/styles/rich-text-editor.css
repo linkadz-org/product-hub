@@ -78,9 +78,11 @@
   font-size: 0.85em;
 }
 
-/* Code block (edit textarea + read-only <pre>) */
+/* Code block (edit textarea + read-only <pre>). Matched in the read-only
+   renderer too: scoped to the editor alone, a code block in a comment or a
+   description you can't edit read as ordinary text in the body font. */
 .rich-text-editor .ce-code__textarea,
-.rich-text-editor pre {
+:is(.rich-text-editor, .rich-text-content) pre {
   background: hsl(var(--muted));
   border: 1px solid hsl(var(--border));
   border-radius: 0.5rem;
@@ -92,6 +94,25 @@
   white-space: pre-wrap;
   word-break: break-word;
   overflow-x: auto;
+}
+/* The read view has no block wrapper to space a code block from the
+   paragraphs around it, and `<code>` inside it must not pick up the chip below. */
+.rich-text-content pre {
+  margin: 0.5em 0;
+}
+:is(.rich-text-editor, .rich-text-content) pre code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+}
+/* Bare `<code>` — what Markdown's `backticks` become (MCP, pasted HTML) — gets
+   the same chip as the editor's inline-code tool. */
+:is(.rich-text-editor, .rich-text-content) :not(pre) > code:not(.inline-code) {
+  background: hsl(var(--muted));
+  border-radius: 3px;
+  padding: 0.1em 0.3em;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.85em;
 }
 
 /* Table tool. The wrapper is the tool's own chrome and stays editor-only, but a

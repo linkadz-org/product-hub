@@ -28,6 +28,8 @@ const FENCE = /^\s*```(\w*)/;
 const RULE = /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/;
 /** A row of a Markdown table: `| a | b |`. */
 const TABLE_ROW = /^\s*\|.*\|\s*$/;
+/** `![alt](url)` alone on its line — an image block, not a word in a sentence. */
+const IMAGE_LINE = /^\s*!\[([^\]"]*)\]\(([^)\s"]+)\)\s*$/;
 /** Whole fenced blocks, used to keep their contents out of prose-level checks. */
 const FENCED_BLOCK = /```[\s\S]*?```/g;
 
@@ -43,7 +45,41 @@ export function docBodyToHtml(body: string | undefined): string {
   // `<br/>`, and reading that as "this body is HTML" would store the whole
   // document as literal Markdown text.
   if (BLOCK_HTML.test(value.replace(FENCED_BLOCK, ''))) return promoteMermaid(value);
-  return renderMarkdown(value);
+  return renderMarkdown(value, false);
+}
+
+/**
+ * Any tag the editor emits, inline ones included. A description is a snippet, so
+ * `<b>Goal</b>: ship it` is HTML even with no block tag in sight — and reading
+ * it as Markdown would escape the `<b>` into visible text.
+ */
+const ANY_HTML =
+  /<(p|h[1-6]|ul|ol|li|pre|table|blockquote|figure|img|div|br|hr|b|strong|i|em|u|s|a|code|mark|span)\b[^>]*>/i;
+
+/**
+ * An issue or backlog-item description, as the HTML its detail page renders.
+ *
+ * Same Markdown as {@link docBodyToHtml}, with one difference: a single newline
+ * is a line break, not a soft wrap. An assistant never hard-wraps prose, so in a
+ * short field a newline is always meant — `Problem: …⏎Goal: …` joined into one
+ * line is exactly the "everything runs together" a description used to show.
+ */
+export function descriptionToHtml(body: string | undefined): string {
+  const value = (body ?? '').trim();
+  if (!value) return '';
+  if (ANY_HTML.test(value.replace(FENCED_BLOCK, ''))) return promoteMermaid(value);
+  return renderMarkdown(value, true);
+}
+
+/** Append the uploaded images a caller passed, skipping any the body already shows. */
+export function appendImages(html: string, urls: string[] | undefined): string {
+  const extra = (urls ?? []).filter((url) => url && !html.includes(url));
+  return html + extra.map((url) => `<img src="${escapeAttr(url)}" alt="">`).join('');
+}
+
+/** The first image in a body — a backlog card's cover, the same pick the item page makes. */
+export function firstImageUrl(html: string): string {
+  return html.match(/<img[^>]+src=["']([^"']+)["']/i)?.[1] ?? '';
 }
 
 /**
@@ -103,6 +139,12 @@ function promoteMermaid(html: string): string {
 const escapeHtml = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+const escapeAttr = (s: string): string => escapeHtml(s).replace(/"/g, '&quot;');
+
+/** A stored image the editor reads back as an image block: a bare top-level `<img>`. */
+const imageTag = (alt: string, src: string): string =>
+  `<img src="${escapeAttr(src)}" alt="${escapeAttr(alt)}">`;
+
 const unescapeHtml = (s: string): string =>
   s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 
@@ -121,6 +163,7 @@ const startsBlock = (line: string, next = ''): boolean =>
   QUOTE.test(line) ||
   FENCE.test(line) ||
   RULE.test(line) ||
+  IMAGE_LINE.test(line) ||
   startsTable(line, next);
 
 const startsTable = (line: string, next: string): boolean =>
@@ -168,6 +211,8 @@ function inline(text: string): string {
     return `${SENTINEL}${spans.length - 1}${SENTINEL}`;
   });
   const marked = stashed
+    // Before links: `![x](u)` would otherwise come out as `!` plus a link.
+    .replace(/!\[([^\]"]*)\]\(([^)\s"]+)\)/g, '<img src="$2" alt="$1">')
     .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2">$1</a>')
     .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
     .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, '$1<i>$2</i>')
@@ -175,7 +220,12 @@ function inline(text: string): string {
   return marked.replace(RESTORE_SPAN, (_, i: string) => `<code>${spans[Number(i)]}</code>`);
 }
 
-function renderMarkdown(body: string): string {
+/** `breaks`: a single newline inside a paragraph is a `<br>` rather than a space. */
+function renderMarkdown(body: string, breaks: boolean): string {
+  // Per line when breaking, so a `<br>` never lands inside a tag; whole when
+  // wrapping, so emphasis that spans a soft wrap still closes.
+  const joinLines = (lines: string[]): string =>
+    breaks ? lines.map(inline).join('<br>') : inline(lines.join(' '));
   const lines = body.replace(/\r\n?/g, '\n').split('\n');
   const out: string[] = [];
   let i = 0;
@@ -235,6 +285,13 @@ function renderMarkdown(body: string): string {
       continue;
     }
 
+    const image = line.match(IMAGE_LINE);
+    if (image) {
+      out.push(imageTag(image[1], image[2]));
+      i++;
+      continue;
+    }
+
     // A table needs its divider on the very next line; without one this is just
     // a paragraph that happens to contain pipes.
     if (startsTable(line, lines[i + 1] ?? '')) {
@@ -255,7 +312,7 @@ function renderMarkdown(body: string): string {
         quoted.push((lines[i].match(QUOTE) as RegExpMatchArray)[1]);
         i++;
       }
-      out.push(`<blockquote>${inline(quoted.join(' '))}</blockquote>`);
+      out.push(`<blockquote>${joinLines(quoted)}</blockquote>`);
       continue;
     }
 
@@ -264,7 +321,7 @@ function renderMarkdown(body: string): string {
     const para: string[] = [];
     while (i < lines.length && lines[i].trim() && !startsBlock(lines[i], lines[i + 1] ?? ''))
       para.push(lines[i++]);
-    out.push(`<p>${inline(para.join(' '))}</p>`);
+    out.push(`<p>${joinLines(para)}</p>`);
   }
 
   return out.join('');

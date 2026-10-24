@@ -1,4 +1,4 @@
-import { docBodyToHtml } from './mcp-doc-body';
+import { appendImages, descriptionToHtml, docBodyToHtml, firstImageUrl } from './mcp-doc-body';
 
 /**
  * Bảng và đường kẻ ngang — hai cú pháp Markdown phổ thông mà bộ chuyển đổi
@@ -85,5 +85,75 @@ describe('docBodyToHtml — không phá thứ đang chạy', () => {
   it('HTML truyền vào vẫn giữ nguyên, không bị chuyển đổi lại', () => {
     const html = docBodyToHtml('<p>Đã là HTML</p>');
     expect(html).toBe('<p>Đã là HTML</p>');
+  });
+});
+
+/**
+ * Mô tả của issue / RM item. Trước đây MCP lưu nguyên văn chữ trơn, trong khi
+ * trang chi tiết vẽ HTML — mọi dấu xuống dòng bị gộp thành một cục chữ.
+ */
+describe('descriptionToHtml', () => {
+  it('xuống dòng đơn giữ nguyên thành <br>', () => {
+    expect(descriptionToHtml('Vấn đề: chậm\nMục tiêu: nhanh')).toBe(
+      '<p>Vấn đề: chậm<br>Mục tiêu: nhanh</p>',
+    );
+  });
+
+  it('dòng trống tách đoạn, Markdown vẫn được dựng', () => {
+    expect(descriptionToHtml('## Bối cảnh\nDòng 1\n\n- a\n- **b**')).toBe(
+      '<h2>Bối cảnh</h2><p>Dòng 1</p><ul><li>a</li><li><b>b</b></li></ul>',
+    );
+  });
+
+  it('khối code giữ nguyên xuống dòng bên trong', () => {
+    expect(descriptionToHtml('```\nconst a = 1;\nconst b = 2;\n```')).toBe(
+      '<pre>const a = 1;\nconst b = 2;</pre>',
+    );
+  });
+
+  it('HTML có thẻ inline vẫn được coi là HTML, không bị escape', () => {
+    expect(descriptionToHtml('<b>Goal</b>: ship it')).toBe('<b>Goal</b>: ship it');
+  });
+
+  it('rỗng trả về rỗng', () => {
+    expect(descriptionToHtml('   ')).toBe('');
+    expect(descriptionToHtml(undefined)).toBe('');
+  });
+});
+
+describe('ảnh trong Markdown', () => {
+  const url = 'https://cdn.example.com/a_b.png?x=1&y=2';
+
+  it('ảnh đứng riêng một dòng thành khối <img> riêng', () => {
+    expect(descriptionToHtml(`Trước\n\n![Màn hình](${url})\n\nSau`)).toBe(
+      `<p>Trước</p><img src="https://cdn.example.com/a_b.png?x=1&amp;y=2" alt="Màn hình"><p>Sau</p>`,
+    );
+  });
+
+  it('ảnh ngay sau dòng chữ không bị nuốt vào đoạn văn', () => {
+    expect(docBodyToHtml(`Xem ảnh:\n![](${url})`)).toMatch(/^<p>Xem ảnh:<\/p><img /);
+  });
+
+  it('ảnh giữa câu không bị biến thành "!" + link', () => {
+    const html = docBodyToHtml(`Xem ![x](https://e.com/a.png) nhé`);
+    expect(html).toBe('<p>Xem <img src="https://e.com/a.png" alt="x"> nhé</p>');
+  });
+});
+
+describe('appendImages / firstImageUrl', () => {
+  it('nối thêm ảnh chưa có, bỏ qua ảnh đã có trong mô tả', () => {
+    const html = appendImages('<p>x</p><img src="https://e.com/1.png" alt="">', [
+      'https://e.com/1.png',
+      'https://e.com/2.png',
+    ]);
+    expect(html).toBe(
+      '<p>x</p><img src="https://e.com/1.png" alt=""><img src="https://e.com/2.png" alt="">',
+    );
+    expect(firstImageUrl(html)).toBe('https://e.com/1.png');
+  });
+
+  it('không có ảnh thì ảnh bìa rỗng', () => {
+    expect(firstImageUrl('<p>x</p>')).toBe('');
+    expect(appendImages('<p>x</p>', undefined)).toBe('<p>x</p>');
   });
 });

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, type MouseEvent } from 'react';
 import { cn } from '@/lib/utils';
 import { enhanceCodeBlocks } from '@/lib/enhanceCodeBlocks';
 import { enhanceTables } from '@/lib/enhanceTables';
-import { foldListIndents, normalizeSpaces } from '@/lib/editorjs';
+import { foldListIndents, isRichHtml, normalizeSpaces, plainTextToHtml } from '@/lib/editorjs';
 import { renderMermaidBlocks } from '@/lib/mermaid';
 // The read-only view paints editor output — code-copy buttons and mermaid
 // diagrams both need these rules, on pages that never mount the editor itself.
@@ -93,13 +93,18 @@ export function RichText({ html, className }: RichTextProps) {
     [lightbox, links],
   );
 
+  // Plain text (an old value, or one an API client stored unconverted) is shown
+  // a paragraph per line — painted as markup it would run every line together.
+  // A blank line keeps its height, the way the author left a gap.
+  const plain = !isRichHtml(html);
+
   return (
     <>
       <div
         ref={ref}
-        className={cn(PROSE, className)}
+        className={cn(PROSE, plain && '[&_p:empty]:min-h-[1lh]', className)}
         onClick={onClick}
-        dangerouslySetInnerHTML={{ __html: html }}
+        dangerouslySetInnerHTML={{ __html: plain ? plainTextToHtml(html) : html }}
       />
       {lightbox.node}
       {links.node}

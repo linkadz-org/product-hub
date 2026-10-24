@@ -15,6 +15,7 @@ import {
   McpCreateIssueDto,
   McpDeleteCommentDto,
   McpDeleteIssueDto,
+  McpGetBacklogItemDto,
   McpGetIssueDto,
   McpLinkIssuesDto,
   McpListBacklogItemsDto,
@@ -23,6 +24,7 @@ import {
   McpSearchIssuesDto,
   McpSetStatusDto,
   McpUnlinkIssuesDto,
+  McpUpdateBacklogItemDto,
   McpUpdateCommentDto,
   McpUpdateDocDto,
   McpUpdateIssueDto,
@@ -37,6 +39,7 @@ import {
 } from '@application/mcp/dtos/mcp-analytics.dtos';
 import {
   McpBacklogItemBriefDto,
+  McpBacklogItemDetailDto,
   McpBacklogItemResponseDto,
   McpCommentDto,
   McpCommentResultDto,
@@ -71,6 +74,7 @@ import {
   McpCreateIssueUseCase,
   McpDeleteCommentUseCase,
   McpDeleteIssueUseCase,
+  McpGetBacklogItemUseCase,
   McpGetBugStatsUseCase,
   McpGetCycleBurndownUseCase,
   McpGetIssueUseCase,
@@ -83,6 +87,7 @@ import {
   McpSearchIssuesUseCase,
   McpSetStatusUseCase,
   McpUnlinkIssuesUseCase,
+  McpUpdateBacklogItemUseCase,
   McpUpdateCommentUseCase,
   McpUpdateDocUseCase,
   McpUpdateIssueUseCase,
@@ -185,6 +190,8 @@ export class McpServerFactory {
     private readonly bugStats: McpGetBugStatsUseCase,
     private readonly uploadFile: McpUploadFileUseCase,
     private readonly createUploadUrl: McpCreateUploadUrlUseCase,
+    private readonly getBacklogItem: McpGetBacklogItemUseCase,
+    private readonly updateBacklogItem: McpUpdateBacklogItemUseCase,
     config: ConfigService,
   ) {
     this.appUrl = (config.get<string>('APP_BASE_URL') ?? 'http://localhost:3001').replace(/\/$/, '');
@@ -228,6 +235,8 @@ export class McpServerFactory {
     this.registerDeleteComment(server, run);
     this.registerCreateBacklogItem(server, run);
     this.registerListBacklogItems(server, run);
+    this.registerGetBacklogItem(server, run);
+    this.registerUpdateBacklogItem(server, run);
     this.registerCreateDoc(server, run);
     this.registerUpdateDoc(server, run);
     this.registerLinkIssues(server, run);
@@ -281,8 +290,9 @@ export class McpServerFactory {
           'instead whenever the file is on disk — this tool carries the whole file through the ' +
           'conversation, which is slow, costly, and caps out around 7MB. This one is for the case ' +
           'where you already hold the bytes and there is no shell. Uploading does NOT attach ' +
-          'anything: pass the returned URL to `update_issue` (`attachments`, for a bug) or ' +
-          '`add_comment` (`images`) to make it show up. Accepted: images, video, PDF, Office ' +
+          'anything: pass the returned URL to `update_issue` (`attachments`, for a bug), ' +
+          '`add_comment` (`images`) or `create_backlog_item`/`update_backlog_item` (`images`) to ' +
+          'make it show up. Accepted: images, video, PDF, Office ' +
           'documents, csv/txt/md.',
         inputSchema: {
           name: z
@@ -332,7 +342,8 @@ export class McpServerFactory {
           'disk to storage without passing through the conversation (which is what makes ' +
           '`upload_file` lossy for big or high-resolution files). Run the returned `curl` line; it ' +
           'replies with JSON whose `url` is the stored file. Uploading does NOT attach anything: ' +
-          'pass that `url` to `update_issue` (`attachments`, for a bug) or `add_comment` (`images`).',
+          'pass that `url` to `update_issue` (`attachments`, for a bug), `add_comment` (`images`) or ' +
+          '`create_backlog_item`/`update_backlog_item` (`images`).',
         annotations: { readOnlyHint: true },
         inputSchema: {
           name: z
@@ -411,7 +422,7 @@ export class McpServerFactory {
         inputSchema: {
           kind: z.nativeEnum(IssueKind).describe('task = work to do, bug = a defect'),
           title: z.string().min(1),
-          description: z.string().optional().describe('Plain text or HTML'),
+          description: z.string().optional().describe('Markdown, HTML or plain text — line breaks are kept; ![alt](url) embeds an uploaded image'),
           team: z.string().optional().describe('Team name or id — must own this kind of issue'),
           status: z
             .string()
@@ -501,7 +512,13 @@ export class McpServerFactory {
         inputSchema: {
           issue: z.string().describe('Issue ref — the owning team’s prefix and number, e.g. ENG-14 or QC-8 — or id'),
           title: z.string().optional(),
-          description: z.string().optional().describe('Plain text or HTML — replaces the description'),
+          description: z
+            .string()
+            .optional()
+            .describe(
+              'Markdown, HTML or plain text — REPLACES the description; line breaks are kept and ' +
+                '![alt](url) embeds an uploaded image',
+            ),
           assignee: z
             .string()
             .optional()
@@ -632,7 +649,7 @@ export class McpServerFactory {
           body: z
             .string()
             .min(1)
-            .describe('Comment text — Markdown, HTML or plain text. ```code``` and **bold** render.'),
+            .describe('Comment text — Markdown, HTML or plain text. ```code``` and **bold** render, line breaks are kept.'),
           replyTo: z.string().optional().describe('Comment id to reply to'),
           mentions: z
             .array(z.string())
@@ -665,7 +682,7 @@ export class McpServerFactory {
         inputSchema: {
           issue: z.string().describe('Issue ref — the owning team’s prefix and number, e.g. ENG-14 or QC-8 — or id'),
           comment: z.string().describe('Comment id to edit'),
-          body: z.string().optional().describe('New body — Markdown, HTML or plain text'),
+          body: z.string().optional().describe('New body — Markdown, HTML or plain text; line breaks are kept'),
           mentions: z
             .array(z.string())
             .optional()
@@ -721,7 +738,7 @@ export class McpServerFactory {
         inputSchema: {
           title: z.string().min(1),
           roadmap: z.string().optional().describe('Roadmap title or id'),
-          description: z.string().optional(),
+          description: z.string().optional().describe('Markdown, HTML or plain text — line breaks are kept; ![alt](url) embeds an uploaded image'),
           phase: z.string().optional().describe('Column key or label — Now / Next / Later'),
           status: z.nativeEnum(RoadmapItemStatus).optional(),
           difficulty: z.nativeEnum(RoadmapDifficulty).optional(),
@@ -731,6 +748,10 @@ export class McpServerFactory {
           effort: z.number().min(1).max(5).optional(),
           startDate: z.string().optional().describe('YYYY-MM-DD'),
           endDate: z.string().optional().describe('YYYY-MM-DD'),
+          images: z
+            .array(z.string())
+            .optional()
+            .describe('Image URLs from create_upload_url / upload_file — added to the description'),
         },
       },
       (dto) =>
@@ -755,7 +776,8 @@ export class McpServerFactory {
         description:
           'Browse the roadmap backlog — each item’s ref (RM-…), title, column, status and RICE score. ' +
           'Use it to pick an item to file a ticket under (create_issue `backlogItemId`) or to answer ' +
-          '"what’s on the roadmap". Pass `roadmap` to one board, or omit it to list them all.',
+          '"what’s on the roadmap". Pass `roadmap` to one board, or omit it to list them all. ' +
+          'No descriptions here — get_backlog_item reads one item in full.',
         inputSchema: {
           roadmap: z.string().optional().describe('Roadmap title or id — omit to list every roadmap'),
         },
@@ -768,6 +790,76 @@ export class McpServerFactory {
             items.length
               ? `${items.length} backlog item(s):\n\n${items.map((i) => this.describeBacklogItem(i)).join('\n\n')}`
               : 'No backlog items.',
+        ),
+    );
+  }
+
+  private registerGetBacklogItem(server: McpServer, run: Run): void {
+    registerTool<McpGetBacklogItemDto>(
+      server,
+      'get_backlog_item',
+      {
+        title: 'Read a roadmap backlog item',
+        description:
+          'Read one roadmap backlog item in full by its ref (RM-12) or id — description, column, ' +
+          'status, RICE inputs, dates, assignees, OKR. The description comes back as the HTML the ' +
+          'item page renders. Call this before update_backlog_item so you edit from the current ' +
+          'text. For the tasks/bugs filed under it, use search_issues with `backlog`.',
+        inputSchema: {
+          item: z.string().describe('Backlog item ref, e.g. RM-12, or id'),
+        },
+        annotations: { readOnlyHint: true },
+      },
+      (dto) =>
+        run<McpBacklogItemDetailDto>(
+          (actor) => this.getBacklogItem.execute({ actor, dto }),
+          (item) => this.describeBacklogItemDetail(item),
+        ),
+    );
+  }
+
+  private registerUpdateBacklogItem(server: McpServer, run: Run): void {
+    registerTool<McpUpdateBacklogItemDto>(
+      server,
+      'update_backlog_item',
+      {
+        title: 'Update a roadmap backlog item',
+        description:
+          'Patch a roadmap backlog item — only the fields you pass change. `description` REPLACES the ' +
+          'body (read it with get_backlog_item first to keep what is there); Markdown is converted ' +
+          'and line breaks are kept, so this is also how to reformat an item whose text ran ' +
+          'together. `images` are appended to the description. `phase` moves the item between ' +
+          'its roadmap’s columns (key or label); it cannot change roadmap.',
+        inputSchema: {
+          item: z.string().describe('Backlog item ref, e.g. RM-12, or id'),
+          title: z.string().min(1).optional(),
+          description: z
+            .string()
+            .optional()
+            .describe(
+              'Markdown, HTML or plain text — REPLACES the description; line breaks are kept and ' +
+                '![alt](url) embeds an uploaded image',
+            ),
+          images: z
+            .array(z.string())
+            .optional()
+            .describe('Image URLs from create_upload_url / upload_file — appended to the description'),
+          phase: z.string().optional().describe('Column key or label — Now / Next / Later'),
+          status: z.nativeEnum(RoadmapItemStatus).optional(),
+          difficulty: z.nativeEnum(RoadmapDifficulty).optional(),
+          reach: z.number().min(1).max(5).optional(),
+          impact: z.number().min(1).max(5).optional(),
+          confidence: z.number().min(1).max(5).optional(),
+          effort: z.number().min(1).max(5).optional(),
+          startDate: z.string().optional().describe("YYYY-MM-DD; '' clears"),
+          endDate: z.string().optional().describe("YYYY-MM-DD; '' clears"),
+        },
+      },
+      (dto) =>
+        run<McpBacklogItemDetailDto>(
+          (actor) => gated(actor, () => this.updateBacklogItem.execute({ actor, dto })),
+          (item) =>
+            `Updated ${item.shortId} (${item.changed})\n\n${this.describeBacklogItemDetail(item)}`,
         ),
     );
   }
@@ -1143,6 +1235,26 @@ export class McpServerFactory {
     return [
       `${i.shortId} · ${i.title}`,
       `  ${i.roadmapTitle} → ${i.phase} · ${i.status} · RICE ${i.riceScore}`,
+      `  ${this.url(i.link)}`,
+    ].join('\n');
+  }
+
+  private describeBacklogItemDetail(i: McpBacklogItemDetailDto): string {
+    const facts = [
+      `${i.shortId} · ${i.title}`,
+      `  ${i.roadmapTitle} → ${i.phaseLabel} · ${i.status} · ${i.difficulty}`,
+      `  RICE ${i.riceScore} (reach ${i.reach} · impact ${i.impact} · confidence ` +
+        `${i.confidence} · effort ${i.effort})`,
+      i.startDate || i.endDate ? `  dates: ${i.startDate || '?'} → ${i.endDate || '?'}` : '',
+      i.assigneeNames.length ? `  assignees: ${i.assigneeNames.join(', ')}` : '',
+      i.okrLabel ? `  OKR: ${i.okrLabel}` : '',
+      i.createdByName ? `  added by ${i.createdByName}` : '',
+    ].filter(Boolean);
+    return [
+      ...facts,
+      '',
+      i.description || 'No description.',
+      '',
       `  ${this.url(i.link)}`,
     ].join('\n');
   }

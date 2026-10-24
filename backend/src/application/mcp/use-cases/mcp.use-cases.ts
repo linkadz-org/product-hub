@@ -20,7 +20,9 @@ import { TeamEntity } from '@application/teams/domain/entities/team.entity';
 import {
   AddRoadmapItemUseCase,
   GetRoadmapsUseCase,
+  ReplaceRoadmapItemsUseCase,
 } from '@application/roadmaps/use-cases/roadmap.use-cases';
+import { RoadmapEntity } from '@application/roadmaps/domain/entities/roadmap.entity';
 import {
   findRoadmapItem,
   riceScore,
@@ -59,7 +61,13 @@ import { IssueKind as LinkIssueKind } from '@application/issue-links/domain/rela
 import { plainSnippet } from '@module-shared/utils/plain-text.util';
 import { McpEventEntity } from '../domain/entities/mcp-event.entity';
 import { McpEntity, McpTool } from '../domain/enums/mcp.enums';
-import { docBodyToHtml, stripEchoedTitle } from '../domain/mcp-doc-body';
+import {
+  appendImages,
+  descriptionToHtml,
+  docBodyToHtml,
+  firstImageUrl,
+  stripEchoedTitle,
+} from '../domain/mcp-doc-body';
 import {
   backlogItemLink,
   columnsOf,
@@ -86,6 +94,7 @@ import {
   McpCreateIssueDto,
   McpDeleteCommentDto,
   McpDeleteIssueDto,
+  McpGetBacklogItemDto,
   McpGetIssueDto,
   McpLinkIssuesDto,
   McpListBacklogItemsDto,
@@ -94,12 +103,14 @@ import {
   McpSearchIssuesDto,
   McpSetStatusDto,
   McpUnlinkIssuesDto,
+  McpUpdateBacklogItemDto,
   McpUpdateCommentDto,
   McpUpdateDocDto,
   McpUpdateIssueDto,
 } from '../dtos/mcp.dtos';
 import {
   McpBacklogItemBriefDto,
+  McpBacklogItemDetailDto,
   McpBacklogItemResponseDto,
   McpCommentDto,
   McpCommentResultDto,
@@ -342,7 +353,9 @@ export class McpCreateIssueUseCase
       dto: {
         kind: dto.kind,
         title: dto.title,
-        description: dto.description,
+        // Stored as HTML — the issue page renders markup, and raw text or
+        // Markdown would lose every line break.
+        description: dto.description !== undefined ? descriptionToHtml(dto.description) : undefined,
         status,
         teamId: team.id.toString(),
         assigneeIds: assigneeIds.length ? assigneeIds : undefined,
@@ -526,7 +539,7 @@ export class McpUpdateIssueUseCase
 
     const update: UpdateIssueDto = {};
     if (dto.title !== undefined) update.title = dto.title;
-    if (dto.description !== undefined) update.description = dto.description;
+    if (dto.description !== undefined) update.description = descriptionToHtml(dto.description);
     if (dto.cycleId !== undefined) update.cycleId = dto.cycleId;
     if (dto.estimate !== undefined) update.estimate = dto.estimate;
     if (dto.severity !== undefined) update.severity = dto.severity;
@@ -908,10 +921,11 @@ export class McpAddCommentUseCase
       authorId: actor.userId,
       authorName: actorUser?.name ?? actor.keyName,
       dto: {
-        // Convert Markdown to the editor's HTML (same net as create_doc) so a
-        // ```code``` fence or a **bold** line renders instead of showing literal
-        // markup; HTML the caller sent passes straight through.
-        body: docBodyToHtml(dto.body),
+        // Convert Markdown to the editor's HTML so a ```code``` fence or a
+        // **bold** line renders instead of showing literal markup, and a single
+        // newline stays a line break (a comment is chat, not a doc page); HTML
+        // the caller sent passes straight through.
+        body: descriptionToHtml(dto.body),
         parentId: dto.replyTo,
         mentions: mentions.getValue(),
         // Already-stored URLs (upload_file); the comment carries the link, not
@@ -978,7 +992,7 @@ export class McpUpdateCommentUseCase
       // it unchanged", so it must stay undefined rather than becoming ''.
       // `images` follows the same rule: sent = replace the set, omitted = leave it.
       dto: {
-        body: dto.body !== undefined ? docBodyToHtml(dto.body) : undefined,
+        body: dto.body !== undefined ? descriptionToHtml(dto.body) : undefined,
         mentions,
         images: dto.images,
       },
@@ -1099,12 +1113,16 @@ export class McpCreateBacklogItemUseCase
     }
 
     const actorUser = await this.users.findById(actor.userId);
+    // The item page renders HTML; text saved as-is loses every line break.
+    const description = appendImages(descriptionToHtml(dto.description), dto.images);
     const added = await this.addItem.execute({
       id: roadmap.id.toString(),
       tenantId: actor.tenantId,
       item: {
         title: dto.title,
-        description: dto.description,
+        description,
+        // The card's cover — the same first-image pick the item page makes on save.
+        imageUrl: firstImageUrl(description),
         phase,
         status: dto.status,
         difficulty: dto.difficulty,
@@ -1155,6 +1173,192 @@ export class McpCreateBacklogItemUseCase
       riceScore: riceScore(item),
       link,
     });
+  }
+}
+
+/** The roadmap holding a backlog item, by the item's ref (`RM-12`) or uuid. */
+function findBacklogItem(
+  roadmaps: RoadmapEntity[],
+  ref: string,
+): { roadmap: RoadmapEntity; item: RoadmapItemData } | null {
+  for (const roadmap of roadmaps) {
+    const item = findRoadmapItem(roadmap.items, ref);
+    if (item) return { roadmap, item };
+  }
+  return null;
+}
+
+function toBacklogItemDetail(
+  roadmap: RoadmapEntity,
+  item: RoadmapItemData,
+  changed = '',
+): McpBacklogItemDetailDto {
+  const roadmapId = roadmap.id.toString();
+  return {
+    id: item.id,
+    shortId: item.shortId ?? '',
+    roadmapId,
+    roadmapTitle: roadmap.title,
+    title: item.title,
+    description: item.description ?? '',
+    phase: item.phase,
+    phaseLabel: columnsOf(roadmap).find((c) => c.key === item.phase)?.label ?? item.phase,
+    status: item.status,
+    difficulty: item.difficulty,
+    reach: item.reach,
+    impact: item.impact,
+    confidence: item.confidence,
+    effort: item.effort,
+    riceScore: riceScore(item),
+    startDate: item.startDate ?? '',
+    endDate: item.endDate ?? '',
+    assigneeNames: (item.assignees ?? []).map((a) => a.name),
+    okrLabel: item.okrLabel ?? '',
+    createdByName: item.createdByName ?? '',
+    imageUrl: item.imageUrl ?? '',
+    link: backlogItemLink(roadmapId, item.shortId || item.id),
+    changed,
+  };
+}
+
+@Injectable()
+export class McpGetBacklogItemUseCase
+  implements
+    IUsecaseExecute<
+      { actor: McpActor; dto: McpGetBacklogItemDto },
+      Result<McpBacklogItemDetailDto>
+    >
+{
+  constructor(private readonly getRoadmaps: GetRoadmapsUseCase) {}
+
+  async execute({
+    actor,
+    dto,
+  }: {
+    actor: McpActor;
+    dto: McpGetBacklogItemDto;
+  }): Promise<Result<McpBacklogItemDetailDto>> {
+    const roadmaps = (await this.getRoadmaps.execute({ tenantId: actor.tenantId })).getValue();
+    const found = findBacklogItem(roadmaps, dto.item);
+    if (!found) return Result.fail(`Backlog item "${dto.item}" not found`);
+    return Result.ok(toBacklogItemDetail(found.roadmap, found.item));
+  }
+}
+
+/**
+ * Edit one backlog item through the same replace the board saves with, so the
+ * server keeps owning what it owns there — the ref, `createdAt`/`startedAt`/
+ * `completedAt` stamps, the creator — and the item's history records the change
+ * like any other edit. The array is read and written back in one call, so the
+ * window for a concurrent board save is the round-trip, not an assistant's turn.
+ */
+@Injectable()
+export class McpUpdateBacklogItemUseCase
+  implements
+    IUsecaseExecute<
+      { actor: McpActor; dto: McpUpdateBacklogItemDto },
+      Result<McpBacklogItemDetailDto>
+    >
+{
+  constructor(
+    private readonly getRoadmaps: GetRoadmapsUseCase,
+    private readonly replaceItems: ReplaceRoadmapItemsUseCase,
+    @Inject(IUserRepository) private readonly users: IUserRepository,
+    @Inject(IMcpEventRepository) private readonly events: IMcpEventRepository,
+  ) {}
+
+  async execute({
+    actor,
+    dto,
+  }: {
+    actor: McpActor;
+    dto: McpUpdateBacklogItemDto;
+  }): Promise<Result<McpBacklogItemDetailDto>> {
+    const roadmaps = (await this.getRoadmaps.execute({ tenantId: actor.tenantId })).getValue();
+    if (!dto.item) return Result.fail('Pass the backlog item ref (RM-12) or id');
+    const found = findBacklogItem(roadmaps, dto.item);
+    if (!found) return Result.fail(`Backlog item "${dto.item}" not found`);
+    const { roadmap, item } = found;
+
+    const patch: Partial<RoadmapItemData> = {};
+    const changed: string[] = [];
+    if (dto.title !== undefined && dto.title.trim()) {
+      patch.title = dto.title.trim();
+      changed.push('title');
+    }
+    if (dto.phase !== undefined) {
+      const columns = columnsOf(roadmap);
+      const phase = resolvePhase(columns, dto.phase);
+      if (!phase) {
+        return Result.fail(
+          didYouMean(
+            'column',
+            dto.phase,
+            columns.map((c) => c.label),
+          ),
+        );
+      }
+      patch.phase = phase;
+      changed.push('column');
+    }
+    for (const key of [
+      'status',
+      'difficulty',
+      'reach',
+      'impact',
+      'confidence',
+      'effort',
+      'startDate',
+      'endDate',
+    ] as const) {
+      if (dto[key] !== undefined) {
+        (patch as Record<string, unknown>)[key] = dto[key];
+        changed.push(key);
+      }
+    }
+    if (dto.description !== undefined || dto.images?.length) {
+      const base =
+        dto.description !== undefined ? descriptionToHtml(dto.description) : item.description ?? '';
+      patch.description = appendImages(base, dto.images);
+      // Same rule as the item page's own save: the cover follows the body.
+      patch.imageUrl = firstImageUrl(patch.description);
+      changed.push(dto.description !== undefined ? 'description' : 'images');
+    }
+    if (!changed.length) return Result.fail('Nothing to update — pass at least one field');
+
+    const actorUser = await this.users.findById(actor.userId);
+    const replaced = await this.replaceItems.execute({
+      id: roadmap.id.toString(),
+      tenantId: actor.tenantId,
+      dto: { items: roadmap.items.map((i) => (i.id === item.id ? { ...i, ...patch } : i)) },
+      requesterId: actor.userId,
+      requesterName: mcpActorName(actor, actorUser),
+      actorType: AuditActor.API,
+    });
+    if (replaced.isFailure) return Result.fail(replaced.error as string);
+
+    const saved = replaced.getValue();
+    const updated = saved.items.find((i) => i.id === item.id) ?? { ...item, ...patch };
+    const detail = toBacklogItemDetail(saved, updated, changed.join(', '));
+
+    const event = McpEventEntity.create({
+      tenantId: actor.tenantId,
+      keyId: actor.keyId,
+      keyName: actor.keyName,
+      userId: actor.userId,
+      userName: actorUser?.name ?? actor.keyName,
+      clientName: actor.clientName,
+      tool: McpTool.UPDATE_BACKLOG_ITEM,
+      entity: McpEntity.BACKLOG_ITEM,
+      entityId: updated.id,
+      entityRef: updated.shortId,
+      entityTitle: updated.title,
+      contextLabel: saved.title,
+      link: detail.link,
+    });
+    if (event.isSuccess) await this.events.append(event.getValue());
+
+    return Result.ok(detail);
   }
 }
 

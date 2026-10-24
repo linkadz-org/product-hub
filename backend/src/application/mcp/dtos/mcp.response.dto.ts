@@ -447,3 +447,75 @@ export class McpBacklogItemResponseDto {
   @ApiProperty({ description: 'In-app path, e.g. /roadmaps/<id>/items/<itemId>' })
   link: string;
 }
+
+/** One backlog item in full — what get_backlog_item and update_backlog_item hand back. */
+export class McpBacklogItemDetailDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty({ example: 'RM-6' })
+  shortId: string;
+
+  @ApiProperty()
+  roadmapId: string;
+
+  @ApiProperty()
+  roadmapTitle: string;
+
+  @ApiProperty()
+  title: string;
+
+  @ApiProperty({ description: 'Body as stored — HTML, the same markup the item page renders' })
+  description: string;
+
+  @ApiProperty({ description: 'Column key' })
+  phase: string;
+
+  @ApiProperty({ description: 'Column label, e.g. "Now"' })
+  phaseLabel: string;
+
+  @ApiProperty()
+  status: string;
+
+  @ApiProperty()
+  difficulty: string;
+
+  @ApiProperty()
+  reach: number;
+
+  @ApiProperty()
+  impact: number;
+
+  @ApiProperty()
+  confidence: number;
+
+  @ApiProperty()
+  effort: number;
+
+  @ApiProperty({ description: 'RICE, derived from reach × impact × confidence ÷ effort' })
+  riceScore: number;
+
+  @ApiProperty({ description: 'YYYY-MM-DD, empty when unset' })
+  startDate: string;
+
+  @ApiProperty({ description: 'YYYY-MM-DD, empty when unset' })
+  endDate: string;
+
+  @ApiProperty({ type: [String] })
+  assigneeNames: string[];
+
+  @ApiProperty({ description: 'Linked OKR, empty when unlinked' })
+  okrLabel: string;
+
+  @ApiProperty({ description: 'Who added the item, empty for legacy items' })
+  createdByName: string;
+
+  @ApiProperty({ description: 'Card cover — the first image in the description' })
+  imageUrl: string;
+
+  @ApiProperty({ description: 'In-app path, e.g. /roadmaps/<id>/items/<itemId>' })
+  link: string;
+
+  @ApiProperty({ description: 'Human summary of what changed — update_backlog_item only' })
+  changed: string;
+}

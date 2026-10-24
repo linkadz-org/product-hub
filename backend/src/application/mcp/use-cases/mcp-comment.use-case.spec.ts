@@ -111,6 +111,14 @@ describe('McpAddCommentUseCase', () => {
     expect(sent).not.toContain('```'); // the fence markers are gone
   });
 
+  it('keeps single line breaks — a comment is chat, not a doc paragraph', async () => {
+    const { useCase, createComment } = build();
+
+    await useCase.execute({ actor, dto: { issue: REF, body: 'Bước 1\nBước 2' } });
+
+    expect(createComment.execute.mock.calls[0][0].dto.body).toBe('<p>Bước 1<br>Bước 2</p>');
+  });
+
   it('passes HTML through unchanged', async () => {
     const { useCase, createComment } = build();
 

@@ -105,3 +105,31 @@ describe('McpServerFactory.describeBugStats — scope line date filter', () => {
     expect(out).toContain('whole workspace');
   });
 });
+
+describe('McpServerFactory.create — backlog item tools', () => {
+  const actor: McpActor = {
+    tenantId: 't1',
+    keyId: 'k1',
+    keyName: 'CI',
+    userId: 'u1',
+    scope: ApiKeyScope.READ_WRITE,
+    clientName: 'claude-code/1.0',
+  };
+  const tools = () =>
+    (
+      factory().create({ actor, apiUrl: 'https://api.example.com/v1/mcp' }) as unknown as {
+        _registeredTools: Record<string, { inputSchema: { shape: Record<string, unknown> } }>;
+      }
+    )._registeredTools;
+
+  it('đọc được một RM item đầy đủ (kèm description)', () => {
+    expect(tools().get_backlog_item.inputSchema.shape).toHaveProperty('item');
+  });
+
+  it('sửa được description và gắn ảnh vào RM item', () => {
+    const shape = tools().update_backlog_item.inputSchema.shape;
+    expect(shape).toHaveProperty('description');
+    expect(shape).toHaveProperty('images');
+    expect(tools().create_backlog_item.inputSchema.shape).toHaveProperty('images');
+  });
+});

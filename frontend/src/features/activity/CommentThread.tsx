@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import { t, type I18nKey } from '@/i18n';
 import { timeAgo } from '@/lib/format';
 import { useAuth } from '@/lib/auth';
-import { htmlToPlainText, isRichHtml, mentionIdsFromHtml } from '@/lib/editorjs';
+import { htmlToPlainText, isRichHtml, mentionIdsFromHtml, plainTextToHtml } from '@/lib/editorjs';
 import type { CommentDto } from '@/types/dto';
 import { Avatar } from '@/features/activity/Avatar';
 import {
@@ -424,21 +424,11 @@ function CommentComposer({
   );
 }
 
-const escapeHtml = (s: string) =>
-  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
 /**
  * A stored body as the editor wants it. Comments were plain text long before they
- * had an editor, so an old one is escaped and split a paragraph per line — feeding
- * it through as-is would swallow its line breaks and read `<` as markup.
+ * had an editor, so an old one is escaped and split a paragraph per line.
  */
-export function toEditorValue(body: string): string {
-  if (isRichHtml(body)) return body;
-  return body
-    .split('\n')
-    .map((line) => (line ? `<p>${escapeHtml(line)}</p>` : '<p></p>'))
-    .join('');
-}
+export const toEditorValue = plainTextToHtml;
 
 /**
  * One comment inside a thread card — avatar, inline edit / delete, and any media.

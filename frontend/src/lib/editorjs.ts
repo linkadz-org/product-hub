@@ -316,6 +316,20 @@ export function isRichHtml(value: string): boolean {
 }
 
 /**
+ * A stored value as editor HTML. Plain text — an old comment, or a description
+ * an API client wrote before it was converted on the way in — is escaped and
+ * split a paragraph per line; fed through as-is it would lose every line break
+ * and read `<` as markup. Rich HTML passes through untouched.
+ */
+export function plainTextToHtml(value: string): string {
+  if (!value || isRichHtml(value)) return value;
+  return value
+    .split('\n')
+    .map((line) => (line ? `<p>${escapeHtml(line)}</p>` : '<p></p>'))
+    .join('');
+}
+
+/**
  * Turn pasted non-breaking spaces back into ordinary ones, in place.
  *
  * Word processors join words with `&nbsp;` — Google Docs does it throughout — and
@@ -380,7 +394,7 @@ export function htmlToBlocks(html: string): HtmlEditorBlock[] {
   if (!html) return [];
 
   const doc = new DOMParser().parseFromString(
-    `<!doctype html><body><div id="__root">${html}</div></body>`,
+    `<!doctype html><body><div id="__root">${plainTextToHtml(html)}</div></body>`,
     'text/html',
   );
   const root = doc.getElementById('__root');

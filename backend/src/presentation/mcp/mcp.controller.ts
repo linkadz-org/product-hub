@@ -21,6 +21,7 @@ import {
   McpCreateIssueDto,
   McpLinkIssuesDto,
   McpListBacklogItemsDto,
+  McpUpdateBacklogItemDto,
   McpSearchIssuesDto,
   McpSetStatusDto,
   McpUpdateCommentDto,
@@ -38,6 +39,7 @@ import {
 import { CycleBurndownResponseDto } from '@application/cycles/dtos/cycle.dtos';
 import {
   McpBacklogItemBriefDto,
+  McpBacklogItemDetailDto,
   McpBacklogItemResponseDto,
   McpCommentDto,
   McpCommentResultDto,
@@ -74,6 +76,8 @@ import {
   McpGetTeamVelocityUseCase,
   McpLinkIssuesUseCase,
   McpListBacklogItemsUseCase,
+  McpGetBacklogItemUseCase,
+  McpUpdateBacklogItemUseCase,
   McpListCommentsUseCase,
   McpListCyclesUseCase,
   McpListLinksUseCase,
@@ -152,6 +156,8 @@ export class McpController {
     private readonly bugStats: McpGetBugStatsUseCase,
     private readonly uploadFile: McpUploadFileUseCase,
     private readonly createUploadUrl: McpCreateUploadUrlUseCase,
+    private readonly getBacklogItem: McpGetBacklogItemUseCase,
+    private readonly updateBacklogItem: McpUpdateBacklogItemUseCase,
   ) {}
 
   @Get('context')
@@ -228,6 +234,31 @@ export class McpController {
     @Query() query: McpListBacklogItemsDto,
   ): Promise<McpBacklogItemBriefDto[]> {
     const result = await this.listBacklogItems.execute({ actor: actorOf(req), dto: query });
+    if (result.isFailure) throw new ValidationException(result.error as string);
+    return result.getValue();
+  }
+
+  @Get('backlog-items/:item')
+  @ApiOperation({ summary: 'Read one backlog item in full, description included (API key)' })
+  async backlogItem(
+    @Req() req: McpRequest,
+    @Param('item') item: string,
+  ): Promise<McpBacklogItemDetailDto> {
+    const result = await this.getBacklogItem.execute({ actor: actorOf(req), dto: { item } });
+    if (result.isFailure) throw new ValidationException(result.error as string);
+    return result.getValue();
+  }
+
+  @Patch('backlog-items/:item')
+  @ApiOperation({ summary: 'Edit a backlog item — only the fields sent change (API key)' })
+  async updateBacklogItemRoute(
+    @Req() req: McpRequest,
+    @Param('item') item: string,
+    @Body() dto: McpUpdateBacklogItemDto,
+  ): Promise<McpBacklogItemDetailDto> {
+    const actor = actorOf(req);
+    guardWrite(actor);
+    const result = await this.updateBacklogItem.execute({ actor, dto: { ...dto, item } });
     if (result.isFailure) throw new ValidationException(result.error as string);
     return result.getValue();
   }

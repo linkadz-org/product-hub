@@ -24,6 +24,7 @@ export enum McpTool {
   UPDATE_COMMENT = 'update_comment',
   DELETE_COMMENT = 'delete_comment',
   CREATE_BACKLOG_ITEM = 'create_backlog_item',
+  UPDATE_BACKLOG_ITEM = 'update_backlog_item',
   CREATE_DOC = 'create_doc',
   UPDATE_DOC = 'update_doc',
   LINK_ISSUES = 'link_issues',
