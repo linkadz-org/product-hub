@@ -1,4 +1,5 @@
 import {
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -326,6 +327,25 @@ export function GanttChart({
   const syncHead = () => {
     if (headRef.current && bodyRef.current) headRef.current.scrollLeft = bodyRef.current.scrollLeft;
   };
+  // `sticky top-0` pins below the scroller's *padding*, not its edge — the pages'
+  // `py-4`/`pt-1` would leave a strip where rows show above the header. Pin at
+  // minus that padding instead, re-read on resize (it changes at `md`).
+  const [stickTop, setStickTop] = useState(0);
+  const chartReady = !isLoading && rows.length > 0;
+  useLayoutEffect(() => {
+    const head = headRef.current;
+    if (!head) return;
+    let scroller = head.parentElement;
+    while (scroller && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) {
+      scroller = scroller.parentElement;
+    }
+    if (!scroller) return;
+    const el = scroller;
+    const read = () => setStickTop(-(parseFloat(getComputedStyle(el).paddingTop) || 0));
+    read();
+    window.addEventListener('resize', read);
+    return () => window.removeEventListener('resize', read);
+  }, [chartReady]);
 
   const beginRailDrag = (e: ReactPointerEvent<HTMLElement>) => {
     if (e.button !== 0) return;
@@ -515,7 +535,8 @@ export function GanttChart({
           onWheel={(e) => {
             if (bodyRef.current && e.deltaX) bodyRef.current.scrollLeft += e.deltaX;
           }}
-          className="sticky top-0 z-40 overflow-hidden border-b bg-card"
+          className="sticky z-40 overflow-hidden border-b bg-card"
+          style={{ top: stickTop }}
         >
           <div className="grid" style={{ ...cols, minWidth: railW + TRACK_MIN }}>
             {/* The frozen rail's header — an opaque `bg-card` base under the row's
@@ -1055,8 +1076,9 @@ function GanttBarView({
       </>
     );
 
-  // Edge handles need room to leave a draggable middle — a sliver of a bar stays
-  // move-only rather than becoming two handles with nothing between them.
+  // Edge handles need room to leave a draggable middle. A short bar (a one-day
+  // window is a ~15px square) gets its handles *outside* it instead, so the whole
+  // bar still moves and its days can still change.
   const roomy = width >= 4;
 
   return (
@@ -1075,10 +1097,10 @@ function GanttBarView({
       onPointerCancel={editable ? finish : undefined}
     >
       {fill}
-      {editable && roomy && (
+      {editable && (
         <>
-          <BarHandle side="start" onPointerDown={begin('start')} />
-          <BarHandle side="end" onPointerDown={begin('end')} />
+          <BarHandle side="start" outside={!roomy} onPointerDown={begin('start')} />
+          <BarHandle side="end" outside={!roomy} onPointerDown={begin('end')} />
         </>
       )}
       {preview && (
@@ -1267,12 +1289,16 @@ function MarkerGrip({
 }
 
 /** A resize grip at one end of a bar — an 8px hit zone showing a grab line on
- *  hover, so a read-only bar and an editable one look the same until pointed at. */
+ *  hover, so a read-only bar and an editable one look the same until pointed at.
+ *  `outside` hangs it just past the bar's edge (on the track, so its line is drawn
+ *  in the foreground colour) — for a bar too short to give up its own ends. */
 function BarHandle({
   side,
+  outside,
   onPointerDown,
 }: {
   side: 'start' | 'end';
+  outside?: boolean;
   onPointerDown: (e: ReactPointerEvent<HTMLElement>) => void;
 }) {
   return (
@@ -1280,11 +1306,14 @@ function BarHandle({
       onPointerDown={onPointerDown}
       className={cn(
         'absolute inset-y-0 z-10 w-2 cursor-ew-resize',
-        side === 'start' ? 'left-0' : 'right-0',
+        side === 'start' ? (outside ? '-left-2.5' : 'left-0') : outside ? '-right-2.5' : 'right-0',
       )}
     >
       <span
-        className="absolute inset-y-1 left-1/2 w-0.5 -translate-x-1/2 rounded-full bg-background/90 opacity-0 transition-opacity group-hover:opacity-100"
+        className={cn(
+          'absolute inset-y-1 left-1/2 w-0.5 -translate-x-1/2 rounded-full opacity-0 transition-opacity group-hover:opacity-100',
+          outside ? 'bg-foreground/60' : 'bg-background/90',
+        )}
         aria-hidden
       />
     </span>
