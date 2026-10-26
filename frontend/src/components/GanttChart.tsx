@@ -73,6 +73,30 @@ interface Tick {
   label: string;
 }
 
+/** Past this many days a weekend is a sliver of a pixel — stripes would just be noise. */
+const WEEKEND_MAX_SPAN_DAYS = 200;
+
+/**
+ * Saturday–Sunday stretches across the window, as `[start, end)` epoch pairs.
+ * UTC-aligned, like everything else on the axis: a `YYYY-MM-DD` date parses to UTC
+ * midnight, so a Saturday due date lands on the stripe's own day.
+ */
+function weekendSpans(minMs: number, maxMs: number): [number, number][] {
+  if ((maxMs - minMs) / GANTT_DAY > WEEKEND_MAX_SPAN_DAYS) return [];
+  const out: [number, number][] = [];
+  for (let d = Math.floor(minMs / GANTT_DAY) * GANTT_DAY; d < maxMs; d += GANTT_DAY) {
+    const dow = new Date(d).getUTCDay();
+    if (dow === 6) out.push([d, d + 2 * GANTT_DAY]);
+    // A window that opens on a Sunday still owes that Sunday its stripe.
+    else if (dow === 0 && out.length === 0) out.push([d, d + GANTT_DAY]);
+  }
+  return out;
+}
+
+/** Inclusive day count of a window — "Oct 1 – Oct 5" is 5 days, not 4. */
+const daysLabel = (start: number, end: number) =>
+  t('boards.ganttDays').replace('{count}', String(Math.round((end - start) / GANTT_DAY) + 1));
+
 /** Axis ticks across the padded window: weekly for short spans, monthly for long
  *  ones — keeps the header readable whether the window is two weeks or two quarters. */
 function buildTicks(minMs: number, maxMs: number): Tick[] {
@@ -210,8 +234,19 @@ export interface GanttRow {
    *
    * Same contract as `onBarChange`: called once on release with the day-aligned
    * date, pointer-only, and the caller must reflect it optimistically.
+   *
+   * On a marker row, `onBarChange` adds a grip either side of the diamond: drag
+   * one out and the single date **stretches into a window** — a due-only task
+   * gains a start, reported through `onBarChange` like any bar edit.
    */
   onMarkerChange?: (next: { at: number }) => void;
+  /**
+   * **Double-click an empty spot on the row's track** → called with that day (UTC
+   * midnight, the same instant a `YYYY-MM-DD` date parses to). The caller decides
+   * what the day means — "set the due date here" for an issue — so an undated row
+   * gets placed without opening it.
+   */
+  onDayDoubleClick?: (at: number) => void;
 }
 
 export interface GanttChartProps {
@@ -282,6 +317,15 @@ export function GanttChart({
   /** Folded parents, by row id. Empty = everything open, which is the state the
    *  timeline has always had — collapsing is opt-in, never the first thing you see. */
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+  // The axis header lives *outside* the body's horizontal scroller so it can stick
+  // to the page's vertical scroll (a sticky element can't escape an overflow box).
+  // It scrolls sideways in lockstep instead: the body drives it, and a sideways
+  // wheel over the header is handed to the body.
+  const headRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const syncHead = () => {
+    if (headRef.current && bodyRef.current) headRef.current.scrollLeft = bodyRef.current.scrollLeft;
+  };
 
   const beginRailDrag = (e: ReactPointerEvent<HTMLElement>) => {
     if (e.button !== 0) return;
@@ -401,7 +445,14 @@ export function GanttChart({
   maxMs += pad;
 
   const pct = (v: number) => Math.min(100, Math.max(0, ((v - minMs) / (maxMs - minMs)) * 100));
+  /** A fraction of the track's width back to the day under it (UTC midnight). */
+  const dayAt = (f: number) => Math.floor((minMs + f * (maxMs - minMs)) / GANTT_DAY) * GANTT_DAY;
   const ticks = buildTicks(minMs, maxMs);
+  const weekends = weekendSpans(minMs, maxMs).map(([s, e]) => ({
+    key: s,
+    left: pct(s),
+    width: Math.max(0, pct(e) - pct(s)),
+  }));
   const todayX = pct(Date.now());
   // Left → right, so the alternating tint of the `default` tone counts bands in
   // reading order regardless of how the caller sorted them.
@@ -454,10 +505,19 @@ export function GanttChart({
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border bg-card">
-        <div style={{ minWidth: railW + TRACK_MIN }}>
-          {/* Axis header */}
-          <div className="grid border-b" style={cols}>
+      {/* `overflow-clip`, not `hidden`: it rounds the corners without becoming a
+          scroll container, which would pin the sticky header inside this box. */}
+      <div className="overflow-clip rounded-xl border bg-card">
+        {/* Axis header — sticks to the top of the page's scroller while the rows
+            scroll under it. Opaque (`bg-card`) so bars don't show through. */}
+        <div
+          ref={headRef}
+          onWheel={(e) => {
+            if (bodyRef.current && e.deltaX) bodyRef.current.scrollLeft += e.deltaX;
+          }}
+          className="sticky top-0 z-40 overflow-hidden border-b bg-card"
+        >
+          <div className="grid" style={{ ...cols, minWidth: railW + TRACK_MIN }}>
             {/* The frozen rail's header — an opaque `bg-card` base under the row's
                 muted tint, since the axis now scrolls *behind* it. */}
             <div className="sticky left-0 z-30 border-r bg-card">
@@ -503,6 +563,14 @@ export function GanttChart({
                 </div>
               )}
               <div className="relative h-8">
+                {weekends.map((w) => (
+                  <div
+                    key={w.key}
+                    className="absolute inset-y-0 bg-muted/60"
+                    style={{ left: `${w.left}%`, width: `${w.width}%` }}
+                    aria-hidden
+                  />
+                ))}
                 {ticks.map((tk, i) => (
                   <div
                     key={i}
@@ -521,10 +589,21 @@ export function GanttChart({
               </div>
             </div>
           </div>
+        </div>
 
-          {/* Body: band tints, gridlines and the today line sit behind the rows. */}
-          <div className="relative">
+        <div ref={bodyRef} onScroll={syncHead} className="overflow-x-auto">
+          {/* Body: weekend and band tints, gridlines and the today line sit behind the rows. */}
+          <div className="relative" style={{ minWidth: railW + TRACK_MIN }}>
             <div className="pointer-events-none absolute inset-y-0 right-0 z-0" style={{ left: railW }}>
+              {/* Weekends first, the faintest layer — a band or gridline over one
+                  still reads. */}
+              {weekends.map((w) => (
+                <div
+                  key={w.key}
+                  className="absolute inset-y-0 bg-muted/40"
+                  style={{ left: `${w.left}%`, width: `${w.width}%` }}
+                />
+              ))}
               {/* Painted first so gridlines stay on top of them. `default` bands
                   alternate a faint tint — enough to count sprints across, not
                   enough to compete with the bars. */}
@@ -555,6 +634,7 @@ export function GanttChart({
                   row={row}
                   cols={cols}
                   pct={pct}
+                  dayAt={dayAt}
                   spanMs={maxMs - minMs}
                   // Every row in a collapsible chart reserves the chevron's width,
                   // so a childless item's title still lines up with its neighbours'.
@@ -576,6 +656,7 @@ function GanttRowView({
   row,
   cols,
   pct,
+  dayAt,
   spanMs,
   indented,
   childCount,
@@ -586,6 +667,8 @@ function GanttRowView({
   /** The chart's two column widths — the rail is resizable, so they're shared. */
   cols: { gridTemplateColumns: string };
   pct: (v: number) => number;
+  /** Track fraction (0–1) → the day under it — for double-click-to-date. */
+  dayAt: (f: number) => number;
   spanMs: number;
   /** The chart has a chevron gutter — reserve it on every row so titles align. */
   indented?: boolean;
@@ -741,12 +824,36 @@ function GanttRowView({
           into days, so a bar must stay a direct child of it. */}
       <div
         data-gantt-track
-        className={cn('relative', row.bar ? 'h-10' : 'h-8', row.muted && 'opacity-50 grayscale')}
+        className={cn(
+          'relative',
+          row.bar ? 'h-10' : 'h-8',
+          row.muted && 'opacity-50 grayscale',
+          row.onDayDoubleClick && 'cursor-cell',
+        )}
+        title={row.onDayDoubleClick ? t('boards.ganttDoubleClickHint') : undefined}
+        onDoubleClick={
+          row.onDayDoubleClick
+            ? (e) => {
+                // Only the empty track — a double-click on a bar or diamond is the
+                // tail of grabbing it, not a request to re-date the row.
+                if ((e.target as HTMLElement).closest('[data-gantt-item]')) return;
+                const r = e.currentTarget.getBoundingClientRect();
+                if (!r.width) return;
+                row.onDayDoubleClick?.(dayAt((e.clientX - r.left) / r.width));
+              }
+            : undefined
+        }
       >
         {row.bar ? (
           <GanttBarView bar={row.bar} pct={pct} spanMs={spanMs} onChange={row.onBarChange} />
         ) : row.marker && isEpoch(row.marker.at) ? (
-          <GanttMarkerView marker={row.marker} pct={pct} spanMs={spanMs} onChange={row.onMarkerChange} />
+          <GanttMarkerView
+            marker={row.marker}
+            pct={pct}
+            spanMs={spanMs}
+            onChange={row.onMarkerChange}
+            onStretch={row.onBarChange}
+          />
         ) : row.emptyText ? (
           <span className="absolute left-1 top-1/2 -translate-y-1/2 text-[10px] italic text-muted-foreground/70">
             {row.emptyText}
@@ -955,6 +1062,7 @@ function GanttBarView({
   return (
     <div
       ref={wrap}
+      data-gantt-item
       className={cn(
         'group absolute top-1/2 h-4 -translate-y-1/2',
         editable && 'cursor-grab active:cursor-grabbing',
@@ -975,17 +1083,29 @@ function GanttBarView({
       )}
       {preview && (
         <span className="absolute bottom-full left-1/2 z-20 mb-1 -translate-x-1/2 whitespace-nowrap rounded bg-foreground px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-background shadow">
-          {label}
+          {label} · {daysLabel(preview.start, preview.end)}
         </span>
       )}
     </div>
   );
 }
 
+/** What a pointer is doing to a diamond: moving its date, or stretching it out
+ *  from one side into a window. */
+interface MarkerDrag {
+  mode: 'move' | 'start' | 'end';
+  x0: number;
+  at0: number;
+  msPerPx: number;
+}
+
 /**
  * One single-date diamond, optionally draggable. The maths is the bar's, minus a
  * second date: pixels → whole days from the measured track, a floating label while
  * it moves, and the new date reported once on release.
+ *
+ * With `onStretch` it also grows a grip on each side: drag one out and the date
+ * becomes a window (a ghost bar previews it), reported once as `{ start, end }`.
  *
  * A 10px glyph is nothing to aim at, so when it's editable the diamond sits in a
  * transparent 24px hit box — the target you grab is the one a pointer can actually
@@ -996,42 +1116,59 @@ function GanttMarkerView({
   pct,
   spanMs,
   onChange,
+  onStretch,
 }: {
   marker: GanttMarker;
   pct: (v: number) => number;
   spanMs: number;
   onChange?: (next: { at: number }) => void;
+  onStretch?: (next: { start: number; end: number }) => void;
 }) {
   const wrap = useRef<HTMLSpanElement>(null);
-  const drag = useRef<{ x0: number; at0: number; msPerPx: number } | null>(null);
-  const latest = useRef<number | null>(null);
-  const [preview, setPreview] = useState<number | null>(null);
-  const editable = !!onChange;
+  const drag = useRef<MarkerDrag | null>(null);
+  const latest = useRef<{ start: number; end: number } | null>(null);
+  // `start === end` is a move preview; anything wider is a stretch.
+  const [preview, setPreview] = useState<{ start: number; end: number } | null>(null);
+  const movable = !!onChange;
+  const stretchable = !!onStretch;
+  const editable = movable || stretchable;
 
-  const at = preview ?? marker.at;
-  const label = formatDate(new Date(at));
+  const stretching = preview != null && preview.end > preview.start;
+  const at = preview && !stretching ? preview.start : marker.at;
+  const label = stretching
+    ? `${formatDate(new Date(preview.start))} – ${formatDate(new Date(preview.end))} · ${daysLabel(preview.start, preview.end)}`
+    : formatDate(new Date(at));
 
-  const begin = (e: ReactPointerEvent<HTMLElement>) => {
+  const begin = (mode: MarkerDrag['mode']) => (e: ReactPointerEvent<HTMLElement>) => {
     const el = wrap.current;
     // Measure the track (the marker's own box is a fixed 24px, not the window).
     const w = el?.parentElement?.getBoundingClientRect().width ?? 0;
     // Mouse/pen only — on touch the chart scrolls sideways, and claiming the
     // gesture here would trap a swipe that happened to start on a diamond.
-    if (!onChange || !el || !w || e.button !== 0 || e.pointerType === 'touch') return;
+    if (!el || !w || e.button !== 0 || e.pointerType === 'touch') return;
+    if (mode === 'move' ? !movable : !stretchable) return;
     e.preventDefault();
     e.stopPropagation();
-    drag.current = { x0: e.clientX, at0: marker.at, msPerPx: spanMs / w };
-    latest.current = marker.at;
+    drag.current = { mode, x0: e.clientX, at0: marker.at, msPerPx: spanMs / w };
+    latest.current = { start: marker.at, end: marker.at };
     el.setPointerCapture(e.pointerId);
-    setPreview(marker.at);
+    setPreview(latest.current);
   };
 
   const onMove = (e: ReactPointerEvent<HTMLElement>) => {
     const d = drag.current;
     if (!d) return;
     const shift = Math.round(((e.clientX - d.x0) * d.msPerPx) / GANTT_DAY) * GANTT_DAY;
-    latest.current = d.at0 + shift;
-    setPreview(latest.current);
+    // A grip only ever grows the window away from the date — dragged back past it,
+    // the window just closes to the single day it started as.
+    const next =
+      d.mode === 'move'
+        ? { start: d.at0 + shift, end: d.at0 + shift }
+        : d.mode === 'start'
+          ? { start: Math.min(d.at0 + shift, d.at0), end: d.at0 }
+          : { start: d.at0, end: Math.max(d.at0 + shift, d.at0) };
+    latest.current = next;
+    setPreview(next);
   };
 
   const finish = () => {
@@ -1040,34 +1177,91 @@ function GanttMarkerView({
     drag.current = null;
     latest.current = null;
     setPreview(null);
+    if (!d || !next) return;
     // A click that moved nothing is not an edit.
-    if (d && next !== null && next !== d.at0) onChange?.({ at: next });
+    if (d.mode === 'move') {
+      if (next.start !== d.at0) onChange?.({ at: next.start });
+    } else if (next.end > next.start) {
+      onStretch?.(next);
+    }
   };
 
   return (
-    <span
-      ref={wrap}
-      className={cn(
-        'absolute top-1/2 grid -translate-x-1/2 -translate-y-1/2 place-items-center',
-        editable ? 'size-6 cursor-grab touch-none active:cursor-grabbing' : 'size-2.5',
+    <>
+      {/* The window being stretched out, drawn where the bar will land. */}
+      {stretching && (
+        <span
+          className="pointer-events-none absolute top-1/2 h-4 -translate-y-1/2 rounded-md opacity-50"
+          style={{
+            left: `${pct(preview.start)}%`,
+            width: `${Math.max(0, pct(preview.end) - pct(preview.start))}%`,
+            backgroundColor: marker.color,
+          }}
+          aria-hidden
+        />
       )}
-      style={{ left: `${pct(at)}%` }}
-      title={marker.tooltip}
-      onPointerDown={editable ? begin : undefined}
-      onPointerMove={editable ? onMove : undefined}
-      onPointerUp={editable ? finish : undefined}
-      onPointerCancel={editable ? finish : undefined}
+      <span
+        ref={wrap}
+        data-gantt-item
+        className={cn(
+          'group/marker absolute top-1/2 grid -translate-x-1/2 -translate-y-1/2 place-items-center',
+          editable ? 'size-6 touch-none' : 'size-2.5',
+          movable && 'cursor-grab active:cursor-grabbing',
+        )}
+        style={{ left: `${pct(at)}%` }}
+        title={marker.tooltip}
+        onPointerDown={editable ? begin('move') : undefined}
+        onPointerMove={editable ? onMove : undefined}
+        onPointerUp={editable ? finish : undefined}
+        onPointerCancel={editable ? finish : undefined}
+      >
+        <span
+          className="size-2.5 rotate-45 rounded-[2px] ring-2 ring-card"
+          style={{ backgroundColor: marker.color }}
+          aria-hidden
+        />
+        {stretchable && (
+          <>
+            <MarkerGrip side="start" active={stretching} onPointerDown={begin('start')} />
+            <MarkerGrip side="end" active={stretching} onPointerDown={begin('end')} />
+          </>
+        )}
+        {preview !== null && (
+          <span className="absolute bottom-full left-1/2 z-20 mb-0.5 -translate-x-1/2 whitespace-nowrap rounded bg-foreground px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-background shadow">
+            {label}
+          </span>
+        )}
+      </span>
+    </>
+  );
+}
+
+/** A stretch grip beside a diamond — an 8px hit zone just outside the hit box,
+ *  showing a short line on hover so a diamond reads as "pull me wider". */
+function MarkerGrip({
+  side,
+  active,
+  onPointerDown,
+}: {
+  side: 'start' | 'end';
+  active: boolean;
+  onPointerDown: (e: ReactPointerEvent<HTMLElement>) => void;
+}) {
+  return (
+    <span
+      onPointerDown={onPointerDown}
+      className={cn(
+        'absolute inset-y-0 w-2 cursor-ew-resize',
+        side === 'start' ? '-left-2' : '-right-2',
+      )}
     >
       <span
-        className="size-2.5 rotate-45 rounded-[2px] ring-2 ring-card"
-        style={{ backgroundColor: marker.color }}
+        className={cn(
+          'absolute inset-y-1 left-1/2 w-0.5 -translate-x-1/2 rounded-full bg-foreground/60 transition-opacity',
+          active ? 'opacity-0' : 'opacity-0 group-hover/marker:opacity-100',
+        )}
         aria-hidden
       />
-      {preview !== null && (
-        <span className="absolute bottom-full left-1/2 z-20 mb-0.5 -translate-x-1/2 whitespace-nowrap rounded bg-foreground px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-background shadow">
-          {label}
-        </span>
-      )}
     </span>
   );
 }

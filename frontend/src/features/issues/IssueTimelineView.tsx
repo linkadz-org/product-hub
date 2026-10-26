@@ -346,6 +346,22 @@ export function IssueTimelineView({
     } else {
       row.emptyText = t('boards.timelineNoDates');
     }
+    if (editable) {
+      // A diamond pulled out from either side becomes a window — both dates.
+      if (row.marker) {
+        row.onBarChange = (n) =>
+          reschedule(issue.id, { startDate: isoDay(n.start), endDate: isoDay(n.end) });
+      }
+      // Double-click the track → due date on that day. A start after it would
+      // make an inverted window, so the start follows it back.
+      row.onDayDoubleClick = (at) =>
+        reschedule(
+          issue.id,
+          isEpoch(start) && at < start
+            ? { startDate: isoDay(at), endDate: isoDay(at) }
+            : { endDate: isoDay(at) },
+        );
+    }
     return row;
   });
 

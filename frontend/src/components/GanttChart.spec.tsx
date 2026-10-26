@@ -83,3 +83,65 @@ describe('GanttChart toolbar slot', () => {
     expect(text).not.toContain('SWITCH');
   });
 });
+
+/**
+ * **Double-click to date a row.** The track turns a pointer x into the day under
+ * it — UTC midnight, the instant a `YYYY-MM-DD` date parses to, so the adapter's
+ * `isoDay` round-trips it exactly. A double-click that lands on the row's own
+ * diamond is the tail of grabbing it and must not re-date the row.
+ */
+describe('GanttChart double-click to date', () => {
+  const realRect = HTMLElement.prototype.getBoundingClientRect;
+  beforeEach(() => {
+    // jsdom lays nothing out; give every box a 1000px-wide track to measure.
+    HTMLElement.prototype.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 1000, height: 32, right: 1000, bottom: 32, x: 0, y: 0 }) as DOMRect;
+  });
+  afterEach(() => {
+    HTMLElement.prototype.getBoundingClientRect = realRect;
+  });
+
+  const dblclick = (el: Element, clientX: number) =>
+    act(() => {
+      el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX }));
+    });
+
+  it('reports the day under the pointer on an undated row', () => {
+    const picked: number[] = [];
+    render(
+      createElement(GanttChart, {
+        labelHeader: 'Item',
+        rows: [
+          ...ROWS,
+          { id: 'b', label: 'Undated', emptyText: 'No dates', onDayDoubleClick: (at) => picked.push(at) },
+        ],
+      }),
+    );
+    const tracks = host.querySelectorAll('[data-gantt-track]');
+    dblclick(tracks[1], 500);
+    expect(picked).toHaveLength(1);
+    expect(picked[0] % GANTT_DAY).toBe(0);
+    // Mid-track of a window that spans today → within a couple of weeks of now.
+    expect(Math.abs(picked[0] - Date.now())).toBeLessThan(14 * GANTT_DAY);
+  });
+
+  it('ignores a double-click on the row’s diamond', () => {
+    const picked: number[] = [];
+    render(
+      createElement(GanttChart, {
+        labelHeader: 'Item',
+        rows: [
+          {
+            id: 'm',
+            label: 'Due only',
+            marker: { at: Date.now(), color: 'red' },
+            onMarkerChange: () => {},
+            onDayDoubleClick: (at) => picked.push(at),
+          },
+        ],
+      }),
+    );
+    dblclick(host.querySelector('[data-gantt-item]')!, 500);
+    expect(picked).toHaveLength(0);
+  });
+});

@@ -195,7 +195,7 @@ interface RoadmapGanttProps {
    * **resizable** (drag an edge to change just that date). Omit — public view,
    * or no write access — and the task rows are read-only.
    */
-  onTaskDatesChange?: (task: TaskDto, next: DateWindow) => void;
+  onTaskDatesChange?: (task: TaskDto, next: Partial<DateWindow>) => void;
   /**
    * The same for a backlog item's own bar. An item stores its own start/end pair,
    * so dragging writes them straight back; an item that has never been scheduled
@@ -318,6 +318,9 @@ export function RoadmapGantt({
     if (onItemDatesChange) {
       itemRow.onBarChange = (n) =>
         onItemDatesChange(item, { startDate: isoDay(n.start), endDate: isoDay(n.end) });
+      // Double-click → the item ends that day (its start follows if it was later).
+      itemRow.onDayDoubleClick = (at) =>
+        onItemDatesChange(item, { startDate: isoDay(Math.min(start, at)), endDate: isoDay(at) });
     }
     out.push(itemRow);
 
@@ -367,20 +370,30 @@ export function RoadmapGantt({
         // solid block the issue timeline draws for the same two dates.
         const range = `${formatDate(new Date(s))} – ${formatDate(new Date(e))}`;
         row.bar = { start: s, end: e, color: st.color, tooltip: `${tk.title} · ${range} · ${st.label}` };
-        // Only a task that already has both dates can be rescheduled by drag —
-        // a single-date task is a diamond, and there's no window to move.
-        if (onTaskDatesChange) {
-          row.onBarChange = (n) =>
-            onTaskDatesChange(tk, { startDate: isoDay(n.start), endDate: isoDay(n.end) });
-        }
       } else if (isEpoch(e)) {
         const when = t('roadmaps.ganttDue').replace('{date}', formatDate(new Date(e)));
         row.marker = { at: e, color: st.color, tooltip: `${tk.title} · ${when} · ${st.label}` };
+        if (onTaskDatesChange) row.onMarkerChange = (n) => onTaskDatesChange(tk, { endDate: isoDay(n.at) });
       } else if (isEpoch(s)) {
         const when = t('roadmaps.ganttStarts').replace('{date}', formatDate(new Date(s)));
         row.marker = { at: s, color: st.color, tooltip: `${tk.title} · ${when} · ${st.label}` };
+        if (onTaskDatesChange) row.onMarkerChange = (n) => onTaskDatesChange(tk, { startDate: isoDay(n.at) });
       } else {
         row.emptyText = t('roadmaps.ganttNoDates');
+      }
+      if (onTaskDatesChange) {
+        // A bar moves/resizes; a diamond pulled out from either side becomes one.
+        if (row.bar || row.marker) {
+          row.onBarChange = (n) =>
+            onTaskDatesChange(tk, { startDate: isoDay(n.start), endDate: isoDay(n.end) });
+        }
+        // Double-click the track → due date on that day; a start after it follows
+        // it back rather than leaving the window inverted.
+        row.onDayDoubleClick = (at) =>
+          onTaskDatesChange(
+            tk,
+            isEpoch(s) && at < s ? { startDate: isoDay(at), endDate: isoDay(at) } : { endDate: isoDay(at) },
+          );
       }
       out.push(row);
     }
@@ -559,7 +572,7 @@ export function RoadmapGantt({
           )}
           {/* Drag isn't discoverable on its own — say it, but only to someone who
               actually has an editable bar in front of them. */}
-          {(onItemDatesChange || (hasTaskBars && onTaskDatesChange)) && (
+          {(onItemDatesChange || onTaskDatesChange) && (
             <span className="flex items-center gap-1.5">
               <MoveHorizontal className="size-3.5" aria-hidden />
               {t('roadmaps.ganttDragHint')}
@@ -643,7 +656,7 @@ export function RoadmapGanttView({
   // Dates just dragged, applied over the fetched task until the refetch agrees:
   // the update isn't optimistic, so without this the bar would spring back to
   // where it started for the length of the round-trip.
-  const [pending, setPending] = useState<Record<string, DateWindow>>({});
+  const [pending, setPending] = useState<Record<string, Partial<DateWindow>>>({});
 
   const fetched = data?.items;
   useEffect(() => {
@@ -654,7 +667,12 @@ export function RoadmapGanttView({
       let settled = false;
       for (const tk of fetched) {
         const p = next[tk.id];
-        if (p && tk.startDate === p.startDate && tk.endDate === p.endDate) {
+        // Only the dates this edit wrote — a due-only edit leaves the start alone.
+        if (
+          p &&
+          (p.startDate === undefined || tk.startDate === p.startDate) &&
+          (p.endDate === undefined || tk.endDate === p.endDate)
+        ) {
           delete next[tk.id];
           settled = true;
         }
@@ -673,7 +691,7 @@ export function RoadmapGanttView({
     tasksByItem.set(tk.roadmapItemId, arr);
   }
 
-  const reschedule = (task: TaskDto, next: DateWindow) => {
+  const reschedule = (task: TaskDto, next: Partial<DateWindow>) => {
     setPending((p) => ({ ...p, [task.id]: next }));
     update.mutate(
       { id: task.id, input: next },
