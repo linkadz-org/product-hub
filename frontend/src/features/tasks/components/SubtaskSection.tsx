@@ -218,6 +218,23 @@ export function SubtaskSection({
             style={{ backgroundColor: column?.color ?? taskStatusColor(tk.status) }}
             aria-hidden
           />
+          {/* Its key — click copies a link to the child, for pasting into chat/PRs. */}
+          {tk.shortId && (
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard
+                  ?.writeText(`${window.location.origin}/issues/${tk.shortId}`)
+                  .then(() => toast.success(t('share.linkCopied'), { description: tk.shortId }))
+                  .catch((err: Error) => toast.error(t('common.error'), { description: err.message }));
+              }}
+              className="shrink-0 rounded px-1 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              title={t('share.copyLink')}
+              aria-label={`${t('share.copyLink')}: ${tk.shortId}`}
+            >
+              {tk.shortId}
+            </button>
+          )}
           <button
             type="button"
             onClick={() =>
