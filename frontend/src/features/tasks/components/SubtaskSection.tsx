@@ -9,7 +9,7 @@ import { useAuth } from '@/lib/auth';
 import { useTeams, useTeamStatusesLookup } from '@/features/teams/api';
 import { TeamIconPicker } from '@/features/teams/TeamIconPicker';
 import { IssuePeekDrawer, type IssuePeek } from '@/features/issues/IssuePeekDrawer';
-import { groupByParent, rootsOf, subtreeIds, useIssueDescendants } from '@/features/issues/issueTree';
+import { groupByParent, rootsOf, useIssueDescendants } from '@/features/issues/issueTree';
 import { IssueKind, TeamIssueType, isIssueDone, taskStatusColor } from '@/types/enums';
 import type { IssueDto } from '@/types/dto';
 import {
@@ -59,13 +59,6 @@ export interface SubtaskSectionProps {
   /** Children can span teams (a backlog item's do) — shows a per-row team badge. */
   crossTeam?: boolean;
   /**
-   * The issue this list hangs off, when the list *is* "children of X" — it becomes
-   * the top entry of every row's Parent picker, i.e. "directly under this one".
-   * Omit on a backlog item's list, where rows are held by `roadmapItemId` and the
-   * top entry is "No parent" instead.
-   */
-  rootParent?: { id: string; title: string };
-  /**
    * Put bugs in their own list below the sub-tasks and **out of the progress
    * rollup**. On a backlog item a linked bug is work *found*, not work *planned*:
    * counting it made the delivery number fall the moment someone filed a bug,
@@ -95,16 +88,14 @@ export interface SubtaskSectionProps {
  * **A row's ✕ unlinks; it does not delete.** Everything here is listed by virtue
  * of a link — `roadmapItemId` on a backlog item's panel, `parentId` under a task
  * — so the only thing this panel may take away is that link. It used to call
- * `useDeleteIssue`, which meant the row's own destroy-button sat inches from its
- * Parent dropdown and wiped the issue for good on one click.
+ * `useDeleteIssue`, which wiped the issue for good on one click.
  *
  * **The list is a tree, not a flat set.** The query only ever returns one level
  * (direct children, or the issues on a backlog item), so deeper work simply
  * didn't appear and the rollup quietly ignored it. Descendants are fetched and
- * drawn indented under their parent, every row shown counts toward the rollup,
- * and each row's Parent picker lets you restructure in place — its options leave
- * out the row's own subtree, since re-parenting under your own descendant is
- * exactly what makes a cycle.
+ * drawn indented under their parent, and every row shown counts toward the
+ * rollup. Re-parenting lives on the child's own detail (its Parent field), not
+ * on every row here.
  */
 export function SubtaskSection({
   query,
@@ -115,7 +106,6 @@ export function SubtaskSection({
   defaultTeamId,
   titlePlaceholder = t('subtasks.titlePlaceholder'),
   crossTeam = false,
-  rootParent,
   separateBugs = false,
   onLinkExisting,
   className,
@@ -179,17 +169,6 @@ export function SubtaskSection({
   const total = planned.length;
   const pct = total ? Math.round((done / total) * 100) : 0;
 
-  /** Where this row may be re-parented: the list's own root (or "no parent"),
-   *  plus every other row **outside its own subtree** — a row can't move under
-   *  something it already contains. */
-  function parentOptions(id: string) {
-    const own = subtreeIds(all, id);
-    const top = rootParent
-      ? { value: rootParent.id, label: rootParent.title }
-      : { value: '', label: t('subtasks.parentNone') };
-    return [top, ...all.filter((it) => !own.has(it.id)).map((it) => ({ value: it.id, label: it.title }))];
-  }
-
   function renderRow(tk: IssueDto, depth: number, hasChildren: boolean) {
     // "Mine" is *am I on it*, not *am I the only one* — a child can be shared.
     const mine = !!user && tk.assignees.some((a) => a.id === user.id);
@@ -202,14 +181,6 @@ export function SubtaskSection({
     const columns = statusesFor(tk.teamId, team?.issueType ?? TeamIssueType.TASK);
     const column = columns.find((c) => c.key === tk.status);
 
-    const options = canWrite ? parentOptions(tk.id) : [];
-    // Its parent may be an issue this panel doesn't list (a backlog item's rows
-    // can hang off anything). Say so rather than drawing it as top-level.
-    const parentKnown = options.some((o) => o.value === tk.parentId);
-    if (canWrite && !parentKnown && tk.parentId) {
-      options.push({ value: tk.parentId, label: t('subtasks.parentElsewhere') });
-    }
-
     return (
       <div
         className={cn(
@@ -218,7 +189,7 @@ export function SubtaskSection({
           // controls flatten into fixed columns so they line up across rows.
           'sm:grid sm:items-center sm:gap-2',
           canWrite
-            ? 'sm:grid-cols-[minmax(0,1fr)_128px_112px_140px_28px]'
+            ? 'sm:grid-cols-[minmax(0,1fr)_112px_140px_28px]'
             : 'sm:grid-cols-[minmax(0,1fr)_112px_140px]',
         )}
       >
@@ -280,23 +251,6 @@ export function SubtaskSection({
         {/* `sm:contents` drops this box at `sm+` so its children become grid
             cells directly — one markup for both layouts. */}
         <div className="flex flex-wrap items-center gap-2 sm:contents">
-          {/* Parent — restructure without opening the child. */}
-          {canWrite && (
-            <Select
-              value={tk.parentId}
-              onValueChange={(v) =>
-                update.mutate(
-                  { id: tk.id, input: { parentId: v } },
-                  // A dropdown that silently snaps back just reads as broken.
-                  { onError: (err) => toast.error(t('common.error'), { description: err.message }) },
-                )
-              }
-              options={options}
-              className="h-7 w-full min-w-[128px] flex-1 sm:w-full sm:min-w-0 sm:flex-none"
-              aria-label={t('subtasks.parent')}
-            />
-          )}
-
           {/* Status */}
           {canWrite ? (
             <Select

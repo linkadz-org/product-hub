@@ -26,6 +26,8 @@ export const en = {
   'nav.expand': 'Expand sidebar',
   'nav.resize': 'Resize sidebar',
   'nav.resizeHint': 'Drag to resize · double-click to reset',
+  'drawer.resize': 'Resize panel',
+  'drawer.resizeHint': 'Drag to resize · double-click to reset',
   'nav.menu': 'Menu',
   'nav.create': 'Create new',
   'nav.newTeam': 'New space',
@@ -823,7 +825,6 @@ export const en = {
   /** Top of the Parent picker on a backlog item, where a row needs no parent. */
   'subtasks.parentNone': 'No parent',
   /** Its parent isn't one of the rows here — better than drawing it as top-level. */
-  'subtasks.parentElsewhere': 'Another issue',
   /** The row's ✕. Both say "keeps the …" because this button used to delete the
    *  issue outright, and the whole point of the change is that it no longer does. */
   'subtasks.unlinkParent': 'Detach from parent (keeps the task)',

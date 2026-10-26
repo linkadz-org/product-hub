@@ -196,8 +196,6 @@ export function TaskDetail({ taskId, onDeleted, menuTarget = 'header', dense = f
                   : []
               }
               defaultTeamId={task.teamId}
-              // The top entry of each row's Parent picker: "directly under this task".
-              rootParent={{ id: task.id, title: task.title }}
               onLinkExisting={() => setPickOpen(true)}
             />
             {pickOpen && (

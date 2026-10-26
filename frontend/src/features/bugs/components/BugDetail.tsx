@@ -186,10 +186,8 @@ export function BugDetail({ bugId, onDeleted, menuTarget = 'header', dense = fal
                 : []
             }
             defaultTeamId={bug.teamId}
-            // The top entry of each row's Parent picker: "directly under this bug".
             // No `separateBugs` here — every child of a bug is a bug, so the split
             // would leave the sub-issue list empty and put everything below it.
-            rootParent={{ id: bug.id, title: bug.title }}
             onLinkExisting={() => setPickOpen(true)}
           />
           {pickOpen && (
