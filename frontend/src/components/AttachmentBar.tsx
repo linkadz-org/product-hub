@@ -1,6 +1,7 @@
 import { useRef, useState, type DragEvent, type MouseEvent } from 'react';
 import {
   File as FileIcon,
+  FileArchive,
   FileImage,
   FileSpreadsheet,
   FileText,
@@ -44,7 +45,7 @@ interface AttachmentBarProps {
  * images, which the API already accepts — someone attaching a screenshot beside
  * the spec shouldn't be told to put it in the body instead.
  */
-const ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt,.md,.rtf,image/*,video/*';
+const ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt,.md,.rtf,.zip,image/*,video/*';
 
 /**
  * How a file is shown: `image` as a zoomable thumbnail, `video` as an inline
@@ -76,6 +77,7 @@ function glyphFor(contentType: string, name: string) {
   if (type.startsWith('video/')) return FileVideo;
   if (type.includes('spreadsheet') || type === 'text/csv' || ext === 'xls' || ext === 'csv')
     return FileSpreadsheet;
+  if (type.includes('zip') || ext === 'zip') return FileArchive;
   if (type.includes('presentation') || ext === 'ppt' || ext === 'pptx') return Presentation;
   if (type === 'application/pdf' || type.startsWith('text/') || type.includes('word'))
     return FileText;

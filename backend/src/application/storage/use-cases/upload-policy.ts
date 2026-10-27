@@ -82,7 +82,7 @@ export function resolveUpload(
   const classified = classifyUpload(declared, file.originalName);
   if (!classified) {
     throw new BadRequestException(
-      'That file type cannot be uploaded — images, videos, PDFs, Office documents and text files are accepted.',
+      'That file type cannot be uploaded — images, videos, PDFs, Office documents, text files and ZIP archives are accepted.',
     );
   }
 

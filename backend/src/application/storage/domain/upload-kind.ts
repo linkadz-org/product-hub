@@ -23,6 +23,10 @@ export const DOCUMENT_TYPE_BY_EXT: Record<string, string> = {
   txt: 'text/plain',
   md: 'text/markdown',
   rtf: 'application/rtf',
+  // An archive is only ever downloaded, never rendered, so `application/zip` is
+  // safe to serve from the public URL. Windows browsers claim
+  // `application/x-zip-compressed` — the extension wins, so it's stored as this.
+  zip: 'application/zip',
 };
 
 /** Every content type the map above can produce — used for files with no extension. */

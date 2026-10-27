@@ -106,6 +106,17 @@ describe('CreateUploadUrlUseCase', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it('accepts a zip archive, stored as application/zip whatever Windows claimed', async () => {
+    const { useCase, storage } = makeUseCase(configured());
+    const result = await useCase.execute('t1', {
+      originalName: 'demo_request_form.zip',
+      contentType: 'application/x-zip-compressed',
+      size: 1_000,
+    });
+    expect(storage.signed?.contentType).toBe('application/zip');
+    expect(result.contentType).toBe('application/zip');
+  });
+
   it('refuses when the tenant has no storage set up', async () => {
     const { useCase } = makeUseCase(defaultStorageConfig());
     await expect(

@@ -523,7 +523,7 @@ export const en = {
   'attachments.title': 'Attachments',
   'attachments.add': 'Add file',
   'attachments.remove': 'Remove file',
-  'attachments.hint': 'or drop a PDF, Word or Excel file here',
+  'attachments.hint': 'or drop a PDF, Word, Excel or ZIP file here',
   'docs.linkEmpty': 'Nothing matches that search.',
   'docs.linkedDocs': 'Docs',
   'docs.linkedEmpty': 'No docs linked yet.',
