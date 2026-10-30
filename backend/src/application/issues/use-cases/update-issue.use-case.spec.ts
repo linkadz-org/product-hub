@@ -1,6 +1,6 @@
 import { UpdateIssueUseCase } from './update-issue.use-case';
 import { IssueEntity } from '../domain/entities/issue.entity';
-import { IssueKind } from '../domain/enums/issue.enums';
+import { IssueKind, TaskStatus, isCompletedStatus } from '../domain/enums/issue.enums';
 
 const makeIssue = (over: Partial<Parameters<typeof IssueEntity.create>[0]> = {}) =>
   IssueEntity.create({
@@ -19,6 +19,12 @@ const build = (byId: Record<string, IssueEntity>) => {
   const issues = {
     findById: jest.fn((id: string) => Promise.resolve(byId[id] ?? null)),
     update: jest.fn(() => Promise.resolve()),
+    // The roll-up reads each parent's children off the same table.
+    childRollups: jest.fn((_t: string, [parentId]: string[]) => {
+      const kids = Object.values(byId).filter((i) => i.parentId === parentId);
+      const done = kids.filter((i) => isCompletedStatus(i.kind, i.status)).length;
+      return Promise.resolve(kids.length ? { [parentId]: { total: kids.length, done } } : {});
+    }),
   };
   const users = { findByIds: jest.fn(() => Promise.resolve([])) };
   const cycles = { findById: jest.fn(() => Promise.resolve(null)) };
@@ -108,8 +114,9 @@ describe('UpdateIssueUseCase parent guard', () => {
 
     expect(result.isSuccess).toBe(true);
     expect(child.parentId).toBe('');
-    // Only the issue itself was read — '' can't create a loop.
-    expect(issues.findById).toHaveBeenCalledTimes(1);
+    // '' can't create a loop, so the guard walks nothing — the only other read
+    // is the old parent, for the roll-up.
+    expect(issues.findById.mock.calls.map(([id]) => id)).toEqual(['child', 'old']);
   });
 
   it('survives a loop that already exists above the target', async () => {
@@ -122,5 +129,42 @@ describe('UpdateIssueUseCase parent guard', () => {
     const result = await useCase.execute({ id: 'child', ...scope, dto: { parentId: 'x' } });
 
     expect(result.isSuccess).toBe(true);
+  });
+
+  // RM-85: two open sub-tasks moved under a parent that was already Done. The
+  // parent stayed Done, so the backlog panel folded them away under a "done"
+  // row while the item's bar read 88%.
+  it('reopens a finished parent when an open sub-task moves under it', async () => {
+    const target = withId(makeIssue({ status: TaskStatus.DONE }), 'target');
+    const finished = withId(makeIssue({ parentId: 'target', status: TaskStatus.DONE }), 'finished');
+    const child = withId(makeIssue({ status: TaskStatus.TODO }), 'child');
+    const { useCase } = build({ target, finished, child });
+
+    const result = await useCase.execute({ id: 'child', ...scope, dto: { parentId: 'target' } });
+
+    expect(result.isSuccess).toBe(true);
+    expect(target.status).toBe(TaskStatus.IN_PROGRESS);
+  });
+
+  it('finishes the old parent when its last open sub-task moves away', async () => {
+    const old = withId(makeIssue({ status: TaskStatus.IN_PROGRESS }), 'old');
+    const finished = withId(makeIssue({ parentId: 'old', status: TaskStatus.DONE }), 'finished');
+    const child = withId(makeIssue({ parentId: 'old', status: TaskStatus.TODO }), 'child');
+    const { useCase } = build({ old, finished, child });
+
+    const result = await useCase.execute({ id: 'child', ...scope, dto: { parentId: '' } });
+
+    expect(result.isSuccess).toBe(true);
+    expect(old.status).toBe(TaskStatus.DONE);
+  });
+
+  it('leaves both parents alone when nothing about the parent changed', async () => {
+    const parent = withId(makeIssue({ status: TaskStatus.DONE }), 'parent');
+    const child = withId(makeIssue({ parentId: 'parent', status: TaskStatus.TODO }), 'child');
+    const { useCase, issues } = build({ parent, child });
+
+    await useCase.execute({ id: 'child', ...scope, dto: { title: 'Đổi tên' } });
+
+    expect(issues.childRollups).not.toHaveBeenCalled();
   });
 });

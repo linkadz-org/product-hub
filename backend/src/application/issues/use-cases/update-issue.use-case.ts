@@ -11,6 +11,7 @@ import { UpdateIssueDto } from '../dtos/update-issue.dto';
 import { IssueEntity } from '../domain/entities/issue.entity';
 import { IIssueRepository } from '../repositories/issue.repository';
 import { resolveIssueAssignees } from './resolve-assignees';
+import { rollUpToParents } from './roll-up-parents';
 import { snapshotIssue, diffIssue } from '../domain/issue-diff';
 
 export interface UpdateIssueRequest {
@@ -54,6 +55,7 @@ export class UpdateIssueUseCase
     // Before ANY mutation. setAssignees / setCycle / applyUpdate below all mutate
     // in place, so a snapshot taken later would diff the entity against itself.
     const before = snapshotIssue(issue);
+    const oldParentId = issue.parentId;
 
     // Either shape replaces the whole list: `assigneeIds` is the list itself,
     // `assigneeId` the one-person shorthand ('' unassigns) that the bulk bar, MCP
@@ -127,6 +129,15 @@ export class UpdateIssueUseCase
       actor: { type: actorType ?? AuditActor.USER, id: requesterId, name: requesterName },
       changes: diffIssue(before, issue),
     });
+
+    // A move changes what *both* parents hold: an open sub-task landing under a
+    // finished parent reopens it, and the last open one leaving lets the old
+    // parent finish. Without this a parent sat in Done over open work.
+    if (issue.parentId !== oldParentId) {
+      const ctx = { tenantId, requesterId, requesterName, actorType };
+      await rollUpToParents(this.issues, this.activity, oldParentId, ctx);
+      await rollUpToParents(this.issues, this.activity, issue.parentId, ctx);
+    }
 
     return Result.ok(issue);
   }

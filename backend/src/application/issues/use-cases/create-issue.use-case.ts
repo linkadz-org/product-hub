@@ -18,6 +18,7 @@ import { IssueEntity } from '../domain/entities/issue.entity';
 import { ISSUE_REF_PREFIX, IssueKind } from '../domain/enums/issue.enums';
 import { IIssueRepository } from '../repositories/issue.repository';
 import { resolveIssueAssignees } from './resolve-assignees';
+import { rollUpToParents } from './roll-up-parents';
 
 export interface CreateIssueRequest {
   tenantId: string;
@@ -193,6 +194,14 @@ export class CreateIssueUseCase
       entityRef: issue.shortId || issue.id.toString(),
       actor: { type: actorType ?? AuditActor.USER, id: createdBy, name: createdByName },
       changes: [{ field: 'created', oldValue: '', newValue: '' }],
+    });
+
+    // A new open sub-task under a finished parent means it isn't finished.
+    await rollUpToParents(this.issues, this.activity, issue.parentId, {
+      tenantId,
+      requesterId: createdBy,
+      requesterName: createdByName,
+      actorType,
     });
 
     // Preserve the bug's outbound webhooks (best-effort, never blocks the response).

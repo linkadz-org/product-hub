@@ -5,6 +5,7 @@ import { RecordActivityUseCase } from '@application/audit-log/use-cases';
 import { AuditActor, AuditEntity } from '@application/audit-log/domain/enums/audit.enums';
 import { IssueKind } from '../domain/enums/issue.enums';
 import { IIssueRepository } from '../repositories/issue.repository';
+import { rollUpToParents } from './roll-up-parents';
 
 export interface DeleteIssueRequest {
   id: string;
@@ -55,6 +56,14 @@ export class DeleteIssueUseCase implements IUsecaseExecute<DeleteIssueRequest, R
       entityRef: deletedRef,
       actor: { type: actorType ?? AuditActor.USER, id: requesterId, name: requesterName },
       changes: [{ field: 'deleted', oldValue: '', newValue: '' }],
+    });
+
+    // Deleting the last open sub-task leaves a parent whose work is all done.
+    await rollUpToParents(this.issues, this.activity, issue.parentId, {
+      tenantId,
+      requesterId,
+      requesterName,
+      actorType,
     });
 
     return Result.ok();
