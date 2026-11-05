@@ -70,7 +70,12 @@ export function RoadmapRiceTable({
                 onClick={() => onOpen?.(item)}
               >
                 <TableCell className="text-right tabular-nums text-muted-foreground">{i + 1}</TableCell>
-                <TableCell className="font-medium">{item.title}</TableCell>
+                <TableCell className="font-medium">
+                  {item.shortId && (
+                    <span className="mr-1.5 font-mono text-[11px] font-normal text-muted-foreground">{item.shortId}</span>
+                  )}
+                  {item.title}
+                </TableCell>
                 <TableCell>
                   <span
                     className="inline-flex items-center gap-1.5 whitespace-nowrap text-sm"

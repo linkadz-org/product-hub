@@ -95,7 +95,9 @@ export function RoadmapCalendarView({
     // The item's own colour, from the same helper the Gantt's bar uses — so one
     // item is one colour whichever way you look at the timeline.
     const color = itemColor(item);
-    const title = item.title || t('roadmaps.untitled');
+    // The ref leads, as it does on every other view — a month bar is one line
+    // with no room for chips, so it rides in the label itself.
+    const title = [item.shortId, item.title || t('roadmaps.untitled')].filter(Boolean).join(' ');
     const range =
       isoDay(start) === isoDay(end)
         ? formatDate(new Date(start))

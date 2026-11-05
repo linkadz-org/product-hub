@@ -127,6 +127,9 @@ export function RoadmapRiceChart({
 
       {active && (
         <div className="pointer-events-none absolute right-4 top-4 w-56 rounded-lg border bg-popover p-3 text-popover-foreground shadow-md">
+          {active.shortId && (
+            <div className="font-mono text-[11px] text-muted-foreground">{active.shortId}</div>
+          )}
           <div className="text-sm font-semibold leading-snug">{active.title}</div>
           <div className="mt-1.5 flex flex-wrap gap-1.5 text-[11px]">
             <span className="rounded bg-muted px-1.5 py-0.5">

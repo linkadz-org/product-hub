@@ -147,6 +147,7 @@ export function RoadmapCard({
       }
       metaTrailing={
         <>
+          {item.shortId && <span className="font-mono">{item.shortId}</span>}
           {/* Difficulty — same dot colour as the item dialog (semantic tokens). */}
           <span className="flex items-center gap-1" title={t('roadmaps.difficulty')}>
             <span

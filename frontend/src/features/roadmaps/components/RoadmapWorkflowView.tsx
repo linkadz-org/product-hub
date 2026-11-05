@@ -14,6 +14,8 @@ const dur = (from?: string, to?: string) =>
 
 interface Row {
   id: string;
+  /** `RM-12` — `''` on items that predate refs. */
+  shortId: string;
   title: string;
   requested: string;
   started: string;
@@ -65,6 +67,7 @@ export function RoadmapWorkflowView({
             sprintsForItem={sprintsForItem}
             rows={completed.map((i) => ({
               id: i.id,
+              shortId: i.shortId ?? '',
               title: i.title,
               requested: i.createdAt ? formatDate(i.createdAt) : '—',
               started: i.startedAt ? formatDate(i.startedAt) : '—',
@@ -83,6 +86,7 @@ export function RoadmapWorkflowView({
             sprintsForItem={sprintsForItem}
             rows={inFlight.map((i) => ({
               id: i.id,
+              shortId: i.shortId ?? '',
               title: i.title,
               requested: i.createdAt ? formatDate(i.createdAt) : '—',
               started: formatDate(i.startedAt!),
@@ -122,6 +126,9 @@ function TimingTable({ rows, sprintsForItem }: { rows: Row[]; sprintsForItem?: S
           {rows.map((r) => (
             <tr key={r.id} className="border-b last:border-0 hover:bg-accent/40">
               <td className="max-w-[240px] truncate px-4 py-2 font-medium text-foreground" title={r.title}>
+                {r.shortId && (
+                  <span className="mr-1.5 font-mono text-[11px] font-normal text-muted-foreground">{r.shortId}</span>
+                )}
                 {r.title}
               </td>
               {sprintsForItem && (

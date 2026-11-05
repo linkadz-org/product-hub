@@ -277,6 +277,9 @@ export function RoadmapGantt({
       // RICE and the linked OKR stay — they're *why* this item is in "Now".
       meta: (
         <>
+          {item.shortId && (
+            <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{item.shortId}</span>
+          )}
           {/* Its sprints, from its tasks. Redundant with the bands when the item
               sits in one sprint — and exactly what you need when it spans two,
               where the bar crosses a boundary and the span is the whole story.
