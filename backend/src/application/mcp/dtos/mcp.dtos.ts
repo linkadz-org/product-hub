@@ -189,6 +189,16 @@ export class McpGetIssueDto {
   @IsString()
   @IsNotEmpty()
   issue: string;
+
+  @ApiPropertyOptional({
+    minimum: 1,
+    description: 'Page of a reply too long to send at once — the reply says when there is more',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
 }
 
 /**
@@ -310,6 +320,16 @@ export class McpListCommentsDto {
   @IsString()
   @IsNotEmpty()
   issue: string;
+
+  @ApiPropertyOptional({
+    minimum: 1,
+    description: 'Page of a reply too long to send at once — the reply says when there is more',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
 }
 
 /**
@@ -346,7 +366,7 @@ export class McpAddCommentDto {
 
   @ApiPropertyOptional({
     type: [String],
-    description: 'Image URLs from upload_file, shown under the comment body',
+    description: 'Image or video URLs from upload_file / create_upload_url, shown under the comment body',
   })
   @IsOptional()
   @IsArray()
@@ -387,7 +407,7 @@ export class McpUpdateCommentDto {
 
   @ApiPropertyOptional({
     type: [String],
-    description: 'Image URLs — REPLACES the comment’s images ([] clears them)',
+    description: 'Image or video URLs — REPLACES the comment’s media ([] clears them)',
   })
   @IsOptional()
   @IsArray()
@@ -486,12 +506,20 @@ export class McpCreateBacklogItemDto {
 
   @ApiPropertyOptional({
     type: [String],
-    description: 'Image URLs from upload_file / create_upload_url, appended to the description',
+    description: 'Image or video URLs from upload_file / create_upload_url, appended to the description',
   })
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
   images?: string[];
+
+  @ApiPropertyOptional({
+    description:
+      'Owner name(s) or email(s), comma-separated. On update this REPLACES the set; "" clears it.',
+  })
+  @IsOptional()
+  @IsString()
+  assignee?: string;
 }
 
 /** Read one backlog item in full — description included. */
@@ -500,6 +528,16 @@ export class McpGetBacklogItemDto {
   @IsString()
   @IsNotEmpty()
   item: string;
+
+  @ApiPropertyOptional({
+    minimum: 1,
+    description: 'Page of a reply too long to send at once — the reply says when there is more',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
 }
 
 /**
@@ -517,6 +555,67 @@ export class McpUpdateBacklogItemDto extends PartialType(
   @IsOptional()
   @IsString()
   item?: string;
+}
+
+/**
+ * Delete a backlog item. Refused while tickets are still filed under it — they
+ * would keep pointing at an item that no longer exists.
+ */
+export class McpDeleteBacklogItemDto {
+  @ApiProperty({ description: 'Backlog item ref (RM-12) or id' })
+  @IsString()
+  @IsNotEmpty()
+  item: string;
+}
+
+/** Every comment on a backlog item (thread order). */
+export class McpListBacklogItemCommentsDto {
+  @ApiProperty({ description: 'Backlog item ref (RM-12) or id' })
+  @IsString()
+  @IsNotEmpty()
+  item: string;
+
+  @ApiPropertyOptional({
+    minimum: 1,
+    description: 'Page of a reply too long to send at once — the reply says when there is more',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+}
+
+/** Comment (or reply) on a backlog item — the same thread the item page shows. */
+export class McpAddBacklogItemCommentDto extends OmitType(McpAddCommentDto, ['issue'] as const) {
+  // Supplied by the REST `:item` path segment; required in the JSON-RPC schema.
+  @ApiPropertyOptional({ description: 'Backlog item ref (RM-12) or id' })
+  @IsOptional()
+  @IsString()
+  item?: string;
+}
+
+/** Edit a backlog-item comment by its id (author or admin/product only). */
+export class McpUpdateBacklogItemCommentDto extends OmitType(McpUpdateCommentDto, [
+  'issue',
+] as const) {
+  @ApiPropertyOptional({ description: 'Backlog item ref (RM-12) or id' })
+  @IsOptional()
+  @IsString()
+  item?: string;
+}
+
+/** Delete a backlog-item comment by its id (author or admin/product only). */
+export class McpDeleteBacklogItemCommentDto {
+  @ApiProperty({ description: 'Backlog item ref (RM-12) or id' })
+  @IsString()
+  @IsNotEmpty()
+  item: string;
+
+  @ApiProperty({ description: 'Comment id (from list_backlog_item_comments/get_backlog_item)' })
+  @IsString()
+  @IsNotEmpty()
+  comment: string;
 }
 
 /**
@@ -651,13 +750,20 @@ export class McpSearchIssuesDto {
   @IsString()
   backlog?: string;
 
-  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 50 })
+  @ApiPropertyOptional({ default: 50, minimum: 1, maximum: 100 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(50)
-  limit?: number = 20;
+  @Max(100)
+  limit?: number = 50;
+
+  @ApiPropertyOptional({ default: 1, minimum: 1, description: 'Page of results — the reply says how many there are' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number = 1;
 }
 
 /** Browse a roadmap's backlog items, so an assistant can pick one to link/file under. */
@@ -666,6 +772,16 @@ export class McpListBacklogItemsDto {
   @IsOptional()
   @IsString()
   roadmap?: string;
+
+  @ApiPropertyOptional({
+    minimum: 1,
+    description: 'Page of a reply too long to send at once — the reply says when there is more',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
 }
 
 /** Create a typed relation between two issues (task↔task or bug↔bug). */

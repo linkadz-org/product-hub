@@ -9,21 +9,26 @@ import {
   RoadmapItemStatus,
 } from '@application/roadmaps/domain/enums/roadmap.enums';
 import {
+  McpAddBacklogItemCommentDto,
   McpAddCommentDto,
   McpCreateBacklogItemDto,
   McpCreateDocDto,
   McpCreateIssueDto,
+  McpDeleteBacklogItemCommentDto,
+  McpDeleteBacklogItemDto,
   McpDeleteCommentDto,
   McpDeleteIssueDto,
   McpGetBacklogItemDto,
   McpGetIssueDto,
   McpLinkIssuesDto,
+  McpListBacklogItemCommentsDto,
   McpListBacklogItemsDto,
   McpListCommentsDto,
   McpListLinksDto,
   McpSearchIssuesDto,
   McpSetStatusDto,
   McpUnlinkIssuesDto,
+  McpUpdateBacklogItemCommentDto,
   McpUpdateBacklogItemDto,
   McpUpdateCommentDto,
   McpUpdateDocDto,
@@ -39,17 +44,21 @@ import {
 } from '@application/mcp/dtos/mcp-analytics.dtos';
 import {
   McpBacklogItemBriefDto,
+  McpBacklogItemCommentResultDto,
   McpBacklogItemDetailDto,
   McpBacklogItemResponseDto,
   McpCommentDto,
   McpCommentResultDto,
   McpContextResponseDto,
+  McpDeletedBacklogItemCommentDto,
+  McpDeletedBacklogItemDto,
   McpDeletedCommentResponseDto,
   McpDeletedIssueResponseDto,
   McpDocResponseDto,
   McpIssueDetailResponseDto,
   McpIssueLinkDto,
   McpIssueResponseDto,
+  McpIssueSearchResultDto,
   McpLinkResultDto,
   McpUnlinkResultDto,
   McpUpdatedDocResponseDto,
@@ -68,10 +77,13 @@ import {
 import {
   GetMcpContextUseCase,
   McpActor,
+  McpAddBacklogItemCommentUseCase,
   McpAddCommentUseCase,
   McpCreateBacklogItemUseCase,
   McpCreateDocUseCase,
   McpCreateIssueUseCase,
+  McpDeleteBacklogItemCommentUseCase,
+  McpDeleteBacklogItemUseCase,
   McpDeleteCommentUseCase,
   McpDeleteIssueUseCase,
   McpGetBacklogItemUseCase,
@@ -80,6 +92,7 @@ import {
   McpGetIssueUseCase,
   McpGetTeamVelocityUseCase,
   McpLinkIssuesUseCase,
+  McpListBacklogItemCommentsUseCase,
   McpListBacklogItemsUseCase,
   McpListCommentsUseCase,
   McpListCyclesUseCase,
@@ -87,6 +100,7 @@ import {
   McpSearchIssuesUseCase,
   McpSetStatusUseCase,
   McpUnlinkIssuesUseCase,
+  McpUpdateBacklogItemCommentUseCase,
   McpUpdateBacklogItemUseCase,
   McpUpdateCommentUseCase,
   McpUpdateDocUseCase,
@@ -95,6 +109,7 @@ import {
   McpCreateUploadUrlUseCase,
 } from '@application/mcp/use-cases';
 import { assertCanDelete, assertCanWrite } from './mcp-scope';
+import { pageOf } from './mcp-paging';
 
 /** Version advertised to the client during the MCP handshake. */
 const SERVER_VERSION = '1.0.0';
@@ -144,6 +159,14 @@ function gatedDelete<T>(actor: McpActor, call: () => Promise<Result<T>>): Promis
   return call();
 }
 
+/** The `page` argument every long read takes — nothing is cut, a long reply pages. */
+const pageArg = z
+  .number()
+  .int()
+  .min(1)
+  .optional()
+  .describe('Page of a long reply (default 1). Nothing is truncated — the reply ends by saying when there is a next page.');
+
 /** The error-handling wrapper each `register*` is handed. */
 type Run = <T>(
   call: (actor: McpActor) => Promise<Result<T>>,
@@ -192,6 +215,11 @@ export class McpServerFactory {
     private readonly createUploadUrl: McpCreateUploadUrlUseCase,
     private readonly getBacklogItem: McpGetBacklogItemUseCase,
     private readonly updateBacklogItem: McpUpdateBacklogItemUseCase,
+    private readonly deleteBacklogItem: McpDeleteBacklogItemUseCase,
+    private readonly listBacklogItemComments: McpListBacklogItemCommentsUseCase,
+    private readonly addBacklogItemComment: McpAddBacklogItemCommentUseCase,
+    private readonly updateBacklogItemComment: McpUpdateBacklogItemCommentUseCase,
+    private readonly deleteBacklogItemComment: McpDeleteBacklogItemCommentUseCase,
     config: ConfigService,
   ) {
     this.appUrl = (config.get<string>('APP_BASE_URL') ?? 'http://localhost:3001').replace(/\/$/, '');
@@ -237,6 +265,11 @@ export class McpServerFactory {
     this.registerListBacklogItems(server, run);
     this.registerGetBacklogItem(server, run);
     this.registerUpdateBacklogItem(server, run);
+    this.registerDeleteBacklogItem(server, run);
+    this.registerListBacklogItemComments(server, run);
+    this.registerAddBacklogItemComment(server, run);
+    this.registerUpdateBacklogItemComment(server, run);
+    this.registerDeleteBacklogItemComment(server, run);
     this.registerCreateDoc(server, run);
     this.registerUpdateDoc(server, run);
     this.registerLinkIssues(server, run);
@@ -392,17 +425,20 @@ export class McpServerFactory {
             .string()
             .optional()
             .describe('Backlog item ref (e.g. RM-6) or id — returns the tickets linked to it'),
-          limit: z.number().int().min(1).max(50).optional().describe('Default 20'),
+          limit: z.number().int().min(1).max(100).optional().describe('Issues per page — default 50, max 100'),
+          page: z
+            .number()
+            .int()
+            .min(1)
+            .optional()
+            .describe('Page of the results (default 1) — the reply says how many pages there are'),
         },
         annotations: { readOnlyHint: true },
       },
       (dto) =>
-        run<McpIssueResponseDto[]>(
+        run<McpIssueSearchResultDto>(
           (actor) => this.searchIssues.execute({ actor, dto }),
-          (issues) =>
-            issues.length
-              ? `${issues.length} issue(s):\n\n${issues.map((i) => this.describeIssue(i)).join('\n\n')}`
-              : 'No matching issues.',
+          (r) => this.describeSearch(r, dto.limit ?? 50),
         ),
     );
   }
@@ -479,19 +515,20 @@ export class McpServerFactory {
         description:
           'Read a single task or bug by its reference — each team mints its own prefix, so refs look ' +
           'like "ENG-14" or "QC-8" (list_workspace shows each team) — or by id. Returns its status, team, ' +
-          'assignees, description, labels, its subtasks and recent comment excerpts (up to 1,000 ' +
-          'characters each; the total is ' +
-          'commentCount; use list_comments for the whole thread). Call this before update_issue or ' +
-          'delete_issue so you edit from the current state.',
+          'assignees, description, labels, attachments, EVERY subtask and EVERY comment in full — ' +
+          'nothing is truncated. A very long issue is split into pages; the reply ends by saying ' +
+          'so, and you pass `page` for the rest. Call this before update_issue or delete_issue so ' +
+          'you edit from the current state.',
         inputSchema: {
           issue: z.string().describe('Issue ref — the owning team’s prefix and number, e.g. ENG-14 or QC-8 — or id'),
+          page: pageArg,
         },
         annotations: { readOnlyHint: true },
       },
       (dto) =>
         run<McpIssueDetailResponseDto>(
           (actor) => this.getIssue.execute({ actor, dto }),
-          (issue) => this.describeIssueDetail(issue),
+          (issue) => pageOf(this.describeIssueDetail(issue), 'get_issue', dto.page),
         ),
     );
   }
@@ -615,10 +652,11 @@ export class McpServerFactory {
         description:
           'Read the full comment thread on a task or bug by its ref ("ENG-14") or id. Each line shows ' +
           'the comment id (pass it to update_comment/delete_comment), the author, when it was posted ' +
-          'and an excerpt of up to 1,000 characters; replies are shown indented under the comment ' +
-          'they answer.',
+          'and the whole body, with its images/videos as URLs; replies are shown indented under the ' +
+          'comment they answer. Every comment comes back — a long thread pages (`page`).',
         inputSchema: {
           issue: z.string().describe('Issue ref — the owning team’s prefix and number, e.g. ENG-14 or QC-8 — or id'),
+          page: pageArg,
         },
         annotations: { readOnlyHint: true },
       },
@@ -627,7 +665,11 @@ export class McpServerFactory {
           (actor) => this.listComments.execute({ actor, dto }),
           (comments) =>
             comments.length
-              ? `${comments.length} comment(s):\n\n${this.describeComments(comments)}`
+              ? pageOf(
+                  `${comments.length} comment(s):\n\n${this.describeComments(comments)}`,
+                  'list_comments',
+                  dto.page,
+                )
               : 'No comments yet.',
         ),
     );
@@ -658,7 +700,7 @@ export class McpServerFactory {
           images: z
             .array(z.string())
             .optional()
-            .describe('Image URLs from upload_file, shown under the comment'),
+            .describe('Image or video URLs from create_upload_url / upload_file, shown under the comment'),
         },
       },
       (dto) =>
@@ -690,7 +732,7 @@ export class McpServerFactory {
           images: z
             .array(z.string())
             .optional()
-            .describe('Image URLs — REPLACES the comment’s images ([] clears)'),
+            .describe('Image/video URLs — REPLACES the comment’s media ([] clears)'),
         },
       },
       (dto) =>
@@ -734,7 +776,7 @@ export class McpServerFactory {
         description:
           'Add an item to a product roadmap backlog (an opportunity or idea, not delivery work). ' +
           'Roadmap and column accept titles ("Now", "Next"). RICE inputs are scored 1–5 and default ' +
-          'to 3. Omit `roadmap` when the workspace only has one.',
+          'to 3. Omit `roadmap` when the workspace only has one. `assignee` sets who owns it.',
         inputSchema: {
           title: z.string().min(1),
           roadmap: z.string().optional().describe('Roadmap title or id'),
@@ -748,10 +790,14 @@ export class McpServerFactory {
           effort: z.number().min(1).max(5).optional(),
           startDate: z.string().optional().describe('YYYY-MM-DD'),
           endDate: z.string().optional().describe('YYYY-MM-DD'),
+          assignee: z
+            .string()
+            .optional()
+            .describe('Person name or email; several, comma-separated'),
           images: z
             .array(z.string())
             .optional()
-            .describe('Image URLs from create_upload_url / upload_file — added to the description'),
+            .describe('Image or video URLs from create_upload_url / upload_file — added to the description'),
         },
       },
       (dto) =>
@@ -777,9 +823,11 @@ export class McpServerFactory {
           'Browse the roadmap backlog — each item’s ref (RM-…), title, column, status and RICE score. ' +
           'Use it to pick an item to file a ticket under (create_issue `backlogItemId`) or to answer ' +
           '"what’s on the roadmap". Pass `roadmap` to one board, or omit it to list them all. ' +
-          'No descriptions here — get_backlog_item reads one item in full.',
+          'No descriptions here — get_backlog_item reads one item in full. Every item comes back; ' +
+          'a long backlog pages (`page`).',
         inputSchema: {
           roadmap: z.string().optional().describe('Roadmap title or id — omit to list every roadmap'),
+          page: pageArg,
         },
         annotations: { readOnlyHint: true },
       },
@@ -788,7 +836,11 @@ export class McpServerFactory {
           (actor) => this.listBacklogItems.execute({ actor, dto }),
           (items) =>
             items.length
-              ? `${items.length} backlog item(s):\n\n${items.map((i) => this.describeBacklogItem(i)).join('\n\n')}`
+              ? pageOf(
+                  `${items.length} backlog item(s):\n\n${items.map((i) => this.describeBacklogItem(i)).join('\n\n')}`,
+                  'list_backlog_items',
+                  dto.page,
+                )
               : 'No backlog items.',
         ),
     );
@@ -802,18 +854,20 @@ export class McpServerFactory {
         title: 'Read a roadmap backlog item',
         description:
           'Read one roadmap backlog item in full by its ref (RM-12) or id — description, column, ' +
-          'status, RICE inputs, dates, assignees, OKR. The description comes back as the HTML the ' +
-          'item page renders. Call this before update_backlog_item so you edit from the current ' +
-          'text. For the tasks/bugs filed under it, use search_issues with `backlog`.',
+          'status, RICE inputs, dates, assignees, OKR, EVERY task/bug filed under it and EVERY ' +
+          'comment in full. The description comes back as the HTML the item page renders. Nothing ' +
+          'is truncated — a long item pages (`page`). Call this before update_backlog_item so you ' +
+          'edit from the current text.',
         inputSchema: {
           item: z.string().describe('Backlog item ref, e.g. RM-12, or id'),
+          page: pageArg,
         },
         annotations: { readOnlyHint: true },
       },
       (dto) =>
         run<McpBacklogItemDetailDto>(
           (actor) => this.getBacklogItem.execute({ actor, dto }),
-          (item) => this.describeBacklogItemDetail(item),
+          (item) => pageOf(this.describeBacklogItemDetail(item), 'get_backlog_item', dto.page),
         ),
     );
   }
@@ -829,7 +883,8 @@ export class McpServerFactory {
           'body (read it with get_backlog_item first to keep what is there); Markdown is converted ' +
           'and line breaks are kept, so this is also how to reformat an item whose text ran ' +
           'together. `images` are appended to the description. `phase` moves the item between ' +
-          'its roadmap’s columns (key or label); it cannot change roadmap.',
+          'its roadmap’s columns (key or label); it cannot change roadmap. `assignee` REPLACES ' +
+          'the whole set of owners — include the current ones to keep them; "" clears.',
         inputSchema: {
           item: z.string().describe('Backlog item ref, e.g. RM-12, or id'),
           title: z.string().min(1).optional(),
@@ -843,7 +898,7 @@ export class McpServerFactory {
           images: z
             .array(z.string())
             .optional()
-            .describe('Image URLs from create_upload_url / upload_file — appended to the description'),
+            .describe('Image or video URLs from create_upload_url / upload_file — appended to the description'),
           phase: z.string().optional().describe('Column key or label — Now / Next / Later'),
           status: z.nativeEnum(RoadmapItemStatus).optional(),
           difficulty: z.nativeEnum(RoadmapDifficulty).optional(),
@@ -853,13 +908,165 @@ export class McpServerFactory {
           effort: z.number().min(1).max(5).optional(),
           startDate: z.string().optional().describe("YYYY-MM-DD; '' clears"),
           endDate: z.string().optional().describe("YYYY-MM-DD; '' clears"),
+          assignee: z
+            .string()
+            .optional()
+            .describe('Names/emails, comma-separated — REPLACES the whole set; "" unassigns everyone'),
         },
       },
       (dto) =>
         run<McpBacklogItemDetailDto>(
           (actor) => gated(actor, () => this.updateBacklogItem.execute({ actor, dto })),
           (item) =>
-            `Updated ${item.shortId} (${item.changed})\n\n${this.describeBacklogItemDetail(item)}`,
+            `Updated ${item.shortId} (${item.changed})\n\n${this.describeBacklogItemDetail(item, false)}`,
+        ),
+    );
+  }
+
+  private registerDeleteBacklogItem(server: McpServer, run: Run): void {
+    registerTool<McpDeleteBacklogItemDto>(
+      server,
+      'delete_backlog_item',
+      {
+        title: 'Delete a roadmap backlog item',
+        description:
+          'Permanently delete a roadmap backlog item by ref (RM-12) or id. This cannot be undone. ' +
+          'It is REFUSED while tasks/bugs are still filed under it — the reply lists them so you can ' +
+          'unlink them (update_issue with backlogItem "") or delete them first. Requires a key with ' +
+          'delete access.',
+        inputSchema: {
+          item: z.string().describe('Backlog item ref, e.g. RM-12, or id'),
+        },
+        annotations: { destructiveHint: true },
+      },
+      (dto) =>
+        run<McpDeletedBacklogItemDto>(
+          (actor) => gatedDelete(actor, () => this.deleteBacklogItem.execute({ actor, dto })),
+          (item) => `Deleted ${item.shortId || item.id} — ${item.title} (from ${item.roadmapTitle})`,
+        ),
+    );
+  }
+
+  private registerListBacklogItemComments(server: McpServer, run: Run): void {
+    registerTool<McpListBacklogItemCommentsDto>(
+      server,
+      'list_backlog_item_comments',
+      {
+        title: 'List a backlog item’s comments',
+        description:
+          'Read the full comment thread on a roadmap backlog item (RM-12). Each comment shows its id ' +
+          '(pass it to update/delete_backlog_item_comment), the author, the date and the whole body ' +
+          'with its images/videos as URLs; replies are indented under their root. Every comment ' +
+          'comes back — a long thread pages (`page`).',
+        inputSchema: {
+          item: z.string().describe('Backlog item ref, e.g. RM-12, or id'),
+          page: pageArg,
+        },
+        annotations: { readOnlyHint: true },
+      },
+      (dto) =>
+        run<McpCommentDto[]>(
+          (actor) => this.listBacklogItemComments.execute({ actor, dto }),
+          (comments) =>
+            comments.length
+              ? pageOf(
+                  `${comments.length} comment(s):\n\n${this.describeComments(comments)}`,
+                  'list_backlog_item_comments',
+                  dto.page,
+                )
+              : 'No comments yet.',
+        ),
+    );
+  }
+
+  private registerAddBacklogItemComment(server: McpServer, run: Run): void {
+    registerTool<McpAddBacklogItemCommentDto>(
+      server,
+      'add_backlog_item_comment',
+      {
+        title: 'Comment on a backlog item',
+        description:
+          'Post a comment on a roadmap backlog item (RM-12) — the same thread its item page shows. ' +
+          'Set `replyTo` to a comment id to reply. `mentions` takes people by name or email; they ' +
+          'are pinged, so write the @name in the body AND list them here.',
+        inputSchema: {
+          item: z.string().describe('Backlog item ref, e.g. RM-12, or id'),
+          body: z
+            .string()
+            .min(1)
+            .describe('Comment text — Markdown, HTML or plain text. ```code``` and **bold** render, line breaks are kept.'),
+          replyTo: z.string().optional().describe('Comment id to reply to'),
+          mentions: z
+            .array(z.string())
+            .optional()
+            .describe('People to notify, by name or email'),
+          images: z
+            .array(z.string())
+            .optional()
+            .describe('Image or video URLs from create_upload_url / upload_file, shown under the comment'),
+        },
+      },
+      (dto) =>
+        run<McpBacklogItemCommentResultDto>(
+          (actor) => gated(actor, () => this.addBacklogItemComment.execute({ actor, dto })),
+          (c) => `Commented on ${c.itemShortId} [${c.id}]\n\n${this.url(c.link)}`,
+        ),
+    );
+  }
+
+  private registerUpdateBacklogItemComment(server: McpServer, run: Run): void {
+    registerTool<McpUpdateBacklogItemCommentDto>(
+      server,
+      'update_backlog_item_comment',
+      {
+        title: 'Edit a backlog item comment',
+        description:
+          'Edit a comment on a roadmap backlog item by its id (from list_backlog_item_comments or ' +
+          'get_backlog_item). Only its author, or an admin/product key owner, may edit it. ' +
+          '`mentions` and `images` REPLACE their sets; omit them to leave them unchanged.',
+        inputSchema: {
+          item: z.string().describe('Backlog item ref, e.g. RM-12, or id'),
+          comment: z.string().describe('Comment id to edit'),
+          body: z.string().optional().describe('New body — Markdown, HTML or plain text; line breaks are kept'),
+          mentions: z
+            .array(z.string())
+            .optional()
+            .describe('Names/emails — REPLACES the mention set ([] clears)'),
+          images: z
+            .array(z.string())
+            .optional()
+            .describe('Image/video URLs — REPLACES the comment’s media ([] clears)'),
+        },
+      },
+      (dto) =>
+        run<McpBacklogItemCommentResultDto>(
+          (actor) => gated(actor, () => this.updateBacklogItemComment.execute({ actor, dto })),
+          (c) => `Updated comment on ${c.itemShortId}\n\n${this.url(c.link)}`,
+        ),
+    );
+  }
+
+  private registerDeleteBacklogItemComment(server: McpServer, run: Run): void {
+    registerTool<McpDeleteBacklogItemCommentDto>(
+      server,
+      'delete_backlog_item_comment',
+      {
+        title: 'Delete a backlog item comment',
+        description:
+          'Permanently delete a comment on a roadmap backlog item by its id. This cannot be undone. ' +
+          'Only its author, or an admin/product key owner, may delete it. Requires a key with ' +
+          'delete access.',
+        inputSchema: {
+          item: z.string().describe('Backlog item ref, e.g. RM-12, or id'),
+          comment: z.string().describe('Comment id to delete'),
+        },
+        annotations: { destructiveHint: true },
+      },
+      (dto) =>
+        run<McpDeletedBacklogItemCommentDto>(
+          (actor) =>
+            gatedDelete(actor, () => this.deleteBacklogItemComment.execute({ actor, dto })),
+          (c) => `Deleted comment on ${c.itemShortId}`,
         ),
     );
   }
@@ -1176,9 +1383,7 @@ export class McpServerFactory {
     const subtasks = i.subtaskCount
       ? [
           '',
-          i.subtasks.length < i.subtaskCount
-            ? `Subtasks (showing ${i.subtasks.length} of ${i.subtaskCount}):`
-            : `Subtasks (${i.subtaskCount}):`,
+          `Subtasks (${i.subtaskCount}):`,
           ...i.subtasks.map((s) => `  ${s.shortId} · ${s.title} · ${s.status}`),
         ]
       : ['', 'No subtasks.'];
@@ -1196,9 +1401,7 @@ export class McpServerFactory {
     const comments = i.commentCount
       ? [
           '',
-          i.comments.length < i.commentCount
-            ? `Comments (latest ${i.comments.length} of ${i.commentCount} — list_comments for all):`
-            : `Comments (${i.commentCount}):`,
+          `Comments (${i.commentCount}):`,
           ...this.describeComments(i.comments).split('\n'),
         ]
       : ['', 'No comments.'];
@@ -1207,18 +1410,41 @@ export class McpServerFactory {
     );
   }
 
-  /** A comment thread as text — replies indented one level under their root. */
+  /** A comment thread as text — replies indented one level under their root.
+   *  The whole body, every line of it indented, then the media under it. */
   private describeComments(comments: McpCommentDto[]): string {
     return comments
       .map((c) => {
         const indent = c.parentId ? '    ↳ ' : '  ';
+        const pad = ' '.repeat(indent.length + 2);
         const when = c.createdAt ? new Date(c.createdAt).toISOString().slice(0, 10) : '';
-        return (
-          `${indent}[${c.id}] ${c.authorName}${when ? ` · ${when}` : ''}` +
-          (c.excerpt ? `\n${indent}  ${c.excerpt}` : '')
-        );
+        const lines = [
+          ...(c.body ? c.body.split('\n') : []),
+          ...c.images.map((url) => `[attached: ${url}]`),
+        ];
+        return [
+          `${indent}[${c.id}] ${c.authorName}${when ? ` · ${when}` : ''}`,
+          ...lines.map((line) => (line ? `${pad}${line}` : '')),
+        ].join('\n');
       })
       .join('\n');
+  }
+
+  /** One page of search results, saying where it sits in the whole match. */
+  private describeSearch(r: McpIssueSearchResultDto, limit: number): string {
+    if (!r.total) return 'No matching issues.';
+    if (!r.issues.length) {
+      return `There is no page ${r.page} — ${r.total} issue(s) match, ${r.pageCount} page(s).`;
+    }
+    const from = (r.page - 1) * limit + 1;
+    const to = from + r.issues.length - 1;
+    const where =
+      r.pageCount > 1
+        ? `Issues ${from}–${to} of ${r.total} (page ${r.page} of ${r.pageCount})`
+        : `${r.total} issue(s)`;
+    const more =
+      r.page < r.pageCount ? `\n\n— More: call search_issues again with page: ${r.page + 1}. —` : '';
+    return `${where}:\n\n${r.issues.map((i) => this.describeIssue(i)).join('\n\n')}${more}`;
   }
 
   private describeIssue(i: McpIssueResponseDto): string {
@@ -1239,7 +1465,9 @@ export class McpServerFactory {
     ].join('\n');
   }
 
-  private describeBacklogItemDetail(i: McpBacklogItemDetailDto): string {
+  /** `related` = false for a write's echo, which never loads tickets or comments —
+   *  printing "No tickets" there would state something that was never checked. */
+  private describeBacklogItemDetail(i: McpBacklogItemDetailDto, related = true): string {
     const facts = [
       `${i.shortId} · ${i.title}`,
       `  ${i.roadmapTitle} → ${i.phaseLabel} · ${i.status} · ${i.difficulty}`,
@@ -1250,10 +1478,25 @@ export class McpServerFactory {
       i.okrLabel ? `  OKR: ${i.okrLabel}` : '',
       i.createdByName ? `  added by ${i.createdByName}` : '',
     ].filter(Boolean);
+    const tickets = i.tickets.length
+      ? [
+          '',
+          `Tickets filed under it (${i.tickets.length}):`,
+          ...i.tickets.map(
+            (t) =>
+              `  ${t.shortId} · ${t.title} · ${t.kind} · ${t.teamName || 'no team'} · ${t.status}` +
+              (t.assigneeNames.length ? ` · ${t.assigneeNames.join(', ')}` : ''),
+          ),
+        ]
+      : ['', 'No tickets filed under it.'];
+    const comments = i.comments.length
+      ? ['', `Comments (${i.comments.length}):`, ...this.describeComments(i.comments).split('\n')]
+      : ['', 'No comments.'];
     return [
       ...facts,
       '',
       i.description || 'No description.',
+      ...(related ? [...tickets, ...comments] : []),
       '',
       `  ${this.url(i.link)}`,
     ].join('\n');

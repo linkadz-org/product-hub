@@ -16,7 +16,7 @@
  */
 
 /** Any block-level tag means the caller sent HTML and meant it. */
-const BLOCK_HTML = /<(p|h[1-6]|ul|ol|li|pre|table|blockquote|figure|img|div|br)\b/i;
+const BLOCK_HTML = /<(p|h[1-6]|ul|ol|li|pre|table|blockquote|figure|img|video|div|br)\b/i;
 
 const HEADING = /^(#{1,6})\s+(.*)$/;
 const BULLET = /^\s*[-*+]\s+(.*)$/;
@@ -54,7 +54,7 @@ export function docBodyToHtml(body: string | undefined): string {
  * it as Markdown would escape the `<b>` into visible text.
  */
 const ANY_HTML =
-  /<(p|h[1-6]|ul|ol|li|pre|table|blockquote|figure|img|div|br|hr|b|strong|i|em|u|s|a|code|mark|span)\b[^>]*>/i;
+  /<(p|h[1-6]|ul|ol|li|pre|table|blockquote|figure|img|video|div|br|hr|b|strong|i|em|u|s|a|code|mark|span)\b[^>]*>/i;
 
 /**
  * An issue or backlog-item description, as the HTML its detail page renders.
@@ -71,10 +71,14 @@ export function descriptionToHtml(body: string | undefined): string {
   return renderMarkdown(value, true);
 }
 
-/** Append the uploaded images a caller passed, skipping any the body already shows. */
+/**
+ * Append the uploaded images and clips a caller passed, skipping any the body
+ * already shows. A clip goes in as `<video>`: written as `<img>` it is a broken
+ * picture, because the editor only plays a top-level `<video>`.
+ */
 export function appendImages(html: string, urls: string[] | undefined): string {
   const extra = (urls ?? []).filter((url) => url && !html.includes(url));
-  return html + extra.map((url) => `<img src="${escapeAttr(url)}" alt="">`).join('');
+  return html + extra.map((url) => mediaTag('', url)).join('');
 }
 
 /** The first image in a body — a backlog card's cover, the same pick the item page makes. */
@@ -144,6 +148,15 @@ const escapeAttr = (s: string): string => escapeHtml(s).replace(/"/g, '&quot;');
 /** A stored image the editor reads back as an image block: a bare top-level `<img>`. */
 const imageTag = (alt: string, src: string): string =>
   `<img src="${escapeAttr(src)}" alt="${escapeAttr(alt)}">`;
+
+/** The extensions the app plays as video — mirrors `VIDEO_EXT` in the frontend's
+ *  `useMediaAttachments.ts`, so a clip stored here is a clip on the page. */
+const VIDEO_EXT = /\.(mp4|webm|mov|m4v|ogv|ogg|avi|mkv)(\?|#|$)/i;
+
+/** An uploaded file as the block the editor reads back: `<video>` (the editor's
+ *  video block, `renderBlock` in `editorjs.ts`) for a clip, an image otherwise. */
+const mediaTag = (alt: string, src: string): string =>
+  VIDEO_EXT.test(src) ? `<video src="${escapeAttr(src)}" controls></video>` : imageTag(alt, src);
 
 const unescapeHtml = (s: string): string =>
   s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
@@ -287,7 +300,7 @@ function renderMarkdown(body: string, breaks: boolean): string {
 
     const image = line.match(IMAGE_LINE);
     if (image) {
-      out.push(imageTag(image[1], image[2]));
+      out.push(mediaTag(image[1], image[2]));
       i++;
       continue;
     }

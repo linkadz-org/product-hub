@@ -15,12 +15,14 @@ import { Public } from '@core/decorators';
 import { ValidationException } from '@core/exceptions';
 import { MCP_CLIENT_HEADER, UNKNOWN_MCP_CLIENT } from '@application/mcp/domain/enums/mcp.enums';
 import {
+  McpAddBacklogItemCommentDto,
   McpAddCommentDto,
   McpCreateBacklogItemDto,
   McpCreateDocDto,
   McpCreateIssueDto,
   McpLinkIssuesDto,
   McpListBacklogItemsDto,
+  McpUpdateBacklogItemCommentDto,
   McpUpdateBacklogItemDto,
   McpSearchIssuesDto,
   McpSetStatusDto,
@@ -39,17 +41,21 @@ import {
 import { CycleBurndownResponseDto } from '@application/cycles/dtos/cycle.dtos';
 import {
   McpBacklogItemBriefDto,
+  McpBacklogItemCommentResultDto,
   McpBacklogItemDetailDto,
   McpBacklogItemResponseDto,
   McpCommentDto,
   McpCommentResultDto,
   McpContextResponseDto,
+  McpDeletedBacklogItemCommentDto,
+  McpDeletedBacklogItemDto,
   McpDeletedCommentResponseDto,
   McpDeletedIssueResponseDto,
   McpDocResponseDto,
   McpIssueDetailResponseDto,
   McpIssueLinkDto,
   McpIssueResponseDto,
+  McpIssueSearchResultDto,
   McpLinkResultDto,
   McpUnlinkResultDto,
   McpUpdatedDocResponseDto,
@@ -64,10 +70,13 @@ import {
 import {
   GetMcpContextUseCase,
   McpActor,
+  McpAddBacklogItemCommentUseCase,
   McpAddCommentUseCase,
   McpCreateBacklogItemUseCase,
   McpCreateDocUseCase,
   McpCreateIssueUseCase,
+  McpDeleteBacklogItemCommentUseCase,
+  McpDeleteBacklogItemUseCase,
   McpDeleteCommentUseCase,
   McpDeleteIssueUseCase,
   McpGetBugStatsUseCase,
@@ -78,6 +87,8 @@ import {
   McpListBacklogItemsUseCase,
   McpGetBacklogItemUseCase,
   McpUpdateBacklogItemUseCase,
+  McpListBacklogItemCommentsUseCase,
+  McpUpdateBacklogItemCommentUseCase,
   McpListCommentsUseCase,
   McpListCyclesUseCase,
   McpListLinksUseCase,
@@ -158,6 +169,11 @@ export class McpController {
     private readonly createUploadUrl: McpCreateUploadUrlUseCase,
     private readonly getBacklogItem: McpGetBacklogItemUseCase,
     private readonly updateBacklogItem: McpUpdateBacklogItemUseCase,
+    private readonly deleteBacklogItem: McpDeleteBacklogItemUseCase,
+    private readonly listBacklogItemComments: McpListBacklogItemCommentsUseCase,
+    private readonly addBacklogItemComment: McpAddBacklogItemCommentUseCase,
+    private readonly updateBacklogItemComment: McpUpdateBacklogItemCommentUseCase,
+    private readonly deleteBacklogItemComment: McpDeleteBacklogItemCommentUseCase,
   ) {}
 
   @Get('context')
@@ -239,7 +255,9 @@ export class McpController {
   }
 
   @Get('backlog-items/:item')
-  @ApiOperation({ summary: 'Read one backlog item in full, description included (API key)' })
+  @ApiOperation({
+    summary: 'Read one backlog item in full — description, every ticket and comment (API key)',
+  })
   async backlogItem(
     @Req() req: McpRequest,
     @Param('item') item: string,
@@ -259,6 +277,76 @@ export class McpController {
     const actor = actorOf(req);
     guardWrite(actor);
     const result = await this.updateBacklogItem.execute({ actor, dto: { ...dto, item } });
+    if (result.isFailure) throw new ValidationException(result.error as string);
+    return result.getValue();
+  }
+
+  @Delete('backlog-items/:item')
+  @ApiOperation({ summary: 'Delete a backlog item — refused while tickets are filed under it (API key)' })
+  async removeBacklogItem(
+    @Req() req: McpRequest,
+    @Param('item') item: string,
+  ): Promise<McpDeletedBacklogItemDto> {
+    const actor = actorOf(req);
+    guardDelete(actor);
+    const result = await this.deleteBacklogItem.execute({ actor, dto: { item } });
+    if (result.isFailure) throw new ValidationException(result.error as string);
+    return result.getValue();
+  }
+
+  @Get('backlog-items/:item/comments')
+  @ApiOperation({ summary: 'List a backlog item’s comment thread (API key)' })
+  async backlogItemComments(
+    @Req() req: McpRequest,
+    @Param('item') item: string,
+  ): Promise<McpCommentDto[]> {
+    const result = await this.listBacklogItemComments.execute({ actor: actorOf(req), dto: { item } });
+    if (result.isFailure) throw new ValidationException(result.error as string);
+    return result.getValue();
+  }
+
+  @Post('backlog-items/:item/comments')
+  @ApiOperation({ summary: 'Comment on a backlog item — mentions accept names (API key)' })
+  async commentOnBacklogItem(
+    @Req() req: McpRequest,
+    @Param('item') item: string,
+    @Body() dto: McpAddBacklogItemCommentDto,
+  ): Promise<McpBacklogItemCommentResultDto> {
+    const actor = actorOf(req);
+    guardWrite(actor);
+    const result = await this.addBacklogItemComment.execute({ actor, dto: { ...dto, item } });
+    if (result.isFailure) throw new ValidationException(result.error as string);
+    return result.getValue();
+  }
+
+  @Patch('backlog-items/:item/comments/:comment')
+  @ApiOperation({ summary: 'Edit a backlog item comment — author or admin/product only (API key)' })
+  async editBacklogItemComment(
+    @Req() req: McpRequest,
+    @Param('item') item: string,
+    @Param('comment') comment: string,
+    @Body() dto: McpUpdateBacklogItemCommentDto,
+  ): Promise<McpBacklogItemCommentResultDto> {
+    const actor = actorOf(req);
+    guardWrite(actor);
+    const result = await this.updateBacklogItemComment.execute({
+      actor,
+      dto: { ...dto, item, comment },
+    });
+    if (result.isFailure) throw new ValidationException(result.error as string);
+    return result.getValue();
+  }
+
+  @Delete('backlog-items/:item/comments/:comment')
+  @ApiOperation({ summary: 'Delete a backlog item comment — author or admin/product only (API key)' })
+  async removeBacklogItemComment(
+    @Req() req: McpRequest,
+    @Param('item') item: string,
+    @Param('comment') comment: string,
+  ): Promise<McpDeletedBacklogItemCommentDto> {
+    const actor = actorOf(req);
+    guardDelete(actor);
+    const result = await this.deleteBacklogItemComment.execute({ actor, dto: { item, comment } });
     if (result.isFailure) throw new ValidationException(result.error as string);
     return result.getValue();
   }
@@ -336,11 +424,11 @@ export class McpController {
   }
 
   @Get('issues')
-  @ApiOperation({ summary: 'Search issues — check for a duplicate before creating' })
+  @ApiOperation({ summary: 'Search issues, one page at a time — with the total and page count' })
   async search(
     @Req() req: McpRequest,
     @Query() query: McpSearchIssuesDto,
-  ): Promise<McpIssueResponseDto[]> {
+  ): Promise<McpIssueSearchResultDto> {
     const result = await this.searchIssues.execute({ actor: actorOf(req), dto: query });
     if (result.isFailure) throw new ValidationException(result.error as string);
     return result.getValue();

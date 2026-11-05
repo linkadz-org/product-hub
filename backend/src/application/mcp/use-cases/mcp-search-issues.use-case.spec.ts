@@ -47,7 +47,7 @@ describe('McpSearchIssuesUseCase', () => {
           data: [],
           total: 0,
           page: 1,
-          limit: 20,
+          limit: 50,
           totalPages: 0,
           rollups: {},
         }),
@@ -86,7 +86,7 @@ describe('McpSearchIssuesUseCase', () => {
             assigneeId: ['owner-1'],
             kind: undefined,
             page: 1,
-            limit: 20,
+            limit: 50,
           }),
         }),
       );

@@ -132,4 +132,37 @@ describe('McpServerFactory.create — backlog item tools', () => {
     expect(shape).toHaveProperty('images');
     expect(tools().create_backlog_item.inputSchema.shape).toHaveProperty('images');
   });
+
+  it('gán người phụ trách khi tạo và khi sửa RM item', () => {
+    expect(tools().create_backlog_item.inputSchema.shape).toHaveProperty('assignee');
+    expect(tools().update_backlog_item.inputSchema.shape).toHaveProperty('assignee');
+  });
+
+  it('có đủ tool xoá RM item và comment trên RM item', () => {
+    const all = tools();
+    for (const name of [
+      'delete_backlog_item',
+      'list_backlog_item_comments',
+      'add_backlog_item_comment',
+      'update_backlog_item_comment',
+      'delete_backlog_item_comment',
+    ]) {
+      expect(all).toHaveProperty(name);
+    }
+    expect(all.add_backlog_item_comment.inputSchema.shape).toHaveProperty('mentions');
+  });
+
+  it('mọi tool đọc dài đều nhận `page` thay vì cắt bớt', () => {
+    const all = tools();
+    for (const name of [
+      'get_issue',
+      'list_comments',
+      'search_issues',
+      'get_backlog_item',
+      'list_backlog_items',
+      'list_backlog_item_comments',
+    ]) {
+      expect(all[name].inputSchema.shape).toHaveProperty('page');
+    }
+  });
 });

@@ -7,7 +7,9 @@ import {
 } from '@application/roadmaps/domain/enums/roadmap.enums';
 import type { RoadmapItemData } from '@application/roadmaps/domain/types/roadmap-item.type';
 import {
+  McpAddBacklogItemCommentUseCase,
   McpCreateBacklogItemUseCase,
+  McpDeleteBacklogItemUseCase,
   McpGetBacklogItemUseCase,
   McpUpdateBacklogItemUseCase,
   type McpActor,
@@ -72,15 +74,56 @@ const deps = (items = [item(), item({ id: 'item-2', shortId: 'RM-89', title: 'Ot
       Promise.resolve(Result.ok({ roadmap: map, item: { ...item(), ...added } })),
     ),
   };
-  const users = { findById: jest.fn().mockResolvedValue({ name: 'Ada' }) };
+  const person = (id: string, name: string, email: string) => ({
+    id: { toString: () => id },
+    name,
+    email,
+  });
+  const users = {
+    findById: jest.fn().mockResolvedValue({ name: 'Ada' }),
+    findByTenant: jest.fn().mockResolvedValue({
+      data: [person('u1', 'Ada Lovelace', 'ada@e.com'), person('u2', 'Lucas Tran', 'lucas@e.com')],
+    }),
+  };
   const events = { append: jest.fn().mockResolvedValue(undefined) };
   return { getRoadmaps, replaceItems, addItem, users, events };
 };
 
+/** `GetIssuesUseCase` serving `issues` in batches, the way the repository pages. */
+const issuesOf = (issues: Record<string, unknown>[]) => ({
+  execute: jest.fn().mockImplementation(({ query }) => {
+    const start = (query.page - 1) * query.limit;
+    return Promise.resolve(
+      Result.ok({ data: issues.slice(start, start + query.limit), total: issues.length }),
+    );
+  }),
+});
+
+const ticket = (n: number) => ({
+  id: { toString: () => `issue-${n}` },
+  shortId: `TSK-${n}`,
+  title: `Ticket ${n}`,
+  kind: 'task',
+  status: 'todo',
+  priority: 'medium',
+  teamId: 'team-1',
+  assignees: [],
+  labels: [],
+  createdAt: new Date('2026-11-01T00:00:00.000Z'),
+});
+
 describe('McpGetBacklogItemUseCase', () => {
+  const build = (d: ReturnType<typeof deps>, issues = issuesOf([]), comments: unknown[] = []) =>
+    new McpGetBacklogItemUseCase(
+      d.getRoadmaps as never,
+      issues as never,
+      { execute: jest.fn().mockResolvedValue(Result.ok([{ id: { toString: () => 'team-1' }, name: 'Core' }])) } as never,
+      { execute: jest.fn().mockResolvedValue(Result.ok(comments)) } as never,
+    );
+
   it('đọc một item theo ref, kèm description và nhãn cột', async () => {
     const d = deps();
-    const result = await new McpGetBacklogItemUseCase(d.getRoadmaps as never).execute({
+    const result = await build(d).execute({
       actor,
       dto: { item: 'RM-88' },
     });
@@ -95,12 +138,36 @@ describe('McpGetBacklogItemUseCase', () => {
 
   it('ref không tồn tại thì báo lỗi rõ ràng', async () => {
     const d = deps();
-    const result = await new McpGetBacklogItemUseCase(d.getRoadmaps as never).execute({
+    const result = await build(d).execute({
       actor,
       dto: { item: 'RM-404' },
     });
     expect(result.isFailure).toBe(true);
     expect(result.error).toContain('RM-404');
+  });
+
+  it('trả về TẤT CẢ ticket con — không cắt ở 20 hay 500', async () => {
+    const d = deps();
+    const issues = issuesOf(Array.from({ length: 1203 }, (_, i) => ticket(i + 1)));
+    const result = await build(d, issues).execute({ actor, dto: { item: 'RM-88' } });
+    expect(result.getValue().tickets).toHaveLength(1203);
+    expect(result.getValue().tickets[1202]).toMatchObject({ shortId: 'TSK-1203', teamName: 'Core' });
+    expect(issues.execute.mock.calls[0][0].query.roadmapItemId).toEqual(['item-1']);
+  });
+
+  it('kèm toàn bộ comment, đọc nguyên văn', async () => {
+    const d = deps();
+    const long = 'y'.repeat(4000);
+    const comment = {
+      id: { toString: () => 'c1' },
+      authorName: 'Ada',
+      body: `<p>${long}</p><img src="https://cdn.e.com/x.png">`,
+      parentId: '',
+      createdAt: new Date('2026-11-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-11-01T00:00:00.000Z'),
+    };
+    const result = await build(d, issuesOf([]), [comment]).execute({ actor, dto: { item: 'RM-88' } });
+    expect(result.getValue().comments[0].body).toBe(`${long}\n\n[image: https://cdn.e.com/x.png]`);
   });
 });
 
@@ -146,6 +213,30 @@ describe('McpUpdateBacklogItemUseCase', () => {
     expect(bad.error).toContain('Now');
   });
 
+  it('gán người phụ trách theo tên/email — THAY cả danh sách', async () => {
+    const d = deps([item({ assignees: [{ id: 'u9', name: 'Old' }] })]);
+    const result = await run(d, { assignee: 'Ada Lovelace, lucas@e.com' });
+    expect(result.isSuccess).toBe(true);
+    expect(d.replaceItems.execute.mock.calls[0][0].dto.items[0].assignees).toEqual([
+      { id: 'u1', name: 'Ada Lovelace' },
+      { id: 'u2', name: 'Lucas Tran' },
+    ]);
+  });
+
+  it('assignee "" xoá hết người phụ trách', async () => {
+    const d = deps([item({ assignees: [{ id: 'u9', name: 'Old' }] })]);
+    await run(d, { assignee: '' });
+    expect(d.replaceItems.execute.mock.calls[0][0].dto.items[0].assignees).toEqual([]);
+  });
+
+  it('tên người không tồn tại thì báo lỗi kèm gợi ý, không ghi DB', async () => {
+    const d = deps();
+    const result = await run(d, { assignee: 'Nobody' });
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toContain('Lucas Tran');
+    expect(d.replaceItems.execute).not.toHaveBeenCalled();
+  });
+
   it('không truyền gì để sửa thì từ chối, không ghi DB', async () => {
     const d = deps();
     const result = await run(d, {});
@@ -173,5 +264,81 @@ describe('McpCreateBacklogItemUseCase — description', () => {
       description: '<p>Dòng 1<br>Dòng 2</p><img src="https://cdn.e.com/s.png" alt="chụp">',
       imageUrl: 'https://cdn.e.com/s.png',
     });
+  });
+});
+
+describe('McpCreateBacklogItemUseCase — assignee', () => {
+  it('gán người phụ trách ngay lúc tạo', async () => {
+    const d = deps();
+    await new McpCreateBacklogItemUseCase(
+      d.getRoadmaps as never,
+      d.addItem as never,
+      d.users as never,
+      d.events as never,
+    ).execute({ actor, dto: { title: 'Mới', assignee: 'Lucas' } });
+    expect(d.addItem.execute.mock.calls[0][0].item.assignees).toEqual([
+      { id: 'u2', name: 'Lucas Tran' },
+    ]);
+  });
+});
+
+describe('McpDeleteBacklogItemUseCase', () => {
+  const build = (d: ReturnType<typeof deps>, issues = issuesOf([])) =>
+    new McpDeleteBacklogItemUseCase(
+      d.getRoadmaps as never,
+      d.replaceItems as never,
+      issues as never,
+      d.users as never,
+      d.events as never,
+    );
+
+  it('xoá đúng item đó, giữ các item khác, ghi lịch sử là API', async () => {
+    const d = deps();
+    const result = await build(d).execute({ actor, dto: { item: 'RM-88' } });
+    expect(result.getValue()).toMatchObject({ shortId: 'RM-88', roadmapTitle: 'Product' });
+    const call = d.replaceItems.execute.mock.calls[0][0];
+    expect(call.actorType).toBe(AuditActor.API);
+    expect(call.dto.items.map((i: RoadmapItemData) => i.shortId)).toEqual(['RM-89']);
+    expect(d.events.append).toHaveBeenCalledTimes(1);
+  });
+
+  it('còn ticket bên trong thì từ chối, liệt kê ticket, không ghi DB', async () => {
+    const d = deps();
+    const result = await build(d, issuesOf([ticket(7)])).execute({ actor, dto: { item: 'RM-88' } });
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toContain('TSK-7');
+    expect(d.replaceItems.execute).not.toHaveBeenCalled();
+  });
+});
+
+describe('McpAddBacklogItemCommentUseCase', () => {
+  it('comment lên RM: Markdown → HTML, mention theo tên, trả về link của item', async () => {
+    const d = deps();
+    const createComment = {
+      execute: jest.fn().mockImplementation(({ dto }) =>
+        Promise.resolve(
+          Result.ok({ id: { toString: () => 'c1' }, authorName: 'Ada', body: dto.body, parentId: '' }),
+        ),
+      ),
+    };
+    const result = await new McpAddBacklogItemCommentUseCase(
+      d.getRoadmaps as never,
+      createComment as never,
+      d.users as never,
+      d.events as never,
+    ).execute({
+      actor,
+      dto: { item: 'RM-88', body: 'Dòng 1\nDòng 2', mentions: ['Lucas'], images: ['https://e.com/a.mp4'] },
+    });
+    expect(result.isSuccess).toBe(true);
+    const call = createComment.execute.mock.calls[0][0];
+    expect(call).toMatchObject({ roadmapId: 'rm-1', itemId: 'item-1', authorId: 'u1' });
+    expect(call.dto).toMatchObject({
+      body: '<p>Dòng 1<br>Dòng 2</p>',
+      mentions: ['u2'],
+      images: ['https://e.com/a.mp4'],
+    });
+    expect(result.getValue()).toMatchObject({ itemShortId: 'RM-88', body: 'Dòng 1\nDòng 2' });
+    expect(d.events.append).toHaveBeenCalledTimes(1);
   });
 });

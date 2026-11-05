@@ -157,3 +157,39 @@ describe('appendImages / firstImageUrl', () => {
     expect(appendImages('<p>x</p>', undefined)).toBe('<p>x</p>');
   });
 });
+
+/**
+ * Video từng bị ghi thành `<img src="….mp4">` — trang hiện một ảnh vỡ thay cho
+ * clip, dù editor phát được khối `<video>` từ lâu.
+ */
+describe('video', () => {
+  const clip = 'https://cdn.example.com/uploads/repro.mp4';
+
+  it('appendImages ghi clip thành <video>, ảnh vẫn là <img>', () => {
+    expect(appendImages('<p>x</p>', [clip, 'https://e.com/1.png'])).toBe(
+      `<p>x</p><video src="${clip}" controls></video><img src="https://e.com/1.png" alt="">`,
+    );
+  });
+
+  it('nhận cả đuôi viết hoa và có query string', () => {
+    expect(appendImages('', ['https://e.com/a.MOV?sig=1'])).toBe(
+      '<video src="https://e.com/a.MOV?sig=1" controls></video>',
+    );
+  });
+
+  it('clip không làm ảnh bìa', () => {
+    expect(firstImageUrl(appendImages('', [clip]))).toBe('');
+  });
+
+  it('![](clip) đứng riêng một dòng thành khối <video>', () => {
+    expect(descriptionToHtml(`Repro:\n\n![quay màn hình](${clip})`)).toBe(
+      `<p>Repro:</p><video src="${clip}" controls></video>`,
+    );
+  });
+
+  it('mô tả HTML có <video> được giữ nguyên, không bị đọc như Markdown', () => {
+    const html = `<video src="${clip}" controls></video>`;
+    expect(descriptionToHtml(html)).toBe(html);
+    expect(docBodyToHtml(html)).toBe(html);
+  });
+});

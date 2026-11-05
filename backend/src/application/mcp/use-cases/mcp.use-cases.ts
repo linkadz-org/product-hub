@@ -26,6 +26,7 @@ import { RoadmapEntity } from '@application/roadmaps/domain/entities/roadmap.ent
 import {
   findRoadmapItem,
   riceScore,
+  type RoadmapAssignee,
   type RoadmapItemData,
 } from '@application/roadmaps/domain/types/roadmap-item.type';
 import { IUserRepository } from '@application/users/repositories/user.repository';
@@ -53,12 +54,18 @@ import {
   GetIssueCommentsUseCase,
   UpdateIssueCommentUseCase,
 } from '@application/activity/use-cases/issue-comment.use-cases';
+import {
+  CreateRoadmapItemCommentUseCase,
+  DeleteRoadmapItemCommentUseCase,
+  GetRoadmapItemCommentsUseCase,
+  UpdateRoadmapItemCommentUseCase,
+} from '@application/activity/use-cases/roadmap-item-comment.use-cases';
 import { CommentEntity } from '@application/activity/domain/entities/comment.entity';
 import { CreateIssueLinkUseCase } from '@application/issue-links/use-cases/create-issue-link.use-case';
 import { GetIssueLinksUseCase } from '@application/issue-links/use-cases/get-issue-links.use-case';
 import { DeleteIssueLinkUseCase } from '@application/issue-links/use-cases/delete-issue-link.use-case';
 import { IssueKind as LinkIssueKind } from '@application/issue-links/domain/relation-type.enum';
-import { plainSnippet } from '@module-shared/utils/plain-text.util';
+import { readableText } from '@module-shared/utils/plain-text.util';
 import { McpEventEntity } from '../domain/entities/mcp-event.entity';
 import { McpEntity, McpTool } from '../domain/enums/mcp.enums';
 import {
@@ -88,21 +95,26 @@ import {
   RELATION_TYPE_CHOICES,
 } from '../domain/mcp-resolve';
 import {
+  McpAddBacklogItemCommentDto,
   McpAddCommentDto,
   McpCreateBacklogItemDto,
   McpCreateDocDto,
   McpCreateIssueDto,
+  McpDeleteBacklogItemCommentDto,
+  McpDeleteBacklogItemDto,
   McpDeleteCommentDto,
   McpDeleteIssueDto,
   McpGetBacklogItemDto,
   McpGetIssueDto,
   McpLinkIssuesDto,
+  McpListBacklogItemCommentsDto,
   McpListBacklogItemsDto,
   McpListCommentsDto,
   McpListLinksDto,
   McpSearchIssuesDto,
   McpSetStatusDto,
   McpUnlinkIssuesDto,
+  McpUpdateBacklogItemCommentDto,
   McpUpdateBacklogItemDto,
   McpUpdateCommentDto,
   McpUpdateDocDto,
@@ -110,17 +122,21 @@ import {
 } from '../dtos/mcp.dtos';
 import {
   McpBacklogItemBriefDto,
+  McpBacklogItemCommentResultDto,
   McpBacklogItemDetailDto,
   McpBacklogItemResponseDto,
   McpCommentDto,
   McpCommentResultDto,
   McpContextResponseDto,
+  McpDeletedBacklogItemCommentDto,
+  McpDeletedBacklogItemDto,
   McpDeletedCommentResponseDto,
   McpDeletedIssueResponseDto,
   McpDocResponseDto,
   McpIssueDetailResponseDto,
   McpIssueLinkDto,
   McpIssueResponseDto,
+  McpIssueSearchResultDto,
   McpLinkResultDto,
   McpUnlinkResultDto,
   McpUpdatedDocResponseDto,
@@ -185,21 +201,76 @@ export const mcpActorName = (actor: McpActor, user: UserEntity | null): string =
  *  user list is small; one page of 100 covers it without a second round-trip. */
 const ALL_USERS = { page: 1, limit: 100 } as QueryUserDto;
 
-/** Cap on subtasks/comments read inline, so one over-large issue can't flood the
- *  assistant's context. Beyond this a client pages with search_issues/list_comments. */
-const INLINE_CAP = 20;
+/**
+ * Reads return the whole record — every subtask, every comment in full, every
+ * backlog item. They used to clip (20 subtasks, the latest 100 comments, 1,000
+ * characters of each), so an assistant quietly worked from part of a ticket. A
+ * reply too long for the client is paged by the MCP tool layer instead
+ * (`presentation/mcp/mcp-paging.ts`), which loses nothing.
+ *
+ * This is only the batch size the "fetch everything" loops below read in.
+ */
+const FETCH_BATCH = 500;
 
-/** Show enough comment text to read normal discussion while keeping thread replies bounded. */
-const COMMENT_EXCERPT = 1000;
+/**
+ * Every issue a query matches, read batch by batch. The repository caps nothing
+ * itself, but one unbounded read of a big team is a large document; batching
+ * keeps each round-trip sane while still ending with all of them.
+ */
+async function allIssues(
+  getIssues: GetIssuesUseCase,
+  tenantId: string,
+  query: Partial<QueryIssueDto>,
+): Promise<IssueEntity[]> {
+  const out: IssueEntity[] = [];
+  for (let page = 1; ; page += 1) {
+    const batch = (
+      await getIssues.execute({
+        tenantId,
+        // '' keeps the private-board filter on: a key never reads someone's
+        // personal task through a parent or a backlog item it can see.
+        userId: '',
+        query: { ...query, page, limit: FETCH_BATCH } as QueryIssueDto,
+      })
+    ).getValue();
+    out.push(...batch.data);
+    // A short batch is the last one — checked as well as `total`, so a wrong or
+    // missing count can never spin this into an endless read.
+    if (batch.data.length < FETCH_BATCH || out.length >= batch.total) return out;
+  }
+}
 
-/** Upper bound on comments `list_comments` returns. `get_issue` shows the last
- *  {@link INLINE_CAP}; the fuller list returns the most recent of these — still
- *  bounded, so a 500-comment thread can't flood the assistant in one call. */
-const LIST_COMMENTS_CAP = 100;
-
-/** Upper bound on backlog items `list_backlog_items` returns, so a huge roadmap
- *  can't flood the assistant in one call. */
-const LIST_BACKLOG_CAP = 100;
+/** Names/emails, comma-separated, → the `{ id, name }` pairs a roadmap item stores.
+ *  Each is resolved on its own so an unknown one fails with the choices. */
+async function resolveAssignees(
+  users: IUserRepository,
+  tenantId: string,
+  raw: string,
+): Promise<Result<RoadmapAssignee[]>> {
+  const wanted = raw
+    .split(',')
+    .map((n) => n.trim())
+    .filter(Boolean);
+  if (!wanted.length) return Result.ok([]);
+  const people = await users.findByTenant(tenantId, ALL_USERS);
+  const out: RoadmapAssignee[] = [];
+  for (const name of wanted) {
+    const person = resolvePerson(people.data, name);
+    if (!person) {
+      return Result.fail(
+        didYouMean(
+          'assignee',
+          name,
+          people.data.map((u) => u.name),
+        ),
+      );
+    }
+    if (!out.some((a) => a.id === person.id.toString())) {
+      out.push({ id: person.id.toString(), name: person.name });
+    }
+  }
+  return Result.ok(out);
+}
 
 /** A stored RelationType read as words for a human — `blocked_by` → "blocked by". */
 const relationLabel = (rt: string): string => rt.replace(/_/g, ' ');
@@ -442,25 +513,12 @@ export class McpGetIssueUseCase
     const teams = (await this.getTeams.execute({ tenantId: actor.tenantId })).getValue();
     const teamName = teams.find((t) => t.id.toString() === issue.teamId)?.name ?? '';
 
-    // Subtasks: userId '' keeps the private-board filter on so a key can never
-    // surface someone else's personal task through a parent it can see. The
-    // paginated `total` carries the true (visible) count so, like commentCount, a
-    // reply capped at INLINE_CAP still says how many there really are.
-    const childPage = (
-      await this.getIssues.execute({
-        tenantId: actor.tenantId,
-        userId: '',
-        query: { parentId: [issueId], page: 1, limit: INLINE_CAP } as QueryIssueDto,
-      })
-    ).getValue();
-
-    // Comments come back oldest-first; keep the latest INLINE_CAP inline (with the
-    // total count) so one 200-comment bug can't flood the reply — list_comments
-    // pages the full thread.
+    // Every subtask and the whole thread (oldest first) — nothing clipped; the
+    // tool pages a reply that is too long instead.
+    const children = await allIssues(this.getIssues, actor.tenantId, { parentId: [issueId] });
     const allComments = (
       await this.getComments.execute({ tenantId: actor.tenantId, issueId })
     ).getValue();
-    const recent = allComments.slice(-INLINE_CAP);
 
     return Result.ok({
       id: issueId,
@@ -482,13 +540,13 @@ export class McpGetIssueUseCase
       // all, so it would restate the parent's context as if it were new work.
       parentShortId: parent?.shortId ?? '',
       parentTitle: parent?.title ?? '',
-      subtasks: childPage.data.map((s) => ({
+      subtasks: children.map((s) => ({
         id: s.id.toString(),
         shortId: s.shortId,
         title: s.title,
         status: s.status,
       })),
-      subtaskCount: childPage.total,
+      subtaskCount: children.length,
       // Reported because `update_issue.attachments` replaces the set: without
       // seeing what is already there, an assistant adding one screenshot would
       // silently drop every file someone else had attached.
@@ -498,7 +556,7 @@ export class McpGetIssueUseCase
         contentType: a.contentType,
         size: a.size,
       })),
-      comments: recent.map(toCommentDto),
+      comments: allComments.map(toCommentDto),
       commentCount: allComments.length,
       link: issueLink(issue.shortId || issueId),
       updatedAt: issue.updatedAt,
@@ -783,13 +841,7 @@ export class McpDeleteIssueUseCase
     // exceeds the list and we say so rather than under-reporting.
     const childCount = await this.issues.countChildren(actor.tenantId, issueId);
     if (childCount > 0) {
-      const visible = (
-        await this.getIssues.execute({
-          tenantId: actor.tenantId,
-          userId: '',
-          query: { parentId: [issueId], page: 1, limit: INLINE_CAP } as QueryIssueDto,
-        })
-      ).getValue().data;
+      const visible = await allIssues(this.getIssues, actor.tenantId, { parentId: [issueId] });
       const shown = visible.map((k) => `${k.shortId} · ${k.title}`).join(', ');
       const hidden = childCount - visible.length;
       const tail = hidden > 0 ? `${shown ? ', ' : ''}and ${hidden} more` : '';
@@ -876,11 +928,8 @@ export class McpListCommentsUseCase
         issueId: found.getValue().issue.id.toString(),
       })
     ).getValue();
-    // Bound the reply: the thread is oldest-first, so the most recent
-    // LIST_COMMENTS_CAP is the tail. A hotter thread than that is rare, and the
-    // assistant already has get_issue for a quick look.
-    const recent = comments.slice(-LIST_COMMENTS_CAP);
-    return Result.ok(recent.map(toCommentDto));
+    // The whole thread, oldest first — the tool pages it if it runs long.
+    return Result.ok(comments.map(toCommentDto));
   }
 }
 
@@ -1112,6 +1161,9 @@ export class McpCreateBacklogItemUseCase
       );
     }
 
+    const assignees = await resolveAssignees(this.users, actor.tenantId, dto.assignee ?? '');
+    if (assignees.isFailure) return Result.fail(assignees.error as string);
+
     const actorUser = await this.users.findById(actor.userId);
     // The item page renders HTML; text saved as-is loses every line break.
     const description = appendImages(descriptionToHtml(dto.description), dto.images);
@@ -1132,6 +1184,7 @@ export class McpCreateBacklogItemUseCase
         effort: dto.effort,
         startDate: dto.startDate,
         endDate: dto.endDate,
+        assignees: assignees.getValue(),
       },
       // Attributed to the key's owner, so the item has a real author in the
       // app's activity trail; the MCP history below records that a robot typed it.
@@ -1192,6 +1245,7 @@ function toBacklogItemDetail(
   roadmap: RoadmapEntity,
   item: RoadmapItemData,
   changed = '',
+  related: Pick<McpBacklogItemDetailDto, 'tickets' | 'comments'> = { tickets: [], comments: [] },
 ): McpBacklogItemDetailDto {
   const roadmapId = roadmap.id.toString();
   return {
@@ -1218,6 +1272,7 @@ function toBacklogItemDetail(
     imageUrl: item.imageUrl ?? '',
     link: backlogItemLink(roadmapId, item.shortId || item.id),
     changed,
+    ...related,
   };
 }
 
@@ -1229,7 +1284,12 @@ export class McpGetBacklogItemUseCase
       Result<McpBacklogItemDetailDto>
     >
 {
-  constructor(private readonly getRoadmaps: GetRoadmapsUseCase) {}
+  constructor(
+    private readonly getRoadmaps: GetRoadmapsUseCase,
+    private readonly getIssues: GetIssuesUseCase,
+    private readonly getTeams: GetTeamsUseCase,
+    private readonly getComments: GetRoadmapItemCommentsUseCase,
+  ) {}
 
   async execute({
     actor,
@@ -1241,7 +1301,23 @@ export class McpGetBacklogItemUseCase
     const roadmaps = (await this.getRoadmaps.execute({ tenantId: actor.tenantId })).getValue();
     const found = findBacklogItem(roadmaps, dto.item);
     if (!found) return Result.fail(`Backlog item "${dto.item}" not found`);
-    return Result.ok(toBacklogItemDetail(found.roadmap, found.item));
+    const { roadmap, item } = found;
+
+    // The item in full is its body *and* the work under it and the discussion on
+    // it — reading one without the other is how an assistant re-plans work that
+    // is already filed, or misses a decision made in the thread.
+    const [tickets, teams, comments] = await Promise.all([
+      allIssues(this.getIssues, actor.tenantId, { roadmapItemId: [item.id] }),
+      this.getTeams.execute({ tenantId: actor.tenantId }),
+      this.getComments.execute({ tenantId: actor.tenantId, itemId: item.id }),
+    ]);
+    const teamName = new Map(teams.getValue().map((t) => [t.id.toString(), t.name]));
+    return Result.ok(
+      toBacklogItemDetail(roadmap, item, '', {
+        tickets: tickets.map((i) => toIssueResponse(i, teamName.get(i.teamId) ?? '')),
+        comments: comments.getValue().map(toCommentDto),
+      }),
+    );
   }
 }
 
@@ -1316,6 +1392,13 @@ export class McpUpdateBacklogItemUseCase
         changed.push(key);
       }
     }
+    if (dto.assignee !== undefined) {
+      // REPLACES the set — the same rule update_issue follows; "" clears it.
+      const assignees = await resolveAssignees(this.users, actor.tenantId, dto.assignee);
+      if (assignees.isFailure) return Result.fail(assignees.error as string);
+      patch.assignees = assignees.getValue();
+      changed.push('assignees');
+    }
     if (dto.description !== undefined || dto.images?.length) {
       const base =
         dto.description !== undefined ? descriptionToHtml(dto.description) : item.description ?? '';
@@ -1359,6 +1442,306 @@ export class McpUpdateBacklogItemUseCase
     if (event.isSuccess) await this.events.append(event.getValue());
 
     return Result.ok(detail);
+  }
+}
+
+/**
+ * Delete one backlog item, through the same whole-array replace the board saves
+ * with — that is how the item page's own delete works, and it records the
+ * `deleted` row in the roadmap's history.
+ *
+ * Refused while tickets are still filed under the item: they would keep pointing
+ * at an item that no longer exists, and the board would show work against
+ * nothing. The reply lists them so the caller can unlink or delete them first.
+ */
+@Injectable()
+export class McpDeleteBacklogItemUseCase
+  implements
+    IUsecaseExecute<
+      { actor: McpActor; dto: McpDeleteBacklogItemDto },
+      Result<McpDeletedBacklogItemDto>
+    >
+{
+  constructor(
+    private readonly getRoadmaps: GetRoadmapsUseCase,
+    private readonly replaceItems: ReplaceRoadmapItemsUseCase,
+    private readonly getIssues: GetIssuesUseCase,
+    @Inject(IUserRepository) private readonly users: IUserRepository,
+    @Inject(IMcpEventRepository) private readonly events: IMcpEventRepository,
+  ) {}
+
+  async execute({
+    actor,
+    dto,
+  }: {
+    actor: McpActor;
+    dto: McpDeleteBacklogItemDto;
+  }): Promise<Result<McpDeletedBacklogItemDto>> {
+    const roadmaps = (await this.getRoadmaps.execute({ tenantId: actor.tenantId })).getValue();
+    const found = findBacklogItem(roadmaps, dto.item);
+    if (!found) return Result.fail(`Backlog item "${dto.item}" not found`);
+    const { roadmap, item } = found;
+    const ref = item.shortId || item.id;
+
+    const tickets = await allIssues(this.getIssues, actor.tenantId, { roadmapItemId: [item.id] });
+    if (tickets.length) {
+      return Result.fail(
+        `Cannot delete ${ref} — ${tickets.length} ticket(s) are still filed under it: ` +
+          `${tickets.map((t) => `${t.shortId} · ${t.title}`).join(', ')}. ` +
+          'Unlink them (update_issue with backlogItem "") or delete them first.',
+      );
+    }
+
+    const actorUser = await this.users.findById(actor.userId);
+    const replaced = await this.replaceItems.execute({
+      id: roadmap.id.toString(),
+      tenantId: actor.tenantId,
+      dto: { items: roadmap.items.filter((i) => i.id !== item.id) },
+      requesterId: actor.userId,
+      requesterName: mcpActorName(actor, actorUser),
+      actorType: AuditActor.API,
+    });
+    if (replaced.isFailure) return Result.fail(replaced.error as string);
+
+    const event = McpEventEntity.create({
+      tenantId: actor.tenantId,
+      keyId: actor.keyId,
+      keyName: actor.keyName,
+      userId: actor.userId,
+      userName: actorUser?.name ?? actor.keyName,
+      clientName: actor.clientName,
+      tool: McpTool.DELETE_BACKLOG_ITEM,
+      entity: McpEntity.BACKLOG_ITEM,
+      entityId: item.id,
+      entityRef: item.shortId,
+      entityTitle: item.title,
+      contextLabel: roadmap.title,
+      // The item is gone; the roadmap is the nearest page that still exists.
+      link: `/roadmaps/${roadmap.id.toString()}`,
+    });
+    if (event.isSuccess) await this.events.append(event.getValue());
+
+    return Result.ok({
+      id: item.id,
+      shortId: item.shortId ?? '',
+      title: item.title,
+      roadmapTitle: roadmap.title,
+    });
+  }
+}
+
+@Injectable()
+export class McpListBacklogItemCommentsUseCase
+  implements
+    IUsecaseExecute<
+      { actor: McpActor; dto: McpListBacklogItemCommentsDto },
+      Result<McpCommentDto[]>
+    >
+{
+  constructor(
+    private readonly getRoadmaps: GetRoadmapsUseCase,
+    private readonly getComments: GetRoadmapItemCommentsUseCase,
+  ) {}
+
+  async execute({
+    actor,
+    dto,
+  }: {
+    actor: McpActor;
+    dto: McpListBacklogItemCommentsDto;
+  }): Promise<Result<McpCommentDto[]>> {
+    const roadmaps = (await this.getRoadmaps.execute({ tenantId: actor.tenantId })).getValue();
+    const found = findBacklogItem(roadmaps, dto.item);
+    if (!found) return Result.fail(`Backlog item "${dto.item}" not found`);
+    const comments = (
+      await this.getComments.execute({ tenantId: actor.tenantId, itemId: found.item.id })
+    ).getValue();
+    return Result.ok(comments.map(toCommentDto));
+  }
+}
+
+@Injectable()
+export class McpAddBacklogItemCommentUseCase
+  implements
+    IUsecaseExecute<
+      { actor: McpActor; dto: McpAddBacklogItemCommentDto },
+      Result<McpBacklogItemCommentResultDto>
+    >
+{
+  constructor(
+    private readonly getRoadmaps: GetRoadmapsUseCase,
+    private readonly createComment: CreateRoadmapItemCommentUseCase,
+    @Inject(IUserRepository) private readonly users: IUserRepository,
+    @Inject(IMcpEventRepository) private readonly events: IMcpEventRepository,
+  ) {}
+
+  async execute({
+    actor,
+    dto,
+  }: {
+    actor: McpActor;
+    dto: McpAddBacklogItemCommentDto;
+  }): Promise<Result<McpBacklogItemCommentResultDto>> {
+    const roadmaps = (await this.getRoadmaps.execute({ tenantId: actor.tenantId })).getValue();
+    const found = findBacklogItem(roadmaps, dto.item ?? '');
+    if (!found) return Result.fail(`Backlog item "${dto.item}" not found`);
+    const { roadmap, item } = found;
+
+    // Names/emails → userIds, so the @mention ping reaches the right people.
+    const people = await this.users.findByTenant(actor.tenantId, ALL_USERS);
+    const mentions = resolveMentions(people.data, dto.mentions);
+    if (mentions.isFailure) return Result.fail(mentions.error as string);
+
+    const actorUser = await this.users.findById(actor.userId);
+    const created = await this.createComment.execute({
+      tenantId: actor.tenantId,
+      roadmapId: roadmap.id.toString(),
+      itemId: item.id,
+      authorId: actor.userId,
+      authorName: actorUser?.name ?? actor.keyName,
+      // Same conversion as an issue comment: Markdown renders, a single newline
+      // stays a line break, HTML passes straight through.
+      dto: {
+        body: descriptionToHtml(dto.body),
+        parentId: dto.replyTo,
+        mentions: mentions.getValue(),
+        images: dto.images,
+      },
+    });
+    if (created.isFailure) return Result.fail(created.error as string);
+
+    const comment = created.getValue();
+    await logBacklogCommentEvent(
+      this.events,
+      actorUser,
+      actor,
+      McpTool.ADD_BACKLOG_ITEM_COMMENT,
+      comment.id.toString(),
+      roadmap,
+      item,
+    );
+    return Result.ok(toBacklogCommentResult(comment, roadmap, item));
+  }
+}
+
+@Injectable()
+export class McpUpdateBacklogItemCommentUseCase
+  implements
+    IUsecaseExecute<
+      { actor: McpActor; dto: McpUpdateBacklogItemCommentDto },
+      Result<McpBacklogItemCommentResultDto>
+    >
+{
+  constructor(
+    private readonly getRoadmaps: GetRoadmapsUseCase,
+    private readonly updateComment: UpdateRoadmapItemCommentUseCase,
+    @Inject(IUserRepository) private readonly users: IUserRepository,
+    @Inject(IMcpEventRepository) private readonly events: IMcpEventRepository,
+  ) {}
+
+  async execute({
+    actor,
+    dto,
+  }: {
+    actor: McpActor;
+    dto: McpUpdateBacklogItemCommentDto;
+  }): Promise<Result<McpBacklogItemCommentResultDto>> {
+    const actorUser = await this.users.findById(actor.userId);
+    const { role } = roleOf(actorUser);
+
+    const roadmaps = (await this.getRoadmaps.execute({ tenantId: actor.tenantId })).getValue();
+    const found = findBacklogItem(roadmaps, dto.item ?? '');
+    if (!found) return Result.fail(`Backlog item "${dto.item}" not found`);
+    const { roadmap, item } = found;
+
+    // mentions REPLACES the set; omitted leaves the existing ones untouched.
+    let mentions: string[] | undefined;
+    if (dto.mentions !== undefined) {
+      const people = await this.users.findByTenant(actor.tenantId, ALL_USERS);
+      const resolved = resolveMentions(people.data, dto.mentions);
+      if (resolved.isFailure) return Result.fail(resolved.error as string);
+      mentions = resolved.getValue();
+    }
+
+    const result = await this.updateComment.execute({
+      tenantId: actor.tenantId,
+      itemId: item.id,
+      commentId: dto.comment ?? '',
+      userId: actor.userId,
+      role,
+      dto: {
+        body: dto.body !== undefined ? descriptionToHtml(dto.body) : undefined,
+        mentions,
+        images: dto.images,
+      },
+    });
+    // Surfaces COMMENT_FORBIDDEN ("You can only edit your own comments") verbatim.
+    if (result.isFailure) return Result.fail(result.error as string);
+
+    const comment = result.getValue();
+    await logBacklogCommentEvent(
+      this.events,
+      actorUser,
+      actor,
+      McpTool.UPDATE_BACKLOG_ITEM_COMMENT,
+      comment.id.toString(),
+      roadmap,
+      item,
+    );
+    return Result.ok(toBacklogCommentResult(comment, roadmap, item));
+  }
+}
+
+@Injectable()
+export class McpDeleteBacklogItemCommentUseCase
+  implements
+    IUsecaseExecute<
+      { actor: McpActor; dto: McpDeleteBacklogItemCommentDto },
+      Result<McpDeletedBacklogItemCommentDto>
+    >
+{
+  constructor(
+    private readonly getRoadmaps: GetRoadmapsUseCase,
+    private readonly deleteComment: DeleteRoadmapItemCommentUseCase,
+    @Inject(IUserRepository) private readonly users: IUserRepository,
+    @Inject(IMcpEventRepository) private readonly events: IMcpEventRepository,
+  ) {}
+
+  async execute({
+    actor,
+    dto,
+  }: {
+    actor: McpActor;
+    dto: McpDeleteBacklogItemCommentDto;
+  }): Promise<Result<McpDeletedBacklogItemCommentDto>> {
+    const actorUser = await this.users.findById(actor.userId);
+    const { role } = roleOf(actorUser);
+
+    const roadmaps = (await this.getRoadmaps.execute({ tenantId: actor.tenantId })).getValue();
+    const found = findBacklogItem(roadmaps, dto.item);
+    if (!found) return Result.fail(`Backlog item "${dto.item}" not found`);
+    const { roadmap, item } = found;
+
+    const result = await this.deleteComment.execute({
+      tenantId: actor.tenantId,
+      itemId: item.id,
+      commentId: dto.comment,
+      userId: actor.userId,
+      role,
+    });
+    // Surfaces COMMENT_DELETE_FORBIDDEN ("You can only delete your own comments").
+    if (result.isFailure) return Result.fail(result.error as string);
+
+    await logBacklogCommentEvent(
+      this.events,
+      actorUser,
+      actor,
+      McpTool.DELETE_BACKLOG_ITEM_COMMENT,
+      dto.comment,
+      roadmap,
+      item,
+    );
+    return Result.ok({ id: dto.comment, itemShortId: item.shortId ?? '' });
   }
 }
 
@@ -1571,7 +1954,7 @@ export class McpUpdateDocUseCase
 @Injectable()
 export class McpSearchIssuesUseCase
   implements
-    IUsecaseExecute<{ actor: McpActor; dto: McpSearchIssuesDto }, Result<McpIssueResponseDto[]>>
+    IUsecaseExecute<{ actor: McpActor; dto: McpSearchIssuesDto }, Result<McpIssueSearchResultDto>>
 {
   constructor(
     private readonly getTeams: GetTeamsUseCase,
@@ -1587,7 +1970,7 @@ export class McpSearchIssuesUseCase
   }: {
     actor: McpActor;
     dto: McpSearchIssuesDto;
-  }): Promise<Result<McpIssueResponseDto[]>> {
+  }): Promise<Result<McpIssueSearchResultDto>> {
     const teams = (await this.getTeams.execute({ tenantId: actor.tenantId })).getValue();
     const byId = new Map(teams.map((t) => [t.id.toString(), t.name]));
 
@@ -1639,6 +2022,8 @@ export class McpSearchIssuesUseCase
       roadmapItemId = [found.id];
     }
 
+    const page = dto.page ?? 1;
+    const limit = dto.limit ?? 50;
     // userId '' keeps the private-board filter on, so a key can never read
     // someone's personal tasks.
     const result = await this.getIssues.execute({
@@ -1651,14 +2036,20 @@ export class McpSearchIssuesUseCase
         assigneeId: assigneeId ? [assigneeId] : undefined,
         parentId,
         roadmapItemId,
-        page: 1,
-        limit: dto.limit ?? 20,
+        page,
+        limit,
       } as QueryIssueDto,
     });
 
-    return Result.ok(
-      result.getValue().data.map((i) => toIssueResponse(i, byId.get(i.teamId) ?? '')),
-    );
+    // A real page of the database, with the total — so a search that matches 300
+    // says so and the caller asks for page 2, instead of silently getting 20.
+    const found = result.getValue();
+    return Result.ok({
+      issues: found.data.map((i) => toIssueResponse(i, byId.get(i.teamId) ?? '')),
+      total: found.total,
+      page,
+      pageCount: Math.max(1, Math.ceil(found.total / limit)),
+    });
   }
 }
 
@@ -1713,9 +2104,8 @@ export class McpListBacklogItemsUseCase
         });
       }
     }
-    // Bound the reply — backlogs are usually small, but one huge roadmap
-    // shouldn't flood the assistant. Filter by `roadmap` to see the rest.
-    return Result.ok(items.slice(0, LIST_BACKLOG_CAP));
+    // Every item — the tool pages a reply that runs long.
+    return Result.ok(items);
   }
 }
 
@@ -1936,12 +2326,13 @@ export class GetMcpEventsUseCase
   }
 }
 
-/** One comment line for a listing/detail reply — body flattened and excerpted. */
+/** One comment for a listing/detail reply — the whole body, as readable text. */
 function toCommentDto(comment: CommentEntity): McpCommentDto {
   return {
     id: comment.id.toString(),
     authorName: comment.authorName,
-    excerpt: plainSnippet(comment.body, COMMENT_EXCERPT),
+    body: readableText(comment.body),
+    images: comment.images ?? [],
     parentId: comment.parentId,
     createdAt: comment.createdAt,
     updatedAt: comment.updatedAt,
@@ -1955,7 +2346,7 @@ function toCommentResult(comment: CommentEntity, issue: IssueEntity): McpComment
     issueId: issue.id.toString(),
     issueShortId: issue.shortId,
     authorName: comment.authorName,
-    excerpt: plainSnippet(comment.body, COMMENT_EXCERPT),
+    body: readableText(comment.body),
     parentId: comment.parentId,
     link: issueLink(issue.shortId || issue.id.toString()),
   };
@@ -1989,6 +2380,51 @@ async function logCommentEvent(
     entityTitle: issue.title,
     contextLabel: issue.shortId,
     link: issueLink(issue.shortId || issue.id.toString()),
+  });
+  if (event.isSuccess) await events.append(event.getValue());
+}
+
+/** The reply add/update_backlog_item_comment return — the comment plus its item link. */
+function toBacklogCommentResult(
+  comment: CommentEntity,
+  roadmap: RoadmapEntity,
+  item: RoadmapItemData,
+): McpBacklogItemCommentResultDto {
+  return {
+    id: comment.id.toString(),
+    itemId: item.id,
+    itemShortId: item.shortId ?? '',
+    authorName: comment.authorName,
+    body: readableText(comment.body),
+    parentId: comment.parentId,
+    link: backlogItemLink(roadmap.id.toString(), item.shortId || item.id),
+  };
+}
+
+/** {@link logCommentEvent}, for a comment on a backlog item: the row points at the item. */
+async function logBacklogCommentEvent(
+  events: IMcpEventRepository,
+  actorUser: UserEntity | null,
+  actor: McpActor,
+  tool: McpTool,
+  commentId: string,
+  roadmap: RoadmapEntity,
+  item: RoadmapItemData,
+): Promise<void> {
+  const event = McpEventEntity.create({
+    tenantId: actor.tenantId,
+    keyId: actor.keyId,
+    keyName: actor.keyName,
+    userId: actor.userId,
+    userName: actorUser?.name ?? actor.keyName,
+    clientName: actor.clientName,
+    tool,
+    entity: McpEntity.COMMENT,
+    entityId: commentId,
+    entityRef: item.shortId ?? '',
+    entityTitle: item.title,
+    contextLabel: roadmap.title,
+    link: backlogItemLink(roadmap.id.toString(), item.shortId || item.id),
   });
   if (event.isSuccess) await events.append(event.getValue());
 }

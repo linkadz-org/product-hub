@@ -171,7 +171,7 @@ export class McpSubtaskDto {
   status: string;
 }
 
-/** One comment line — a flattened, excerpted view for a tool reply. Replies carry
+/** One comment for a tool reply — the whole body, as readable text. Replies carry
  *  their root's id in `parentId` so a one-level thread reads back correctly. */
 export class McpCommentDto {
   @ApiProperty()
@@ -180,8 +180,13 @@ export class McpCommentDto {
   @ApiProperty()
   authorName: string;
 
-  @ApiProperty({ description: 'Plain-text excerpt of the body (up to 1,000 chars)' })
-  excerpt: string;
+  @ApiProperty({
+    description: 'The full body as text — line breaks kept, links and media as their URLs',
+  })
+  body: string;
+
+  @ApiProperty({ type: [String], description: 'Image/video URLs attached under the comment' })
+  images: string[];
 
   @ApiProperty({ description: 'Root comment id when this is a reply; empty for top-level' })
   parentId: string;
@@ -207,14 +212,62 @@ export class McpCommentResultDto {
   @ApiProperty()
   authorName: string;
 
-  @ApiProperty({ description: 'Plain-text excerpt of the body (up to 1,000 chars)' })
-  excerpt: string;
+  @ApiProperty({ description: 'The full body as text — line breaks kept' })
+  body: string;
 
   @ApiProperty({ description: 'Root comment id when this is a reply; empty for top-level' })
   parentId: string;
 
   @ApiProperty({ description: 'In-app path to the issue, e.g. /issues/ENG-14' })
   link: string;
+}
+
+/** What add/update_backlog_item_comment hand back — enough to confirm and to link. */
+export class McpBacklogItemCommentResultDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty({ description: 'The backlog item the comment lives on' })
+  itemId: string;
+
+  @ApiProperty({ description: 'Backlog item ref, e.g. RM-12' })
+  itemShortId: string;
+
+  @ApiProperty()
+  authorName: string;
+
+  @ApiProperty({ description: 'The full body as text — line breaks kept' })
+  body: string;
+
+  @ApiProperty({ description: 'Root comment id when this is a reply; empty for top-level' })
+  parentId: string;
+
+  @ApiProperty({ description: 'In-app path to the item' })
+  link: string;
+}
+
+/** The trace delete_backlog_item_comment hands back. */
+export class McpDeletedBacklogItemCommentDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty({ description: 'Backlog item ref the comment was on' })
+  itemShortId: string;
+}
+
+/** The trace delete_backlog_item hands back — enough to confirm what went. */
+export class McpDeletedBacklogItemDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty({ example: 'RM-6' })
+  shortId: string;
+
+  @ApiProperty()
+  title: string;
+
+  @ApiProperty()
+  roadmapTitle: string;
 }
 
 /** The trace delete_comment hands back — enough to confirm what went. */
@@ -227,9 +280,9 @@ export class McpDeletedCommentResponseDto {
 }
 
 /**
- * A full read of one issue: its flat fields, its subtasks, and its most recent
- * comments (`commentCount` is the total; `comments` is capped to the latest few,
- * with `list_comments` for the whole thread).
+ * A full read of one issue: its flat fields, every subtask and the whole comment
+ * thread. Nothing is capped here — a reply too long to send at once is paged by
+ * the MCP tool instead.
  */
 export class McpIssueDetailResponseDto {
   @ApiProperty()
@@ -280,7 +333,7 @@ export class McpIssueDetailResponseDto {
   @ApiProperty({ description: "Parent issue's title ('' when top-level)" })
   parentTitle: string;
 
-  @ApiProperty({ type: [McpSubtaskDto], description: 'Subtasks (capped); see subtaskCount for total' })
+  @ApiProperty({ type: [McpSubtaskDto], description: 'Every subtask visible to the key' })
   subtasks: McpSubtaskDto[];
 
   @ApiProperty({ description: 'Total subtasks on the issue' })
@@ -294,7 +347,7 @@ export class McpIssueDetailResponseDto {
   })
   attachments: McpUploadedFileDto[];
 
-  @ApiProperty({ type: [McpCommentDto], description: 'Latest comments (capped); see commentCount for total' })
+  @ApiProperty({ type: [McpCommentDto], description: 'The whole thread, oldest first' })
   comments: McpCommentDto[];
 
   @ApiProperty({ description: 'Total comments on the issue' })
@@ -518,4 +571,31 @@ export class McpBacklogItemDetailDto {
 
   @ApiProperty({ description: 'Human summary of what changed — update_backlog_item only' })
   changed: string;
+
+  @ApiProperty({
+    type: [McpIssueResponseDto],
+    description: 'Every task/bug filed under the item — get_backlog_item only',
+  })
+  tickets: McpIssueResponseDto[];
+
+  @ApiProperty({
+    type: [McpCommentDto],
+    description: 'The item’s whole comment thread, oldest first — get_backlog_item only',
+  })
+  comments: McpCommentDto[];
+}
+
+/** One page of search_issues — the issues plus where that page sits. */
+export class McpIssueSearchResultDto {
+  @ApiProperty({ type: [McpIssueResponseDto] })
+  issues: McpIssueResponseDto[];
+
+  @ApiProperty({ description: 'Every issue the search matches, across all pages' })
+  total: number;
+
+  @ApiProperty()
+  page: number;
+
+  @ApiProperty()
+  pageCount: number;
 }

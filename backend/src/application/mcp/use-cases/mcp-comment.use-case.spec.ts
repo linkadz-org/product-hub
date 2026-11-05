@@ -139,8 +139,7 @@ describe('McpAddCommentUseCase', () => {
 
     expect(result.isSuccess).toBe(true);
     expect(createComment.execute.mock.calls[0][0].dto.body).toBe(storedBody);
-    expect(result.getValue().excerpt).toBe(text);
-    expect(result.getValue().excerpt.length).toBeGreaterThan(300);
+    expect(result.getValue().body).toBe(text);
   });
 
   it('fails with the valid people when a mention cannot be resolved', async () => {
@@ -159,8 +158,8 @@ describe('McpAddCommentUseCase', () => {
 });
 
 describe('McpListCommentsUseCase', () => {
-  it('returns comment text longer than 300 characters', async () => {
-    const text = 'x'.repeat(600);
+  it('returns the whole comment — no character cap', async () => {
+    const text = 'x'.repeat(5000);
     const issueWithId = { ...fakeIssue, id: { toString: () => UUID } };
     const comment = {
       id: { toString: () => 'comment-long' },
@@ -184,8 +183,7 @@ describe('McpListCommentsUseCase', () => {
     const result = await useCase.execute({ actor, dto: { issue: REF } });
 
     expect(result.isSuccess).toBe(true);
-    expect(result.getValue()[0].excerpt).toBe(text);
-    expect(result.getValue()[0].excerpt.length).toBeGreaterThan(300);
+    expect(result.getValue()[0].body).toBe(text);
   });
 });
 
