@@ -145,3 +145,46 @@ describe('GanttChart double-click to date', () => {
     expect(picked).toHaveLength(0);
   });
 });
+
+/**
+ * **A date is a whole day, and every mark on it sits in that day's column.** A
+ * one-day item (Nov 10 – Nov 10) and a task due Nov 10 are the same day — before
+ * this, the diamond sat on the 10th's left edge (its midnight) while the bar ran
+ * right from there, so the two read as different dates.
+ */
+describe('GanttChart day columns', () => {
+  const day = Date.UTC(2026, 10, 10);
+  const pctOf = (el: Element | null, prop: 'left' | 'width') =>
+    parseFloat((el as HTMLElement | null)?.style[prop] ?? 'NaN');
+
+  it('centres a diamond on a one-day bar of the same date', () => {
+    render(
+      createElement(GanttChart, {
+        labelHeader: 'Item',
+        rows: [
+          { id: 'item', label: 'RM', bar: { start: day, end: day, color: 'red' } },
+          { id: 'task', label: 'ENG', marker: { at: day, color: 'blue' } },
+        ],
+      }),
+    );
+    const [bar, marker] = Array.from(host.querySelectorAll('[data-gantt-item]'));
+    const barMid = pctOf(bar, 'left') + pctOf(bar, 'width') / 2;
+    expect(pctOf(marker, 'left')).toBeCloseTo(barMid, 5);
+  });
+
+  it('paints a bar through its last day, not up to it', () => {
+    render(
+      createElement(GanttChart, {
+        labelHeader: 'Item',
+        rows: [
+          { id: 'ten', label: 'Ten days', bar: { start: day, end: day + 9 * GANTT_DAY, color: 'red' } },
+          { id: 'twenty', label: 'Twenty days', bar: { start: day, end: day + 19 * GANTT_DAY, color: 'red' } },
+        ],
+      }),
+    );
+    const [ten, twenty] = Array.from(host.querySelectorAll('[data-gantt-item]'));
+    // Inclusive: 10 days vs 20 days is exactly half, where an exclusive end would
+    // give 9 vs 19.
+    expect(pctOf(ten, 'width') / pctOf(twenty, 'width')).toBeCloseTo(0.5, 5);
+  });
+});

@@ -104,21 +104,23 @@ function buildTicks(minMs: number, maxMs: number): Tick[] {
   const pct = (v: number) => ((v - minMs) / (maxMs - minMs)) * 100;
   const ticks: Tick[] = [];
   const spanDays = (maxMs - minMs) / GANTT_DAY;
+  // UTC, like every date on the chart (`toEpoch` reads a day as UTC midnight): a
+  // tick at *local* midnight sat hours off the day it names.
   if (spanDays <= 70) {
-    const c = new Date(minMs);
-    c.setHours(0, 0, 0, 0);
-    if (c.getTime() < minMs) c.setDate(c.getDate() + 1);
-    for (let d = c.getTime(); d <= maxMs; d += 7 * GANTT_DAY) {
-      ticks.push({ x: pct(d), label: new Date(d).toLocaleDateString(localeTag(), { month: 'short', day: 'numeric' }) });
+    for (let d = Math.ceil(minMs / GANTT_DAY) * GANTT_DAY; d <= maxMs; d += 7 * GANTT_DAY) {
+      ticks.push({
+        x: pct(d),
+        label: new Date(d).toLocaleDateString(localeTag(), { month: 'short', day: 'numeric', timeZone: 'UTC' }),
+      });
     }
   } else {
     const c = new Date(minMs);
-    c.setDate(1);
-    c.setHours(0, 0, 0, 0);
-    if (c.getTime() < minMs) c.setMonth(c.getMonth() + 1);
+    c.setUTCDate(1);
+    c.setUTCHours(0, 0, 0, 0);
+    if (c.getTime() < minMs) c.setUTCMonth(c.getUTCMonth() + 1);
     while (c.getTime() <= maxMs) {
-      ticks.push({ x: pct(c.getTime()), label: c.toLocaleDateString(localeTag(), { month: 'short' }) });
-      c.setMonth(c.getMonth() + 1);
+      ticks.push({ x: pct(c.getTime()), label: c.toLocaleDateString(localeTag(), { month: 'short', timeZone: 'UTC' }) });
+      c.setUTCMonth(c.getUTCMonth() + 1);
     }
   }
   return ticks;
@@ -449,10 +451,11 @@ export function GanttChart({
   // Padded window covering every endpoint plus today, so the "today" line always
   // lands. Bands count too: a sprint drawn half off the edge would misreport where
   // it ends, and the caller passes only the bands worth showing.
+  // An end date is a whole day, so it reaches to that day's close.
   const stamps = [Date.now()];
   for (const r of rows) {
-    if (r.bar) stamps.push(r.bar.start, r.bar.end);
-    if (r.marker && isEpoch(r.marker.at)) stamps.push(r.marker.at);
+    if (r.bar) stamps.push(r.bar.start, r.bar.end + GANTT_DAY);
+    if (r.marker && isEpoch(r.marker.at)) stamps.push(r.marker.at + GANTT_DAY);
   }
   for (const b of bands) {
     if (isEpoch(b.start) && isEpoch(b.end)) stamps.push(b.start, b.end);
@@ -473,7 +476,13 @@ export function GanttChart({
     left: pct(s),
     width: Math.max(0, pct(e) - pct(s)),
   }));
-  const todayX = pct(Date.now());
+  // The reader's wall clock laid on the chart's UTC day grid — so "today" lands in
+  // today's column even in the hours where the local and UTC dates differ.
+  const now = new Date();
+  const todayX = pct(
+    Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) +
+      (now.getHours() * 60 + now.getMinutes()) * 60_000,
+  );
   // Left → right, so the alternating tint of the `default` tone counts bands in
   // reading order regardless of how the caller sorted them.
   const lanes = bands
@@ -1008,8 +1017,13 @@ function GanttBarView({
   const editable = !!onChange;
 
   const view = preview ?? bar;
-  const left = pct(view.start);
-  const width = Math.max(1.5, pct(view.end) - left);
+  // Every day is a column, and the end date is one of them: Oct 10 – Oct 10 fills
+  // the 10th, so a diamond dated the 10th sits in the middle of it. Too short to
+  // see, the bar is widened about its own centre, not off its start.
+  const from = pct(view.start);
+  const to = pct(view.end + GANTT_DAY);
+  const width = Math.max(1.5, to - from);
+  const left = (from + to - width) / 2;
   const label = `${formatDate(new Date(view.start))} – ${formatDate(new Date(view.end))}`;
 
   const begin = (mode: BarDrag['mode']) => (e: ReactPointerEvent<HTMLElement>) => {
@@ -1216,7 +1230,7 @@ function GanttMarkerView({
           className="pointer-events-none absolute top-1/2 h-4 -translate-y-1/2 rounded-md opacity-50"
           style={{
             left: `${pct(preview.start)}%`,
-            width: `${Math.max(0, pct(preview.end) - pct(preview.start))}%`,
+            width: `${Math.max(0, pct(preview.end + GANTT_DAY) - pct(preview.start))}%`,
             backgroundColor: marker.color,
           }}
           aria-hidden
@@ -1230,7 +1244,8 @@ function GanttMarkerView({
           editable ? 'size-6 touch-none' : 'size-2.5',
           movable && 'cursor-grab active:cursor-grabbing',
         )}
-        style={{ left: `${pct(at)}%` }}
+        // Mid-column: the date is a whole day, the same column a bar covers.
+        style={{ left: `${pct(at + GANTT_DAY / 2)}%` }}
         title={marker.tooltip}
         onPointerDown={editable ? begin('move') : undefined}
         onPointerMove={editable ? onMove : undefined}
