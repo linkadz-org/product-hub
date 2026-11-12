@@ -6,6 +6,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '@core/presentation/guards/jwt-auth.guard';
 import { RolesGuard } from '@core/presentation/guards/roles.guard';
 import { UploadMediaUseCase } from '@application/storage/use-cases/upload-media.use-case';
+import { CreateUploadUrlUseCase } from '@application/storage/use-cases/create-upload-url.use-case';
 import {
   MCP_UPLOAD_TICKET_SECRET,
   McpCreateUploadUrlUseCase,
@@ -43,6 +44,7 @@ describe('POST mcp/uploads/ticket/:ticket', () => {
       providers: [
         { provide: JwtService, useValue: jwt },
         { provide: UploadMediaUseCase, useValue: uploadMedia },
+        { provide: CreateUploadUrlUseCase, useValue: { execute: jest.fn() } },
         McpCreateUploadUrlUseCase,
         McpRedeemUploadTicketUseCase,
         // The real global guards: without them "@Public() lets this through"

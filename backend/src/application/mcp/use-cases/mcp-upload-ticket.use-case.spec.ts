@@ -2,6 +2,7 @@ import { JwtService } from '@nestjs/jwt';
 import { BadRequestException } from '@nestjs/common';
 import { ApiKeyScope } from '@application/api-keys/domain/api-key.enums';
 import { UploadMediaUseCase } from '@application/storage/use-cases/upload-media.use-case';
+import { CreateUploadUrlUseCase } from '@application/storage/use-cases/create-upload-url.use-case';
 import {
   MCP_UPLOAD_TICKET_SECRET,
   McpCreateUploadUrlUseCase,
@@ -36,12 +37,33 @@ const stored = {
   size: PNG.length,
 };
 
-function build(mediaResult?: unknown) {
+const signedPut = {
+  uploadUrl: 'https://bucket.s3.test/uploads/2026-11-12/abc-demo.mp4?X-Amz-Signature=sig&X-Amz-Expires=3600',
+  url: 'https://bucket.s3.test/uploads/2026-11-12/abc-demo.mp4',
+  name: 'demo.mp4',
+  contentType: 'video/mp4',
+  size: 150 * 1024 * 1024,
+  headers: { 'Content-Type': 'video/mp4' },
+  expiresInSeconds: 3600,
+  uploadId: '',
+  key: '',
+  partSize: 0,
+  partUrls: [],
+};
+
+function build(mediaResult?: unknown, presignResult: unknown = signedPut) {
   const uploadMedia = {
     execute: jest.fn().mockResolvedValue(mediaResult ?? stored),
   };
+  const presign = {
+    execute: jest.fn().mockImplementation(async () => {
+      if (presignResult instanceof Error) throw presignResult;
+      return presignResult;
+    }),
+  };
   return {
-    create: new McpCreateUploadUrlUseCase(jwt),
+    presign,
+    create: new McpCreateUploadUrlUseCase(jwt, presign as unknown as CreateUploadUrlUseCase),
     redeem: new McpRedeemUploadTicketUseCase(
       jwt,
       uploadMedia as unknown as UploadMediaUseCase,
@@ -86,6 +108,62 @@ describe('McpCreateUploadUrlUseCase', () => {
     const { curl, uploadUrl } = result.getValue();
     expect(curl).toContain('-F "file=@checkout-500.png"');
     expect(curl).toContain(uploadUrl);
+  });
+
+  // The CDN in front of the API 413s any body over ~100MB, so a recording sent
+  // through the ticket route never reached us. With a size, it skips the API.
+  describe('with a size — straight to storage', () => {
+    it('signs a single PUT for the exact size and hands back the stored URL up front', async () => {
+      const { create, presign } = build();
+      const result = await create.execute({
+        actor,
+        dto: { name: 'demo.mp4', size: 150 * 1024 * 1024 },
+        baseUrl: 'https://api.test/v1/mcp',
+      });
+
+      expect(presign.execute).toHaveBeenCalledWith(
+        't1',
+        { originalName: 'demo.mp4', contentType: '', size: 150 * 1024 * 1024 },
+        { singlePut: true },
+      );
+      const t = result.getValue();
+      expect(t.uploadUrl).toBe(signedPut.uploadUrl);
+      expect(t.url).toBe(signedPut.url);
+      expect(t.curl).toBe(
+        `curl -sS --fail-with-body -T "demo.mp4" -H "Content-Type: video/mp4" "${signedPut.uploadUrl}" ` +
+          `&& echo "${signedPut.url}"`,
+      );
+    });
+
+    it('passes the storage rules’ own sentence back when the file is refused', async () => {
+      const { create } = build(undefined, new Error('Video is too large — the limit is 30MB.'));
+      const result = await create.execute({
+        actor,
+        dto: { name: 'demo.mp4', size: 150 * 1024 * 1024 },
+        baseUrl: 'https://api.test/v1/mcp',
+      });
+      expect(result.isFailure).toBe(true);
+      expect(result.error).toBe('Video is too large — the limit is 30MB.');
+    });
+
+    it('needs the name too — the extension is what types a signed upload', async () => {
+      const { create, presign } = build();
+      const result = await create.execute({ actor, dto: { size: 1024 }, baseUrl: 'https://api.test/v1/mcp' });
+      expect(result.isFailure).toBe(true);
+      expect(presign.execute).not.toHaveBeenCalled();
+    });
+
+    it('falls back to the ticket route when the provider cannot sign (Azure)', async () => {
+      const { create } = build(undefined, { ...signedPut, uploadUrl: '', url: '', headers: {} });
+      const result = await create.execute({
+        actor,
+        dto: { name: 'demo.mp4', size: 1024 },
+        baseUrl: 'https://api.test/v1/mcp',
+      });
+      const t = result.getValue();
+      expect(t.uploadUrl).toContain('/uploads/ticket/');
+      expect(t.url).toBe('');
+    });
   });
 });
 

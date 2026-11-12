@@ -72,7 +72,16 @@ export class CreateUploadUrlUseCase {
     @Inject(IStorageService) private readonly storage: IStorageService,
   ) {}
 
-  async execute(tenantId: string, file: UploadCandidate): Promise<PresignedUploadResult> {
+  /**
+   * `singlePut` skips the multipart route whatever the size. For a caller that
+   * uploads with one shell command (MCP's `curl -T`): it cannot walk 50 part URLs
+   * and collect ETags, and a single S3 PUT takes up to 5GB anyway.
+   */
+  async execute(
+    tenantId: string,
+    file: UploadCandidate,
+    opts: { singlePut?: boolean } = {},
+  ): Promise<PresignedUploadResult> {
     const settings = await this.settingsRepo.findByTenant(tenantId);
     const config = settings?.storage ?? defaultStorageConfig();
     const classified = resolveUpload(config, file);
@@ -87,7 +96,7 @@ export class CreateUploadUrlUseCase {
       size: file.size,
     };
 
-    if (file.size >= MULTIPART_THRESHOLD_BYTES) {
+    if (!opts.singlePut && file.size >= MULTIPART_THRESHOLD_BYTES) {
       const multipart = await this.storage.createMultipartUpload(config, input);
       // `null` is a provider with no multipart of its own — not a failure, just a
       // file that goes up the ordinary way.

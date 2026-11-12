@@ -35,6 +35,7 @@ import {
   McpUpdateIssueDto,
   McpUploadFileDto,
   McpCreateUploadUrlDto,
+  MCP_DIRECT_UPLOAD_MAX_BYTES,
 } from '@application/mcp/dtos/mcp.dtos';
 import {
   McpBugStatsDto,
@@ -358,7 +359,12 @@ export class McpServerFactory {
    * body, so every byte is read into the assistant's context on the way past —
    * a real screenshot can cost more context than the conversation it belongs to,
    * and past ~7MB it does not fit at all. This hands back a URL instead: one
-   * `curl -F` sends the file straight from disk to storage.
+   * `curl` sends the file straight from disk to storage.
+   *
+   * With `size` it is a URL signed by the storage provider itself, so a recording
+   * skips the CDN in front of the API (which 413s any body over ~100MB). The
+   * description leans hard on passing it — an assistant left to choose sends the
+   * bare name, and then a long screen capture fails for no reason it can see.
    *
    * The reply is a command, not a description of one. An assistant asked to
    * "POST multipart" invents the field name; given the line to run, it runs it.
@@ -373,8 +379,12 @@ export class McpServerFactory {
           'Prefer this over `upload_file` for anything real — a screenshot, a recording, a log. It ' +
           'returns a short-lived URL you upload to with one shell command, so the file goes from ' +
           'disk to storage without passing through the conversation (which is what makes ' +
-          '`upload_file` lossy for big or high-resolution files). Run the returned `curl` line; it ' +
-          'replies with JSON whose `url` is the stored file. Uploading does NOT attach anything: ' +
+          '`upload_file` lossy for big or high-resolution files). ALWAYS pass `name` and `size` ' +
+          '(exact bytes: `wc -c < file`): the URL then goes straight to storage, so videos up to ' +
+          'the workspace’s video limit (as high as 2000MB) upload in one go. Without `size` the ' +
+          'upload goes through the API, which a proxy caps at ~100MB. Run the returned `curl` line ' +
+          'unchanged apart from the path; it prints the stored file’s `url` (or replies with JSON ' +
+          'carrying it). Uploading does NOT attach anything: ' +
           'pass that `url` to `update_issue` (`attachments`, for a bug), `add_comment` (`images`) or ' +
           '`create_backlog_item`/`update_backlog_item` (`images`).',
         annotations: { readOnlyHint: true },
@@ -382,7 +392,14 @@ export class McpServerFactory {
           name: z
             .string()
             .optional()
-            .describe('The file you are about to send — used to write the example command'),
+            .describe('The file you are about to send, WITH its extension (demo.mp4) — the extension sets its type'),
+          size: z
+            .number()
+            .int()
+            .positive()
+            .max(MCP_DIRECT_UPLOAD_MAX_BYTES)
+            .optional()
+            .describe('Exact size in bytes (`wc -c < file`). Pass it — it lifts the ~100MB proxy limit'),
         },
       },
       (dto) =>
@@ -390,10 +407,19 @@ export class McpServerFactory {
           (actor) =>
             gated(actor, () => this.createUploadUrl.execute({ actor, dto, baseUrl: apiUrl })),
           (t) =>
-            `Upload URL ready (valid ${Math.round(t.expiresInSeconds / 60)} minutes, up to ` +
-            `${describeSize(t.maxBytes)}). Run:\n\n  ${t.curl}\n\n` +
-            'Replace the path with the real file. The reply is JSON — take its `url` and attach it ' +
-            'with update_issue `attachments` or add_comment `images`. Nothing is attached until you do.',
+            t.url
+              ? `Direct upload URL ready (valid ${Math.round(t.expiresInSeconds / 60)} minutes, ` +
+                `straight to storage). Run:\n\n  ${t.curl}\n\n` +
+                'Replace the path with the real file — it must be exactly the `size` you gave, or ' +
+                `storage answers 403. On success it prints the file's URL:\n\n  ${t.url}\n\n` +
+                'Attach that with update_issue `attachments` or add_comment `images`. Nothing is ' +
+                'attached until you do.'
+              : `Upload URL ready (valid ${Math.round(t.expiresInSeconds / 60)} minutes, up to ` +
+                `${describeSize(t.maxBytes)}, though a proxy refuses bodies over ~100MB — pass ` +
+                '`size` for bigger files). Run:\n\n  ' +
+                `${t.curl}\n\n` +
+                'Replace the path with the real file. The reply is JSON — take its `url` and attach it ' +
+                'with update_issue `attachments` or add_comment `images`. Nothing is attached until you do.',
         ),
     );
   }

@@ -172,15 +172,37 @@ export class McpUploadFileDto {
  * is only used to write the example command, and the real name, type and size
  * come off the multipart body when the ticket is spent.
  */
+/**
+ * The ceiling on a direct-to-storage MCP upload: the largest per-type cap a
+ * tenant can set in Settings → Storage (2000MB). The tenant's own cap is the real
+ * gate; this only stops a number no setting could ever allow. One S3 PUT takes
+ * up to 5GB, so the provider is not what binds here.
+ */
+export const MCP_DIRECT_UPLOAD_MAX_BYTES = 2000 * 1024 * 1024;
+
 export class McpCreateUploadUrlDto {
   @ApiPropertyOptional({
     example: 'checkout-500.png',
-    description: 'File name, used only to render the ready-to-run command',
+    description:
+      'File name WITH its extension — it renders the command, and with `size` it sets the stored type',
   })
   @IsOptional()
   @IsString()
   @MaxLength(200)
   name?: string;
+
+  /**
+   * The file's exact size in bytes. Given (with `name`), the URL is signed by
+   * the storage provider and the bytes go straight there — past the CDN in front
+   * of the API, which refuses any request body over ~100MB. Without it the URL is
+   * the API's own ticket route, and that ceiling applies.
+   */
+  @ApiPropertyOptional({ example: 52428800, description: 'Exact size in bytes — enables direct upload' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(MCP_DIRECT_UPLOAD_MAX_BYTES)
+  size?: number;
 }
 
 /** Read one issue in full — the ref (`ENG-14`) or its uuid. */

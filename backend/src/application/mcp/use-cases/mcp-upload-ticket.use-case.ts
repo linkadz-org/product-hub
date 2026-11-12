@@ -4,9 +4,10 @@ import { JwtService } from '@nestjs/jwt';
 import { IUsecaseExecute } from '@core/interfaces';
 import { Result } from '@shared/logic/result';
 import { UploadMediaUseCase } from '@application/storage/use-cases/upload-media.use-case';
+import { CreateUploadUrlUseCase } from '@application/storage/use-cases/create-upload-url.use-case';
 import { contentTypeFromName } from '@application/storage/domain/upload-kind';
 import { jwtConstants } from '@application/auth/constants';
-import { McpCreateUploadUrlDto } from '../dtos/mcp.dtos';
+import { MCP_DIRECT_UPLOAD_MAX_BYTES, McpCreateUploadUrlDto } from '../dtos/mcp.dtos';
 import { McpUploadUrlDto, McpUploadedFileDto } from '../dtos/mcp.response.dto';
 import type { McpActor } from './mcp.use-cases';
 
@@ -68,12 +69,19 @@ export interface McpTicketFile {
  * one `curl -F`, and the bytes go from disk to storage without ever being read
  * into a model.
  *
- * It is our own endpoint rather than a provider-signed PUT on purpose. The web
- * app signs one (`POST /uploads/presign`) because the browser knows the file's
- * name, type and exact size before it sends anything, and those three are what a
- * signature has to be built around. An assistant handed a URL to `curl` knows
- * none of them yet — so the ticket stays type- and size-agnostic, and the file is
- * judged by {@link UploadMediaUseCase} when it arrives.
+ * **Two routes, picked by whether the caller said how big the file is.**
+ *
+ * - **`size` given → a provider-signed PUT, straight into the bucket** — the same
+ *   signing the web app's `POST /uploads/presign` does, so the file is judged
+ *   (type, the tenant's per-type cap) *before* a byte moves. This is the route
+ *   that matters for video: the API sits behind a CDN that refuses any request
+ *   body over ~100MB, so a recording sent through our own endpoint died there
+ *   with a 413 the API never saw. Always a single PUT, never multipart — a
+ *   `curl` can't walk part URLs, and one S3 PUT takes up to 5GB.
+ * - **No `size` (or a provider that can't sign — Azure) → our own ticket route.**
+ *   A signature has to be built around the exact size, so a caller that doesn't
+ *   know it gets the type- and size-agnostic ticket, judged by
+ *   {@link UploadMediaUseCase} when it arrives — and bounded by that CDN.
  */
 @Injectable()
 export class McpCreateUploadUrlUseCase
@@ -83,7 +91,10 @@ export class McpCreateUploadUrlUseCase
       Result<McpUploadUrlDto>
     >
 {
-  constructor(private readonly jwt: JwtService) {}
+  constructor(
+    private readonly jwt: JwtService,
+    private readonly presign: CreateUploadUrlUseCase,
+  ) {}
 
   async execute({
     actor,
@@ -94,6 +105,44 @@ export class McpCreateUploadUrlUseCase
     dto: McpCreateUploadUrlDto;
     baseUrl: string;
   }): Promise<Result<McpUploadUrlDto>> {
+    if (dto.size) {
+      const name = dto.name?.trim();
+      // The extension is what types a signed upload — there is no body to sniff yet.
+      if (!name) {
+        return Result.fail('Pass `name` (with its extension) together with `size`.');
+      }
+      let signed: Awaited<ReturnType<CreateUploadUrlUseCase['execute']>>;
+      try {
+        signed = await this.presign.execute(
+          actor.tenantId,
+          { originalName: name, contentType: '', size: dto.size },
+          { singlePut: true },
+        );
+      } catch (err) {
+        // Wrong type, over the tenant's cap, storage not set up — each already a
+        // sentence written for whoever is uploading.
+        return Result.fail(err instanceof Error ? err.message : String(err));
+      }
+      if (signed.uploadUrl) {
+        const headers = Object.entries(signed.headers)
+          .map(([k, v]) => ` -H "${k}: ${v}"`)
+          .join('');
+        return Result.ok({
+          uploadUrl: signed.uploadUrl,
+          expiresInSeconds: signed.expiresInSeconds,
+          maxBytes: MCP_DIRECT_UPLOAD_MAX_BYTES,
+          // `-T` streams the file from disk with its own Content-Length, which is
+          // signed: a file that isn't exactly `size` bytes gets a 403 from the
+          // bucket. A PUT answers with no body, so the URL is echoed on success.
+          curl:
+            `curl -sS --fail-with-body -T "${name}"${headers} "${signed.uploadUrl}" ` +
+            `&& echo "${signed.url}"`,
+          url: signed.url,
+        });
+      }
+      // Azure: judged and accepted, but unsignable — the ticket carries it instead.
+    }
+
     const payload: McpUploadTicketPayload = { pur: TICKET_PURPOSE, tnt: actor.tenantId };
     const ticket = await this.jwt.signAsync(payload, {
       secret: MCP_UPLOAD_TICKET_SECRET,
@@ -109,6 +158,7 @@ export class McpCreateUploadUrlUseCase
       // Handed over ready to run: the failure mode this replaces is an assistant
       // inventing a multipart request and getting the field name wrong.
       curl: `curl -sS -F "file=@${name}" "${uploadUrl}"`,
+      url: '',
     });
   }
 }

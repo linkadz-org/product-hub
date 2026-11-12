@@ -154,6 +154,13 @@ export class McpUploadUrlDto {
 
   @ApiProperty({ description: 'The command to run, field name and quoting already right' })
   curl: string;
+
+  @ApiProperty({
+    description:
+      'Where the file will live — known up front on a direct upload (the PUT replies with no ' +
+      'body); empty on the ticket route, whose JSON reply carries it',
+  })
+  url: string;
 }
 
 /** One subtask line under an issue detail — enough to quote and address it. */
