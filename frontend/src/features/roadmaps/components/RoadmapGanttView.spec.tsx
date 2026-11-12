@@ -2,7 +2,7 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DEFAULT_ROADMAP_COLUMNS, RoadmapItemStatus } from '@/types/enums';
-import type { RoadmapItem } from '@/types/dto';
+import type { RoadmapItem, TaskDto } from '@/types/dto';
 import { RoadmapGantt, itemColor } from './RoadmapGanttView';
 
 /**
@@ -74,5 +74,41 @@ describe('RoadmapGantt — on hold', () => {
   it('draws a held bar grey, whatever its chip colour', () => {
     expect(itemColor(item('a', 'x', RoadmapItemStatus.ON_HOLD))).toBe('hsl(var(--muted-foreground))');
     expect(itemColor(item('b', 'x', RoadmapItemStatus.IN_PROGRESS))).toBe('hsl(var(--info))');
+  });
+});
+
+describe('RoadmapGantt — linked bugs', () => {
+  const linked = (id: string, title: string) =>
+    ({
+      id,
+      shortId: id.toUpperCase(),
+      title,
+      teamId: 't',
+      status: 'todo',
+      roadmapItemId: 'b',
+      startDate: '',
+      endDate: '',
+      dueDate: '',
+      cycleId: '',
+      labelKeys: [],
+      assignees: [],
+    }) as unknown as TaskDto;
+
+  it('lists a bug after the item’s tasks, tagged, and counts it apart', () => {
+    act(() => {
+      root.render(
+        createElement(RoadmapGantt, {
+          items: [item('b', 'Live thing', RoadmapItemStatus.IN_PROGRESS)],
+          columns: DEFAULT_ROADMAP_COLUMNS,
+          onOpenItem: () => {},
+          tasksByItem: new Map([['b', [linked('bug-1', 'Crash on save'), linked('tsk-1', 'Build it')]]]),
+          isBug: (tk) => tk.id === 'bug-1',
+        }),
+      );
+    });
+    const text = host.textContent ?? '';
+    expect(text).toContain('1 tasks · 1 bugs');
+    expect(text.indexOf('Crash on save')).toBeGreaterThan(text.indexOf('Build it'));
+    expect(text).toContain('BugBUG-1');
   });
 });

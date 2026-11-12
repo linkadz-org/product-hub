@@ -16,12 +16,15 @@ import {
 import { LabelChips } from '@/features/labels/LabelChips';
 import { CycleIcon } from '@/features/cycles/CycleIcon';
 import { TeamChip, type TeamChipTeam } from '@/features/teams/TeamChip';
-import { useTasks, useUpdateTask } from '@/features/tasks/api';
+import { useTasks } from '@/features/tasks/api';
+import { useIssues, useUpdateIssue } from '@/features/issues/api';
+import { Checkbox } from '@/components/ui';
 import { useTeamLabelsLookup, useTeamLookup, useTeamStatusesLookup } from '@/features/teams/api';
 import { doneKeyOf } from '@/features/my-team/workload';
 import { useAuth } from '@/lib/auth';
 import {
   CycleStatus,
+  IssueKind,
   ROADMAP_ITEM_STATUS_COLOR,
   ROADMAP_ITEM_STATUS_LABEL,
   RoadmapItemStatus,
@@ -51,6 +54,23 @@ export interface DateWindow {
  *  a drag only ever adds whole days, so this round-trips exactly. Exported for
  *  the calendar, which speaks ISO days rather than stamps. */
 export const isoDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+
+/** The "Bugs" toolbar box — on unless this browser has cleared it. */
+const SHOW_BUGS_KEY = 'roadmap.gantt.showBugs';
+function readShowBugs(): boolean {
+  try {
+    return localStorage.getItem(SHOW_BUGS_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+function writeShowBugs(on: boolean) {
+  try {
+    localStorage.setItem(SHOW_BUGS_KEY, on ? '1' : '0');
+  } catch {
+    /* ignore */
+  }
+}
 
 /** A linked task's window. `endDate` is the truth; `dueDate` is its legacy
  *  server-synced mirror, kept as a fallback for rows saved before the rename. */
@@ -176,6 +196,15 @@ interface RoadmapGanttProps {
    * render item bars only — no child markers, no authenticated task fetch.
    */
   tasksByItem?: Map<string, TaskDto[]>;
+  /**
+   * Is this linked issue a **bug** rather than a task? `tasksByItem` may carry the
+   * bugs linked to an item too (the authenticated view's "Bugs" toggle). A bug is
+   * charted like a task — same bar, same diamond — but listed after the item's
+   * tasks with a "Bug" tag, and kept out of everything that measures the *plan*:
+   * the item's derived end, its "N tasks" count and a sprint group's done count.
+   * A bug blocks an item; it isn't the work that delivers it.
+   */
+  isBug?: (task: TaskDto) => boolean;
   /** Marker colour + label for a linked task; only consulted when `tasksByItem` has rows. */
   taskStatus?: (task: TaskDto) => { color: string; label: string };
   /** The task's team labels, for its chips. Injected like `taskStatus` so the
@@ -240,6 +269,7 @@ export function RoadmapGantt({
   sprintForTask,
   taskDone,
   tasksByItem,
+  isBug,
   taskStatus,
   taskLabels,
   taskTeam,
@@ -252,13 +282,22 @@ export function RoadmapGantt({
 }: RoadmapGanttProps) {
   const narrowed = !!groupBySprint || !!filtered || (!!scope && scope.kind !== 'all');
   const shown = chartedItems(items, columns, narrowed);
-  const tasksOf = (item: RoadmapItem) => (tasksByItem?.get(item.id) ?? []).slice().sort(byDate);
+  const bug = (tk: TaskDto) => !!isBug?.(tk);
+  /** Tasks by date, then bugs by date — the plan reads first, what's blocking it after. */
+  const tasksOf = (item: RoadmapItem) => {
+    const all = (tasksByItem?.get(item.id) ?? []).slice().sort(byDate);
+    return [...all.filter((tk) => !bug(tk)), ...all.filter(bug)];
+  };
 
   /** One item and its tasks, as rows. `keyPrefix` keeps ids unique when grouping
    *  puts the same item under two sprints. */
   function itemRows(item: RoadmapItem, tasks: TaskDto[], keyPrefix: string): GanttRow[] {
     const out: GanttRow[] = [];
-    const { start, end } = itemWindow(item, tasks);
+    const planned = tasks.filter((tk) => !bug(tk));
+    const bugCount = tasks.length - planned.length;
+    // Tasks only: the calendar derives the same window from tasks alone, and the
+    // two views must not disagree about where an item sits.
+    const { start, end } = itemWindow(item, planned);
     // A parked item greys out along with every task under it — a bright task bar
     // beneath a grey item would still read as live work.
     const muted = isOnHold(item);
@@ -268,10 +307,10 @@ export function RoadmapGantt({
       id: `${keyPrefix}${item.id}`,
       label: item.title || t('roadmaps.untitled'),
       sublabel: `${item.progress}% · ${
-        tasks.length
-          ? t('roadmaps.ganttTasks').replace('{count}', String(tasks.length))
+        planned.length
+          ? t('roadmaps.ganttTasks').replace('{count}', String(planned.length))
           : t('roadmaps.ganttNoTasks')
-      }`,
+      }${bugCount ? ` · ${t('roadmaps.ganttBugs').replace('{count}', String(bugCount))}` : ''}`,
       // The card's chips, minus the ones a timeline already answers: no age (the
       // axis shows it) and no difficulty (a planning axis, not a schedule one).
       // RICE and the linked OKR stay — they're *why* this item is in "Now".
@@ -342,6 +381,13 @@ export function RoadmapGantt({
         // the same wherever it's charted.
         meta: (
           <>
+            {/* The same "Bug" tag the issue picker uses — the row is otherwise
+                drawn exactly like a task's. */}
+            {bug(tk) && (
+              <span className="shrink-0 rounded border border-border bg-muted/50 px-1 py-px text-[10px] font-medium uppercase leading-none tracking-wide text-muted-foreground">
+                {t('relations.kindBug')}
+              </span>
+            )}
             {tk.shortId && (
               <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{tk.shortId}</span>
             )}
@@ -404,7 +450,9 @@ export function RoadmapGantt({
   }
 
   /** A sprint's section header: what it is, when it ran, and what it holds. */
-  function groupHeader(name: string, range: string, groupItems: RoadmapItem[], groupTasks: TaskDto[]) {
+  function groupHeader(name: string, range: string, groupItems: RoadmapItem[], linked: TaskDto[]) {
+    // "6/9 tasks done" counts tasks — a sprint's bugs aren't part of its plan.
+    const groupTasks = linked.filter((tk) => !bug(tk));
     const done = taskDone ? groupTasks.filter(taskDone).length : 0;
     return (
       <>
@@ -637,24 +685,43 @@ export function RoadmapGanttView({
   const teamFor = useTeamLookup();
   // One query for the whole roadmap; grouped under each item below.
   const { data, isLoading } = useTasks({ roadmapId: [roadmapId] });
+  // The bugs linked to the roadmap's items, charted under each item beside its
+  // tasks unless the toolbar's "Bugs" box is cleared. Fetched either way — it's
+  // one small list, and ticking the box back on shouldn't wait on a request.
+  const { data: bugData, isLoading: bugsLoading } = useIssues({
+    roadmapId: [roadmapId],
+    kind: [IssueKind.BUG],
+  });
+  const [showBugs, setShowBugs] = useState(readShowBugs);
+  const toggleBugs = (on: boolean) => {
+    setShowBugs(on);
+    writeShowBugs(on);
+  };
   // The same hook the page uses, so this reads from the shared cache rather than
   // refetching — it's here only for the per-task lookup, which the page has no
   // use for and would otherwise have to thread through as two more props.
   const { sprintsForItem, sprintForTask } = useRoadmapSprints(roadmapId);
-  const update = useUpdateTask();
+  // `/issues/:id` either kind — a bug's bar drags exactly like a task's.
+  const update = useUpdateIssue();
   const replaceItems = useReplaceRoadmapItems();
   // What a row click opens, by ref in the URL (`?peek=RM-88`, `?peek=ENG-12`) so
   // the link is shareable. One param, so only ever one drawer at a time; which
   // one is decided by whether the ref names one of this roadmap's items.
   const [peekRef, setPeekRef] = usePeekParam();
   const isItemRef = !!peekRef && allItems.some((i) => i.shortId === peekRef || i.id === peekRef);
+  const fetchedBugs = bugData?.items;
+  const isBugRef = !!peekRef && !!fetchedBugs?.some((b) => b.shortId === peekRef || b.id === peekRef);
   const itemPeek: RoadmapItemPeek | null =
     peekRef && isItemRef
       ? { roadmapId, itemId: peekRef, href: `/roadmaps/${roadmapId}/items/${peekRef}` }
       : null;
   const taskPeek: IssuePeek | null =
     peekRef && !isItemRef
-      ? { id: peekRef, issueType: TeamIssueType.TASK, href: `/issues/${peekRef}` }
+      ? {
+          id: peekRef,
+          issueType: isBugRef ? TeamIssueType.BUG : TeamIssueType.TASK,
+          href: `/issues/${peekRef}`,
+        }
       : null;
   // Dates just dragged, applied over the fetched task until the refetch agrees:
   // the update isn't optimistic, so without this the bar would spring back to
@@ -663,12 +730,12 @@ export function RoadmapGanttView({
 
   const fetched = data?.items;
   useEffect(() => {
-    if (!fetched) return;
+    if (!fetched && !fetchedBugs) return;
     setPending((prev) => {
       if (!Object.keys(prev).length) return prev;
       const next = { ...prev };
       let settled = false;
-      for (const tk of fetched) {
+      for (const tk of [...(fetched ?? []), ...(fetchedBugs ?? [])]) {
         const p = next[tk.id];
         // Only the dates this edit wrote — a due-only edit leaves the start alone.
         if (
@@ -682,10 +749,15 @@ export function RoadmapGanttView({
       }
       return settled ? next : prev;
     });
-  }, [fetched]);
+  }, [fetched, fetchedBugs]);
+
+  const bugIds = new Set((fetchedBugs ?? []).map((b) => b.id));
+  const isBug = (tk: TaskDto) => bugIds.has(tk.id);
+  const typeOf = (tk: TaskDto) => (isBug(tk) ? TeamIssueType.BUG : TeamIssueType.TASK);
+  const linked: TaskDto[] = [...(fetched ?? []), ...(showBugs ? (fetchedBugs ?? []) : [])];
 
   const tasksByItem = new Map<string, TaskDto[]>();
-  for (const raw of fetched ?? []) {
+  for (const raw of linked) {
     if (!raw.roadmapItemId) continue;
     const p = pending[raw.id];
     const tk = p ? { ...raw, ...p } : raw;
@@ -728,19 +800,28 @@ export function RoadmapGanttView({
         scope={scope}
         groupBySprint={groupBySprint}
         filtered={filtered}
-        toolbar={toolbar}
+        toolbar={
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+              <Checkbox checked={showBugs} onCheckedChange={(v) => toggleBugs(v === true)} />
+              <span>{t('roadmaps.ganttShowBugs')}</span>
+            </label>
+            {toolbar}
+          </div>
+        }
         sprintsForItem={sprintsForItem}
         sprintForTask={sprintForTask}
         // Same "done" the boards and the sprint banner use, so a group header
         // can't disagree with the strip above it about what shipped.
-        taskDone={(tk) => tk.status === doneKeyOf(statusesFor(tk.teamId, TeamIssueType.TASK))}
+        taskDone={(tk) => tk.status === doneKeyOf(statusesFor(tk.teamId, typeOf(tk)))}
         onOpenItem={(id) => setPeekRef(items.find((i) => i.id === id)?.shortId || id)}
         tasksByItem={tasksByItem}
-        isLoading={isLoading}
+        isBug={isBug}
+        isLoading={isLoading || (showBugs && bugsLoading)}
         taskStatus={(tk) => {
-          // Every row here is a task: the query above is `useTasks`, which is bound
-          // to `kind: task`, so the status comes from the team's *task* columns.
-          const cfg = statusesFor(tk.teamId, TeamIssueType.TASK).find((c) => c.key === tk.status);
+          // A bug's status is a key in its team's *bug* columns, a task's in the
+          // task columns — looking a bug up in the task set would grey it out.
+          const cfg = statusesFor(tk.teamId, typeOf(tk)).find((c) => c.key === tk.status);
           return { color: cfg?.color ?? 'hsl(var(--muted-foreground))', label: cfg?.label ?? tk.status };
         }}
         taskLabels={(tk) => labelsFor(tk.teamId)}

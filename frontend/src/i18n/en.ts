@@ -643,6 +643,8 @@ export const en = {
   'roadmaps.ganttNoDates': 'No dates',
   'roadmaps.ganttNoTasks': 'No linked tasks',
   'roadmaps.ganttTasks': '{count} tasks',
+  'roadmaps.ganttBugs': '{count} bugs',
+  'roadmaps.ganttShowBugs': 'Bugs',
   'roadmaps.ganttDue': 'Due {date}',
   'roadmaps.ganttStarts': 'Starts {date}',
   'roadmaps.ganttLegendBar': 'Bar = item (start → last task end), filled by progress',

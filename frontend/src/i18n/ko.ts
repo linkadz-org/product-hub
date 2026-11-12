@@ -625,6 +625,8 @@ export const ko: Record<I18nKey, string> = {
   'roadmaps.ganttNoDates': '날짜 없음',
   'roadmaps.ganttNoTasks': '연결된 태스크 없음',
   'roadmaps.ganttTasks': '태스크 {count}개',
+  'roadmaps.ganttBugs': '버그 {count}개',
+  'roadmaps.ganttShowBugs': '버그',
   'roadmaps.ganttDue': '마감 {date}',
   'roadmaps.ganttStarts': '시작 {date}',
   'roadmaps.ganttLegendBar': '막대 = 항목 (시작 → 마지막 태스크 종료), 진행률만큼 채워짐',
