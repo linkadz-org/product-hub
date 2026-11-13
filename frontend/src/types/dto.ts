@@ -582,6 +582,8 @@ export interface TaskDto {
   order: number;
   createdAt: string;
   updatedAt: string;
+  /** When it entered a done status — see {@link BugDto.resolvedAt}. */
+  resolvedAt: string | null;
   /** Derived completion 0–100 — see {@link BugDto.progress}. */
   progress: number;
   /** Sub-task counts behind that percentage; both 0 on a leaf. */

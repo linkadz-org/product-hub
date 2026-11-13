@@ -18,7 +18,7 @@ import {
   peopleFilterCategories,
   type PeopleFilterOptions,
 } from '@/features/issues/issueFilters';
-import type { RoadmapColumn, RoadmapItem } from '@/types/dto';
+import type { RoadmapColumn, RoadmapItem, TaskDto } from '@/types/dto';
 
 /**
  * Narrowing a roadmap board.
@@ -32,7 +32,7 @@ import type { RoadmapColumn, RoadmapItem } from '@/types/dto';
  *
  * The axes are the item's own fields, matched with the same category ids the
  * issue boards use wherever the question is the same (`status`, `assigneeId`,
- * `createdBy`, `createdAt`, `scheduledAt`), so a URL means one thing on any
+ * `createdBy`, `createdAt`, `resolvedAt`, `scheduledAt`), so a URL means one thing on any
  * board. Filtering here is *and-across-axes, or-within-one* — the same reading
  * the API gives an issue list.
  */
@@ -63,6 +63,7 @@ const AXES = [
   ISSUE_FILTER.assignee,
   ISSUE_FILTER.creator,
   ISSUE_FILTER.created,
+  ISSUE_FILTER.solved,
   ISSUE_FILTER.scheduled,
 ] as const;
 
@@ -78,9 +79,9 @@ export interface RoadmapFilterOptions extends PeopleFilterOptions {
 
 /**
  * The Filter menu's rows: status · phase · difficulty · OKR · assignee ·
- * creator · created · scheduled.
+ * creator · created · solved · scheduled.
  *
- * The item's own axes come first, then the shared people block, then the two
+ * The item's own axes come first, then the shared people block, then the
  * date windows — the same order every issue board's menu uses.
  */
 export function roadmapFilterCategories({
@@ -144,6 +145,9 @@ export function roadmapFilterCategories({
     // every issue board.
     ...peopleFilterCategories(people),
     { id: ISSUE_FILTER.created, label: t('filters.createdDate'), type: 'date' },
+    // Work finished in the window — the item itself reaching Done, or any of its
+    // tasks being solved. See `filterRoadmapItems` for why either one counts.
+    { id: ISSUE_FILTER.solved, label: t('filters.solvedDate'), type: 'date' },
     // The item's own planned window, matched by *overlap* — anything on the plan
     // at any point in the range, not only what starts or ends inside it. This is
     // the axis that pairs with the timeline: "what did we have on in Q3?".
@@ -182,6 +186,9 @@ const dayInRange = (day: string, start: string, end: string) =>
 export function filterRoadmapItems(
   items: RoadmapItem[],
   filters: FilterSelections,
+  /** The item's linked tasks, for the solved axis. Absent (or still loading) →
+   *  that axis reads the item's own `completedAt` only. */
+  tasksByItem?: Map<string, TaskDto[]>,
 ): RoadmapItem[] {
   if (!hasRoadmapFilters(filters)) return items;
 
@@ -192,6 +199,7 @@ export function filterRoadmapItems(
   const assignees = filters[ISSUE_FILTER.assignee] ?? [];
   const creators = filters[ISSUE_FILTER.creator] ?? [];
   const created = decodeDateRange(filters[ISSUE_FILTER.created]);
+  const solved = decodeDateRange(filters[ISSUE_FILTER.solved]);
   const scheduled = decodeDateRange(filters[ISSUE_FILTER.scheduled]);
 
   return items.filter((item) => {
@@ -230,6 +238,20 @@ export function filterRoadmapItems(
       // A draft item has no `createdAt` yet, so it can't be in any window — the
       // same answer a creatorless item gets from the creator axis.
       if (!dayInRange(localDay(item.createdAt ?? ''), created.start, created.end)) return false;
+    }
+    if (solved.start || solved.end) {
+      // "What got done in this window?" — answered at both levels. An item
+      // rarely closes inside the sprint its work did, so its own `completedAt`
+      // alone would hide every item whose tasks landed here but which is still
+      // open; tasks alone would hide an item closed by hand with nothing linked.
+      // Either is enough. Open work has no solved day, so the window narrows to
+      // finished work on its own — as on the issue boards.
+      const inWindow = (iso?: string | null) =>
+        dayInRange(localDay(iso ?? ''), solved.start, solved.end);
+      const match =
+        inWindow(item.completedAt) ||
+        (tasksByItem?.get(item.id) ?? []).some((tk) => inWindow(tk.resolvedAt));
+      if (!match) return false;
     }
     if (scheduled.start || scheduled.end) {
       // Overlap, not containment. A one-ended item is treated as the single day

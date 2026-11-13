@@ -6,7 +6,7 @@ import {
 } from "@/components/FilterMenu";
 import { ISSUE_FILTER } from "@/features/issues/issueFilters";
 import { RoadmapDifficulty, RoadmapItemStatus } from "@/types/enums";
-import type { RoadmapColumn, RoadmapItem } from "@/types/dto";
+import type { RoadmapColumn, RoadmapItem, TaskDto } from "@/types/dto";
 import {
   NO_OKR,
   ROADMAP_FILTER,
@@ -276,6 +276,41 @@ describe("filterRoadmapItems — the item's own axes", () => {
   });
 });
 
+describe("filterRoadmapItems — solved", () => {
+  // Midday UTC, so the local day is the same in every viewer's timezone.
+  const done = [
+    item({ id: "closed", completedAt: "2026-05-10T12:00:00.000Z" }),
+    item({ id: "tasks-landed" }),
+    item({ id: "tasks-later", completedAt: "2026-07-01T12:00:00.000Z" }),
+    item({ id: "open" }),
+  ];
+  const task = (roadmapItemId: string, resolvedAt: string | null) =>
+    ({ roadmapItemId, resolvedAt }) as TaskDto;
+  const tasksByItem = new Map<string, TaskDto[]>([
+    ["tasks-landed", [task("tasks-landed", null), task("tasks-landed", "2026-05-20T12:00:00.000Z")]],
+    ["tasks-later", [task("tasks-later", "2026-06-15T12:00:00.000Z")]],
+    ["open", [task("open", null)]],
+  ]);
+  const may = {
+    [ISSUE_FILTER.solved]: encodeDateRange({ start: "2026-05-01", end: "2026-05-31" }),
+  };
+
+  it("matches an item done in the window, or one with a task solved in it", () => {
+    expect(ids(filterRoadmapItems(done, may, tasksByItem))).toEqual(["closed", "tasks-landed"]);
+  });
+
+  it("does not count an item done outside the window by its earlier task", () => {
+    const june = {
+      [ISSUE_FILTER.solved]: encodeDateRange({ start: "2026-06-01", end: "2026-06-30" }),
+    };
+    expect(ids(filterRoadmapItems(done, june, tasksByItem))).toEqual(["tasks-later"]);
+  });
+
+  it("reads the item's own date alone while the tasks haven't arrived", () => {
+    expect(ids(filterRoadmapItems(done, may))).toEqual(["closed"]);
+  });
+});
+
 describe("roadmapFilterCategories", () => {
   /** The picked category, as the option-list kind — a date row has no options. */
   const optionIds = (cat?: FilterCategory) =>
@@ -325,6 +360,7 @@ describe("hasRoadmapFilters", () => {
       ISSUE_FILTER.assignee,
       ISSUE_FILTER.creator,
       ISSUE_FILTER.created,
+      ISSUE_FILTER.solved,
       ISSUE_FILTER.scheduled,
     ]) {
       expect(hasRoadmapFilters({ [axis]: ["x"] })).toBe(true);

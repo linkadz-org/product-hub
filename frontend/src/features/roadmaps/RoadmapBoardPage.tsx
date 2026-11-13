@@ -272,7 +272,7 @@ function RoadmapBoard({ roadmap }: { roadmap: RoadmapDto }) {
     setSearchParams(next, { replace: true });
   };
   // ── Filters ────────────────────────────────────────────────────────────────
-  // Status · phase · difficulty · OKR · assignee · creator · created ·
+  // Status · phase · difficulty · OKR · assignee · creator · created · solved ·
   // scheduled, held in the URL as `f.<id>`. The ids match the issue boards'
   // wherever the question is the same, so `f.status=done` or `f.assigneeId=u1`
   // means one thing anywhere in the app. The people list is manager-only (as
@@ -327,7 +327,7 @@ function RoadmapBoard({ roadmap }: { roadmap: RoadmapDto }) {
   // roadmap, so there's no list query to push it into (and mustn't be — see
   // `roadmapFilters`).
   const filtered = hasRoadmapFilters(filters);
-  const items = filtered ? filterRoadmapItems(inScope, filters) : inScope;
+  const items = filtered ? filterRoadmapItems(inScope, filters, tasksByItem) : inScope;
   // Sorting the whole array by RICE and then filtering per column gives the same
   // per-column order as sorting each column, so the board can take it directly.
   const boardItems = sortRice ? [...items].sort((a, b) => b.rice - a.rice) : items;
